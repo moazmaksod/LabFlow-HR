@@ -110,3 +110,57 @@ export const syncOfflineLogs = (req: Request, res: Response): void => {
         res.status(500).json({ error: 'Internal server error' });
     }
 };
+
+export const getAttendanceLogs = (req: Request, res: Response): void => {
+    try {
+        const logs = db.prepare(`
+            SELECT a.*, u.name as user_name, j.title as job_title
+            FROM attendance a
+            JOIN users u ON a.user_id = u.id
+            LEFT JOIN profiles p ON u.id = p.user_id
+            LEFT JOIN jobs j ON p.job_id = j.id
+            ORDER BY a.date DESC, a.check_in DESC
+        `).all();
+        res.json(logs);
+    } catch (error) {
+        console.error('Error fetching attendance logs:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getAttendanceStats = (req: Request, res: Response): void => {
+    try {
+        const statusDist = db.prepare('SELECT status as name, COUNT(*) as value FROM attendance GROUP BY status').all();
+        
+        const dailyHours = db.prepare(`
+            SELECT date, ROUND(SUM((julianday(check_out) - julianday(check_in)) * 24), 2) as hours
+            FROM attendance
+            WHERE check_out IS NOT NULL
+            GROUP BY date
+            ORDER BY date ASC
+            LIMIT 7
+        `).all();
+
+        const todayStats = db.prepare(`
+            SELECT 
+                SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) as present,
+                SUM(CASE WHEN status = 'late' THEN 1 ELSE 0 END) as late,
+                SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) as absent
+            FROM attendance
+            WHERE date = date('now', 'localtime')
+        `).get() as any;
+
+        res.json({
+            statusDistribution: statusDist,
+            dailyHours: dailyHours,
+            today: {
+                present: todayStats?.present || 0,
+                late: todayStats?.late || 0,
+                absent: todayStats?.absent || 0
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching attendance stats:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
