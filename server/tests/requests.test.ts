@@ -1,0 +1,102 @@
+import request from 'supertest';
+import app from '../app.js';
+import db, { initDb } from '../db/index.js';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+
+let managerToken: string;
+let employeeToken: string;
+let employeeId: number | bigint;
+let requestId: number | bigint;
+
+beforeAll(async () => {
+  initDb();
+  
+  const salt = await bcrypt.genSalt(10);
+  const hash = await bcrypt.hash('password123', salt);
+  
+  // Create manager
+  const managerInsert = db.prepare(`INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)`).run('Manager', 'manager_req@test.com', hash, 'manager');
+  managerToken = jwt.sign({ id: managerInsert.lastInsertRowid, role: 'manager' }, process.env.JWT_SECRET || 'fallback_secret', { expiresIn: '1h' });
+
+  // Create employee
+  const empInsert = db.prepare(`INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)`).run('Employee', 'employee_req@test.com', hash, 'employee');
+  employeeId = empInsert.lastInsertRowid;
+  employeeToken = jwt.sign({ id: employeeId, role: 'employee' }, process.env.JWT_SECRET || 'fallback_secret', { expiresIn: '1h' });
+});
+
+afterAll(() => {
+  db.close();
+});
+
+describe('Requests API', () => {
+  it('should allow employee to submit a request', async () => {
+    const res = await request(app)
+      .post('/api/requests')
+      .set('Authorization', `Bearer ${employeeToken}`)
+      .send({
+        reason: 'Sick leave',
+        requested_check_in: new Date().toISOString(),
+        requested_check_out: new Date().toISOString()
+      });
+    
+    expect(res.status).toBe(201);
+    expect(res.body).toHaveProperty('id');
+    expect(res.body.reason).toBe('Sick leave');
+    expect(res.body.status).toBe('pending');
+    
+    requestId = res.body.id;
+  });
+
+  it('should return 400 if reason is missing', async () => {
+    const res = await request(app)
+      .post('/api/requests')
+      .set('Authorization', `Bearer ${employeeToken}`)
+      .send({
+        requested_check_in: new Date().toISOString()
+      });
+    
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error', 'Reason is required');
+  });
+
+  it('should allow manager to fetch all requests', async () => {
+    const res = await request(app)
+      .get('/api/requests')
+      .set('Authorization', `Bearer ${managerToken}`);
+    
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.length).toBeGreaterThan(0);
+    expect(res.body[0]).toHaveProperty('user_name');
+  });
+
+  it('should deny employee from approving a request', async () => {
+    const res = await request(app)
+      .put(`/api/requests/${requestId}/status`)
+      .set('Authorization', `Bearer ${employeeToken}`)
+      .send({ status: 'approved' });
+    
+    expect(res.status).toBe(403); // Assuming authorize(['manager']) is used
+  });
+
+  it('should allow manager to approve a request', async () => {
+    const res = await request(app)
+      .put(`/api/requests/${requestId}/status`)
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ status: 'approved' });
+    
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('approved');
+  });
+
+  it('should return 400 if trying to process an already processed request', async () => {
+    const res = await request(app)
+      .put(`/api/requests/${requestId}/status`)
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ status: 'rejected' });
+    
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error', 'Request is already processed');
+  });
+});
