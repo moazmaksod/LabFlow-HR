@@ -1,0 +1,27 @@
+{
+  "app": {
+    "title": "LabFlow HR",
+    "dashboard": "Dashboard",
+    "employees": "Employees",
+    "attendance": "Attendance",
+    "requests": "Requests",
+    "settings": "Settings",
+    "logout": "Logout",
+    "welcome": "Welcome back",
+    "theme": {
+      "light": "Light Mode",
+      "dark": "Dark Mode"
+    },
+    "language": {
+      "en": "English",
+      "ar": "Arabic"
+    }
+  },
+  "auth": {
+    "subtitle": "Sign in to your account",
+    "email": "Email Address",
+    "password": "Password",
+    "submit": "Sign In",
+    "error": "Invalid email or password. Please try again."
+  }
+}

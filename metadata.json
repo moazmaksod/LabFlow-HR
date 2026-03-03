@@ -1,0 +1,9 @@
+{
+  "name": "LabFlow-HR",
+  "description": "A highly secure, offline-capable, and scalable HR and Attendance Tracking System.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
