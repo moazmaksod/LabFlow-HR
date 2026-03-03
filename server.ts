@@ -6,6 +6,7 @@ import { seedDb } from './server/db/seed.js';
 import authRoutes from './server/routes/authRoutes.js';
 import jobRoutes from './server/routes/jobRoutes.js';
 import userRoutes from './server/routes/userRoutes.js';
+import attendanceRoutes from './server/routes/attendanceRoutes.js';
 
 async function startServer() {
   const app = express();
@@ -27,6 +28,7 @@ async function startServer() {
   app.use('/api/auth', authRoutes);
   app.use('/api/jobs', jobRoutes);
   app.use('/api/users', userRoutes);
+  app.use('/api/attendance', attendanceRoutes);
 
   // Vite middleware for development (React Web Dashboard)
   if (process.env.NODE_ENV !== 'production') {
