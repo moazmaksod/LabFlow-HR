@@ -21,6 +21,17 @@ export const seedDb = async (): Promise<void> => {
     } else {
       console.log('Database already seeded. Skipping seed process.');
     }
+
+    // Seed default settings if empty
+    const settingsRow = db.prepare('SELECT COUNT(*) as count FROM settings').get() as { count: number };
+    if (settingsRow.count === 0) {
+      console.log('Settings table is empty. Seeding default settings...');
+      const insertSettings = db.prepare(`
+        INSERT INTO settings (id, office_lat, office_lng, radius_meters)
+        VALUES (1, 37.7749, -122.4194, 50)
+      `);
+      insertSettings.run();
+    }
   } catch (error) {
     console.error('Error seeding database:', error);
   }

@@ -77,6 +77,15 @@ CREATE TABLE IF NOT EXISTS notifications (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1), -- Ensure only one row exists
+    office_lat REAL NOT NULL,
+    office_lng REAL NOT NULL,
+    radius_meters INTEGER NOT NULL DEFAULT 50,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Performance Indexes for Foreign Keys
 CREATE INDEX IF NOT EXISTS idx_profiles_user_id ON profiles(user_id);
 CREATE INDEX IF NOT EXISTS idx_profiles_job_id ON profiles(job_id);
@@ -109,4 +118,8 @@ BEGIN UPDATE requests SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;
 CREATE TRIGGER IF NOT EXISTS update_notifications_updated_at AFTER UPDATE ON notifications
 FOR EACH ROW WHEN NEW.updated_at <= OLD.updated_at
 BEGIN UPDATE notifications SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;
+
+CREATE TRIGGER IF NOT EXISTS update_settings_updated_at AFTER UPDATE ON settings
+FOR EACH ROW WHEN NEW.updated_at <= OLD.updated_at
+BEGIN UPDATE settings SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;
 `;

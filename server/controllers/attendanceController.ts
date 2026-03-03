@@ -1,6 +1,22 @@
 import { Request, Response } from 'express';
 import db from '../db/index.js';
 
+// Haversine formula to calculate distance between two points in meters
+const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371e3; // Earth's radius in meters
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const Δφ = (lat2 - lat1) * Math.PI / 180;
+    const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+              Math.cos(φ1) * Math.cos(φ2) *
+              Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c;
+};
+
 export const clockAttendance = (req: Request, res: Response): void => {
     try {
         const userId = (req as any).user.id;
@@ -9,6 +25,16 @@ export const clockAttendance = (req: Request, res: Response): void => {
         if (!type || !['check_in', 'check_out'].includes(type) || !timestamp || lat === undefined || lng === undefined) {
             res.status(400).json({ error: 'Missing required fields' });
             return;
+        }
+
+        // Fetch company settings for geofence validation
+        const settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+        if (settings) {
+            const distance = calculateDistance(lat, lng, settings.office_lat, settings.office_lng);
+            if (distance > settings.radius_meters) {
+                res.status(403).json({ error: 'Away from job: You are outside the allowed geofence area' });
+                return;
+            }
         }
 
         // Extract date from timestamp (YYYY-MM-DD)
