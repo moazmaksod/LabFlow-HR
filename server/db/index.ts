@@ -1,9 +1,11 @@
 import Database from 'better-sqlite3';
-import path from 'path';
+import * as path from 'path';
 import { schema } from './schema.js';
 
 // Connect to SQLite DB (file-based for persistence)
-const dbPath = path.resolve(process.cwd(), process.env.DB_PATH || 'labflow.db');
+const dbPath = process.env.DB_PATH === ':memory:' 
+  ? ':memory:' 
+  : path.resolve(process.cwd(), process.env.DB_PATH || 'labflow.db');
 const db = new Database(dbPath, { verbose: console.log });
 
 // Strictly enforce Foreign Keys
