@@ -7,6 +7,8 @@ import authRoutes from './server/routes/authRoutes.js';
 import jobRoutes from './server/routes/jobRoutes.js';
 import userRoutes from './server/routes/userRoutes.js';
 import attendanceRoutes from './server/routes/attendanceRoutes.js';
+import requestRoutes from './server/routes/requestRoutes.js';
+import payrollRoutes from './server/routes/payrollRoutes.js';
 
 async function startServer() {
   const app = express();
@@ -29,6 +31,8 @@ async function startServer() {
   app.use('/api/jobs', jobRoutes);
   app.use('/api/users', userRoutes);
   app.use('/api/attendance', attendanceRoutes);
+  app.use('/api/requests', requestRoutes);
+  app.use('/api/payroll', payrollRoutes);
 
   // Vite middleware for development (React Web Dashboard)
   if (process.env.NODE_ENV !== 'production') {
