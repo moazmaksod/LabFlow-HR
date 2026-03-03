@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import { useAuthStore } from '../store/useAuthStore';
-import { Moon, Sun, Globe, LayoutDashboard, Users, Calendar, FileText, Settings, LogOut, Briefcase } from 'lucide-react';
+import { Moon, Sun, Globe, LayoutDashboard, Users, Calendar, FileText, Settings, LogOut, Briefcase, DollarSign } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 export default function DashboardLayout() {
@@ -20,6 +20,7 @@ export default function DashboardLayout() {
     { icon: Briefcase, label: 'Job Roles', path: '/jobs' },
     { icon: Calendar, label: 'app.attendance', path: '/attendance' },
     { icon: FileText, label: 'app.requests', path: '/requests' },
+    { icon: DollarSign, label: 'Payroll', path: '/payroll' },
     { icon: Settings, label: 'app.settings', path: '/settings' },
   ];
 

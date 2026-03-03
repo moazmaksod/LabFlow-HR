@@ -14,6 +14,8 @@ import JobManagement from './features/jobs/JobManagement';
 import EmployeeList from './features/employees/EmployeeList';
 import AttendanceLogs from './features/attendance/AttendanceLogs';
 import AnalyticsDashboard from './features/analytics/AnalyticsDashboard';
+import RequestManagement from './features/requests/RequestManagement';
+import PayrollView from './features/payroll/PayrollView';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -56,6 +58,8 @@ export default function App() {
             <Route path="jobs" element={<JobManagement />} />
             <Route path="employees" element={<EmployeeList />} />
             <Route path="attendance" element={<AttendanceLogs />} />
+            <Route path="requests" element={<RequestManagement />} />
+            <Route path="payroll" element={<PayrollView />} />
           </Route>
         </Routes>
       </BrowserRouter>
