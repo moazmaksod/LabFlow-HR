@@ -12,6 +12,8 @@ import Login from './features/auth/Login';
 import ProtectedRoute from './components/ProtectedRoute';
 import JobManagement from './features/jobs/JobManagement';
 import EmployeeList from './features/employees/EmployeeList';
+import AttendanceLogs from './features/attendance/AttendanceLogs';
+import AnalyticsDashboard from './features/analytics/AnalyticsDashboard';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -50,9 +52,10 @@ export default function App() {
               </ProtectedRoute>
             } 
           >
-            <Route index element={<div className="text-muted-foreground">Dashboard content coming soon...</div>} />
+            <Route index element={<AnalyticsDashboard />} />
             <Route path="jobs" element={<JobManagement />} />
             <Route path="employees" element={<EmployeeList />} />
+            <Route path="attendance" element={<AttendanceLogs />} />
           </Route>
         </Routes>
       </BrowserRouter>
