@@ -6,12 +6,3 @@ coverage/
 *.log
 .env*
 !.env.example
-mobile/package-lock.json
-mobile/tsconfig.json
-mobile/.expo/devices.json
-mobile/.expo/README.md
-
-# SQLite Database files
-*.db
-*.db-wal
-*.db-shm

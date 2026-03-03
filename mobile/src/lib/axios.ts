@@ -4,7 +4,7 @@ import { useAuthStore } from '../store/useAuthStore';
 // In a real device/emulator, localhost (127.0.0.1) points to the device itself.
 // Use your computer's local IP address (e.g., 192.168.1.x) or 10.0.2.2 for Android Emulator.
 // For this preview environment, we'll use a placeholder that you can replace.
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.42:3000/api';
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:3000/api';
 
 const api = axios.create({
   baseURL: API_URL,
