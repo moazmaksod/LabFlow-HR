@@ -49,13 +49,47 @@ export const clockAttendance = (req: Request, res: Response): void => {
                 return;
             }
 
+            // Determine status (present or late) based on weekly_schedule
+            let status = 'present';
+            const userProfile = db.prepare(`
+                SELECT p.weekly_schedule, j.grace_period
+                FROM profiles p
+                LEFT JOIN jobs j ON p.job_id = j.id
+                WHERE p.user_id = ?
+            `).get(userId) as any;
+
+            if (userProfile && userProfile.weekly_schedule) {
+                try {
+                    const schedule = JSON.parse(userProfile.weekly_schedule);
+                    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+                    const todayName = days[new Date(timestamp).getDay()];
+                    const todaySchedule = schedule[todayName];
+
+                    if (todaySchedule && !todaySchedule.isOff && todaySchedule.start) {
+                        const [schedHours, schedMinutes] = todaySchedule.start.split(':').map(Number);
+                        const clockInTime = new Date(timestamp);
+                        const scheduledTime = new Date(timestamp);
+                        scheduledTime.setHours(schedHours, schedMinutes, 0, 0);
+
+                        const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
+                        const gracePeriod = userProfile.grace_period || 15;
+
+                        if (diffMinutes > gracePeriod) {
+                            status = 'late';
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error parsing weekly schedule:', e);
+                }
+            }
+
             // Insert new check-in record
             const insert = db.prepare(`
                 INSERT INTO attendance (user_id, check_in, date, location_lat, location_lng, status)
-                VALUES (?, ?, ?, ?, ?, 'present')
+                VALUES (?, ?, ?, ?, ?, ?)
             `);
             
-            const info = insert.run(userId, timestamp, date, lat, lng);
+            const info = insert.run(userId, timestamp, date, lat, lng, status);
             const newRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(info.lastInsertRowid);
             
             res.status(201).json(newRecord);

@@ -18,18 +18,42 @@ export function initDb() {
     console.log('Initializing database schema...');
     db.exec(schema);
     
-    // Migration: Add age and gender to profiles if they don't exist
-    const columns = db.prepare("PRAGMA table_info(profiles)").all() as any[];
-    const hasAge = columns.some(c => c.name === 'age');
-    const hasGender = columns.some(c => c.name === 'gender');
-    
-    if (!hasAge) {
-      db.exec("ALTER TABLE profiles ADD COLUMN age INTEGER;");
-      console.log('Added age column to profiles table.');
+    // Migration: Add new columns to jobs and profiles
+    const jobColumns = db.prepare("PRAGMA table_info(jobs)").all() as any[];
+    const profileColumns = db.prepare("PRAGMA table_info(profiles)").all() as any[];
+
+    // Jobs migrations
+    if (!jobColumns.some(c => c.name === 'required_hours_per_week')) {
+      db.exec("ALTER TABLE jobs ADD COLUMN required_hours_per_week INTEGER;");
     }
-    if (!hasGender) {
-      db.exec("ALTER TABLE profiles ADD COLUMN gender TEXT;");
-      console.log('Added gender column to profiles table.');
+    if (!jobColumns.some(c => c.name === 'preferred_gender')) {
+      db.exec("ALTER TABLE jobs ADD COLUMN preferred_gender TEXT;");
+    }
+    if (!jobColumns.some(c => c.name === 'min_age')) {
+      db.exec("ALTER TABLE jobs ADD COLUMN min_age INTEGER;");
+    }
+    if (!jobColumns.some(c => c.name === 'max_age')) {
+      db.exec("ALTER TABLE jobs ADD COLUMN max_age INTEGER;");
+    }
+
+    // Profiles migrations
+    if (!profileColumns.some(c => c.name === 'weekly_schedule')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN weekly_schedule TEXT;");
+    }
+    if (!profileColumns.some(c => c.name === 'hourly_rate')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN hourly_rate INTEGER DEFAULT 0;");
+    }
+    if (!profileColumns.some(c => c.name === 'lunch_break_minutes')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN lunch_break_minutes INTEGER DEFAULT 0;");
+    }
+    if (!profileColumns.some(c => c.name === 'emergency_contact_name')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN emergency_contact_name TEXT;");
+    }
+    if (!profileColumns.some(c => c.name === 'emergency_contact_phone')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN emergency_contact_phone TEXT;");
+    }
+    if (!profileColumns.some(c => c.name === 'leave_balance')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN leave_balance INTEGER DEFAULT 21;");
     }
 
     console.log('Database schema initialized successfully.');

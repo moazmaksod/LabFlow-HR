@@ -18,8 +18,10 @@ CREATE TABLE IF NOT EXISTS jobs (
     title TEXT NOT NULL,
     hourly_rate REAL NOT NULL,
     required_hours REAL NOT NULL,
-    shift_start TEXT NOT NULL, -- Format: 'HH:MM'
-    shift_end TEXT NOT NULL,   -- Format: 'HH:MM'
+    required_hours_per_week INTEGER,
+    preferred_gender TEXT, -- 'male', 'female', 'any'
+    min_age INTEGER,
+    max_age INTEGER,
     grace_period INTEGER NOT NULL DEFAULT 15, -- In minutes
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -32,6 +34,12 @@ CREATE TABLE IF NOT EXISTS profiles (
     profile_picture_url TEXT,
     age INTEGER,
     gender TEXT,
+    weekly_schedule TEXT, -- JSON stringified schedule
+    hourly_rate INTEGER DEFAULT 0,
+    lunch_break_minutes INTEGER DEFAULT 0,
+    emergency_contact_name TEXT,
+    emergency_contact_phone TEXT,
+    leave_balance INTEGER DEFAULT 21,
     status TEXT NOT NULL CHECK(status IN ('active', 'inactive', 'suspended')) DEFAULT 'inactive',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,

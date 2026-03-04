@@ -8,7 +8,8 @@ export const getUsers = (req: Request, res: Response): void => {
             SELECT 
                 u.id, u.name, u.email, u.role, u.created_at,
                 p.status, p.job_id,
-                j.title as job_title
+                j.title as job_title,
+                (SELECT COUNT(*) FROM attendance a WHERE a.user_id = u.id AND a.date = date('now', 'localtime') AND a.check_out IS NULL) as is_clocked_in
             FROM users u
             LEFT JOIN profiles p ON u.id = p.user_id
             LEFT JOIN jobs j ON p.job_id = j.id
@@ -76,7 +77,9 @@ export const getProfile = (req: Request, res: Response): void => {
         const user = db.prepare(`
             SELECT 
                 u.id, u.name, u.email, u.role,
-                p.age, p.gender, p.profile_picture_url
+                p.age, p.gender, p.profile_picture_url,
+                p.weekly_schedule, p.hourly_rate, p.lunch_break_minutes,
+                p.emergency_contact_name, p.emergency_contact_phone, p.leave_balance
             FROM users u
             LEFT JOIN profiles p ON u.id = p.user_id
             WHERE u.id = ?
@@ -97,7 +100,11 @@ export const getProfile = (req: Request, res: Response): void => {
 export const updateProfile = (req: Request, res: Response): void => {
     try {
         const userId = (req as any).user.id;
-        const { name, age, gender, profile_picture_url } = req.body;
+        const { 
+            name, age, gender, profile_picture_url,
+            weekly_schedule, hourly_rate, lunch_break_minutes,
+            emergency_contact_name, emergency_contact_phone, leave_balance
+        } = req.body;
 
         const updateTransaction = db.transaction(() => {
             if (name) {
@@ -110,12 +117,46 @@ export const updateProfile = (req: Request, res: Response): void => {
                     UPDATE profiles 
                     SET age = COALESCE(?, age), 
                         gender = COALESCE(?, gender), 
-                        profile_picture_url = COALESCE(?, profile_picture_url) 
+                        profile_picture_url = COALESCE(?, profile_picture_url),
+                        weekly_schedule = COALESCE(?, weekly_schedule),
+                        hourly_rate = COALESCE(?, hourly_rate),
+                        lunch_break_minutes = COALESCE(?, lunch_break_minutes),
+                        emergency_contact_name = COALESCE(?, emergency_contact_name),
+                        emergency_contact_phone = COALESCE(?, emergency_contact_phone),
+                        leave_balance = COALESCE(?, leave_balance)
                     WHERE user_id = ?
-                `).run(age || null, gender || null, profile_picture_url || null, userId);
+                `).run(
+                    age || null, 
+                    gender || null, 
+                    profile_picture_url || null,
+                    weekly_schedule ? JSON.stringify(weekly_schedule) : null,
+                    hourly_rate !== undefined ? hourly_rate : null,
+                    lunch_break_minutes !== undefined ? lunch_break_minutes : null,
+                    emergency_contact_name || null,
+                    emergency_contact_phone || null,
+                    leave_balance !== undefined ? leave_balance : null,
+                    userId
+                );
             } else {
-                db.prepare('INSERT INTO profiles (user_id, age, gender, profile_picture_url, status) VALUES (?, ?, ?, ?, ?)')
-                  .run(userId, age || null, gender || null, profile_picture_url || null, 'active');
+                db.prepare(`
+                    INSERT INTO profiles (
+                        user_id, age, gender, profile_picture_url, status,
+                        weekly_schedule, hourly_rate, lunch_break_minutes,
+                        emergency_contact_name, emergency_contact_phone, leave_balance
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `).run(
+                    userId, 
+                    age || null, 
+                    gender || null, 
+                    profile_picture_url || null, 
+                    'active',
+                    weekly_schedule ? JSON.stringify(weekly_schedule) : null,
+                    hourly_rate || 0,
+                    lunch_break_minutes || 0,
+                    emergency_contact_name || null,
+                    emergency_contact_phone || null,
+                    leave_balance || 21
+                );
             }
         });
 
@@ -124,7 +165,9 @@ export const updateProfile = (req: Request, res: Response): void => {
         const updatedUser = db.prepare(`
             SELECT 
                 u.id, u.name, u.email, u.role,
-                p.age, p.gender, p.profile_picture_url
+                p.age, p.gender, p.profile_picture_url,
+                p.weekly_schedule, p.hourly_rate, p.lunch_break_minutes,
+                p.emergency_contact_name, p.emergency_contact_phone, p.leave_balance
             FROM users u
             LEFT JOIN profiles p ON u.id = p.user_id
             WHERE u.id = ?
@@ -133,6 +176,124 @@ export const updateProfile = (req: Request, res: Response): void => {
         res.json(updatedUser);
     } catch (error) {
         console.error('Error updating profile:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getUserById = (req: Request, res: Response): void => {
+    try {
+        const { id } = req.params;
+        const user = db.prepare(`
+            SELECT 
+                u.id, u.name, u.email, u.role,
+                p.age, p.gender, p.profile_picture_url,
+                p.weekly_schedule, p.hourly_rate, p.lunch_break_minutes,
+                p.emergency_contact_name, p.emergency_contact_phone, p.leave_balance,
+                p.job_id, j.title as job_title
+            FROM users u
+            LEFT JOIN profiles p ON u.id = p.user_id
+            LEFT JOIN jobs j ON p.job_id = j.id
+            WHERE u.id = ?
+        `).get(id);
+
+        if (!user) {
+            res.status(404).json({ error: 'User not found' });
+            return;
+        }
+
+        res.json(user);
+    } catch (error) {
+        console.error('Error fetching user by id:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const updateUserProfile = (req: Request, res: Response): void => {
+    try {
+        const { id } = req.params;
+        const { 
+            name, age, gender, profile_picture_url,
+            weekly_schedule, hourly_rate, lunch_break_minutes,
+            emergency_contact_name, emergency_contact_phone, leave_balance,
+            job_id, role
+        } = req.body;
+
+        const updateTransaction = db.transaction(() => {
+            if (name || role) {
+                db.prepare('UPDATE users SET name = COALESCE(?, name), role = COALESCE(?, role) WHERE id = ?')
+                  .run(name || null, role || null, id);
+            }
+
+            const profileExists = db.prepare('SELECT id FROM profiles WHERE user_id = ?').get(id);
+            if (profileExists) {
+                db.prepare(`
+                    UPDATE profiles 
+                    SET age = COALESCE(?, age), 
+                        gender = COALESCE(?, gender), 
+                        profile_picture_url = COALESCE(?, profile_picture_url),
+                        weekly_schedule = COALESCE(?, weekly_schedule),
+                        hourly_rate = COALESCE(?, hourly_rate),
+                        lunch_break_minutes = COALESCE(?, lunch_break_minutes),
+                        emergency_contact_name = COALESCE(?, emergency_contact_name),
+                        emergency_contact_phone = COALESCE(?, emergency_contact_phone),
+                        leave_balance = COALESCE(?, leave_balance),
+                        job_id = COALESCE(?, job_id)
+                    WHERE user_id = ?
+                `).run(
+                    age || null, 
+                    gender || null, 
+                    profile_picture_url || null,
+                    weekly_schedule ? (typeof weekly_schedule === 'string' ? weekly_schedule : JSON.stringify(weekly_schedule)) : null,
+                    hourly_rate !== undefined ? hourly_rate : null,
+                    lunch_break_minutes !== undefined ? lunch_break_minutes : null,
+                    emergency_contact_name || null,
+                    emergency_contact_phone || null,
+                    leave_balance !== undefined ? leave_balance : null,
+                    job_id !== undefined ? job_id : null,
+                    id
+                );
+            } else {
+                db.prepare(`
+                    INSERT INTO profiles (
+                        user_id, age, gender, profile_picture_url, status,
+                        weekly_schedule, hourly_rate, lunch_break_minutes,
+                        emergency_contact_name, emergency_contact_phone, leave_balance, job_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `).run(
+                    id, 
+                    age || null, 
+                    gender || null, 
+                    profile_picture_url || null, 
+                    'active',
+                    weekly_schedule ? (typeof weekly_schedule === 'string' ? weekly_schedule : JSON.stringify(weekly_schedule)) : null,
+                    hourly_rate || 0,
+                    lunch_break_minutes || 0,
+                    emergency_contact_name || null,
+                    emergency_contact_phone || null,
+                    leave_balance || 21,
+                    job_id || null
+                );
+            }
+        });
+
+        updateTransaction();
+
+        const updatedUser = db.prepare(`
+            SELECT 
+                u.id, u.name, u.email, u.role,
+                p.age, p.gender, p.profile_picture_url,
+                p.weekly_schedule, p.hourly_rate, p.lunch_break_minutes,
+                p.emergency_contact_name, p.emergency_contact_phone, p.leave_balance,
+                p.job_id, j.title as job_title
+            FROM users u
+            LEFT JOIN profiles p ON u.id = p.user_id
+            LEFT JOIN jobs j ON p.job_id = j.id
+            WHERE u.id = ?
+        `).get(id);
+
+        res.json(updatedUser);
+    } catch (error) {
+        console.error('Error updating user profile:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
