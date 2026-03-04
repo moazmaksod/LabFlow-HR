@@ -3,7 +3,6 @@ import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } fr
 import * as Location from 'expo-location';
 import { useAuthStore } from '../store/useAuthStore';
 import api from '../lib/axios';
-import { isWithinWorkplace, WORKPLACE_LOCATION, calculateDistance } from '../lib/location';
 import { initLocalDb, saveOfflineLog, getUnsyncedLogs, markLogsAsSynced } from '../lib/db';
 
 export default function DashboardScreen() {
@@ -38,20 +37,9 @@ export default function DashboardScreen() {
       const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       const { latitude, longitude } = location.coords;
 
-      // 3. Geofencing Validation
-      if (!isWithinWorkplace(latitude, longitude)) {
-        const dist = calculateDistance(latitude, longitude, WORKPLACE_LOCATION.lat, WORKPLACE_LOCATION.lng);
-        Alert.alert(
-          'Out of Range',
-          `You are ${Math.round(dist)} meters away from the workplace. You must be within ${WORKPLACE_LOCATION.radius} meters to clock in/out.`
-        );
-        setLoading(false);
-        return;
-      }
-
       const timestamp = new Date().toISOString();
 
-      // 4. Try to call the Backend API
+      // 3. Try to call the Backend API
       try {
         await api.post('/attendance/clock', {
           type,
@@ -61,14 +49,21 @@ export default function DashboardScreen() {
         });
         Alert.alert('Success', `Successfully clocked ${type === 'check_in' ? 'in' : 'out'}!`);
       } catch (apiError: any) {
-        // 5. If API fails (network error), save to local SQLite
-        console.log('API Error, saving offline:', apiError.message);
-        saveOfflineLog(type, timestamp, latitude, longitude);
-        Alert.alert(
-          'Offline Mode',
-          `Network error. Your ${type === 'check_in' ? 'check-in' : 'check-out'} was saved locally and will be synced later.`
-        );
-        checkUnsyncedLogs();
+        const errorMessage = apiError.response?.data?.error || apiError.message;
+
+        // If it's a server response error (e.g., 403 Out of Range), show the error
+        if (apiError.response) {
+          Alert.alert('Attendance Error', errorMessage);
+        } else {
+          // Network error, save to local SQLite for later sync
+          console.log('Network Error, saving offline:', apiError.message);
+          saveOfflineLog(type, timestamp, latitude, longitude);
+          Alert.alert(
+            'Offline Mode',
+            `Network error. Your ${type === 'check_in' ? 'check-in' : 'check-out'} was saved locally and will be synced later.`
+          );
+          checkUnsyncedLogs();
+        }
       }
     } catch (error: any) {
       Alert.alert('Error', error.message || 'An unexpected error occurred.');
