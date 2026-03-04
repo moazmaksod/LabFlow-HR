@@ -137,6 +137,21 @@ export const syncOfflineLogs = (req: Request, res: Response): void => {
     }
 };
 
+export const getMyLogs = (req: Request, res: Response): void => {
+    try {
+        const userId = (req as any).user.id;
+        const logs = db.prepare(`
+            SELECT * FROM attendance 
+            WHERE user_id = ? 
+            ORDER BY date DESC, check_in DESC
+        `).all(userId);
+        res.json(logs);
+    } catch (error) {
+        console.error('Error fetching my attendance logs:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const getAttendanceLogs = (req: Request, res: Response): void => {
     try {
         const logs = db.prepare(`
