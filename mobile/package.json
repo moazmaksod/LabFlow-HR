@@ -16,7 +16,7 @@
     "expo-secure-store": "~55.0.8",
     "expo-location": "~55.1.2",
     "expo-sqlite": "~55.0.10",
-    "expo-image-picker": "~55.0.12",
+    "expo-image-picker": "~55.0.10",
     "zustand": "^5.0.0",
     "axios": "^1.7.0",
     "@react-navigation/native": "^7.0.0",
