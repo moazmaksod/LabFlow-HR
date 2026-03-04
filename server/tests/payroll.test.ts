@@ -30,10 +30,10 @@ beforeAll(async () => {
 
   // Create a job
   const insertJob = db.prepare(`
-    INSERT INTO jobs (title, hourly_rate, required_hours, shift_start, shift_end)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO jobs (title, hourly_rate, required_hours)
+    VALUES (?, ?, ?)
   `);
-  const jobInfo = insertJob.run('Developer', 25.50, 8, '09:00', '17:00');
+  const jobInfo = insertJob.run('Developer', 25.50, 8);
 
   // Create a profile for the employee
   const insertProfile = db.prepare(`

@@ -7,10 +7,23 @@ const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_do_not_use_in_prod
 
 export const register = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { name, email, password } = req.body;
+        const { name, email, password, age, gender } = req.body;
         
-        if (!name || !email || !password) {
-            res.status(400).json({ error: 'Missing required fields: name, email, password' });
+        if (!name || !email || !password || !age || !gender) {
+            res.status(400).json({ error: 'Missing required fields: name, email, password, age, gender' });
+            return;
+        }
+
+        // Validate age
+        const ageNum = parseInt(age);
+        if (isNaN(ageNum) || ageNum < 16 || ageNum > 100) {
+            res.status(400).json({ error: 'Invalid age. Must be between 16 and 100.' });
+            return;
+        }
+
+        // Validate gender
+        if (!['male', 'female'].includes(gender.toLowerCase())) {
+            res.status(400).json({ error: 'Invalid gender. Must be "male" or "female".' });
             return;
         }
 
@@ -25,13 +38,25 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         const salt = await bcrypt.genSalt(10);
         const password_hash = await bcrypt.hash(password, salt);
 
-        // Insert user (default role is 'pending' as per schema)
-        const insert = db.prepare('INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)');
-        const info = insert.run(name, email, password_hash);
+        // Start a transaction to ensure both user and profile are created
+        const registerTransaction = db.transaction(() => {
+            // Insert user (default role is 'pending' as per schema)
+            const insertUser = db.prepare('INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)');
+            const info = insertUser.run(name, email, password_hash);
+            const userId = info.lastInsertRowid;
+
+            // Insert profile
+            const insertProfile = db.prepare('INSERT INTO profiles (user_id, age, gender, status) VALUES (?, ?, ?, ?)');
+            insertProfile.run(userId, ageNum, gender.toLowerCase(), 'inactive');
+
+            return userId;
+        });
+
+        const userId = registerTransaction();
 
         // Generate JWT
         const token = jwt.sign(
-            { id: info.lastInsertRowid, role: 'pending' },
+            { id: userId, role: 'pending' },
             JWT_SECRET,
             { expiresIn: '7d' }
         );
@@ -39,7 +64,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         res.status(201).json({
             message: 'User registered successfully',
             token,
-            user: { id: info.lastInsertRowid, name, email, role: 'pending' }
+            user: { id: userId, name, email, role: 'pending' }
         });
     } catch (error) {
         console.error('Registration error:', error);

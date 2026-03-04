@@ -18,6 +18,8 @@ describe('Auth API', () => {
         name: 'Test User',
         email: 'test@example.com',
         password: 'password123',
+        age: 25,
+        gender: 'male'
       });
 
     expect(res.status).toBe(201);
@@ -34,6 +36,8 @@ describe('Auth API', () => {
         name: 'Another User',
         email: 'test@example.com',
         password: 'password123',
+        age: 30,
+        gender: 'female'
       });
 
     expect(res.status).toBe(409);
