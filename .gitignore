@@ -12,3 +12,6 @@ coverage/
 *.db-wal
 *.db-shm
 :memory:
+# Ignore user uploaded files
+public/uploads/*
+!public/uploads/.gitkeep

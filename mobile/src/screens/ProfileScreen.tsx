@@ -5,8 +5,9 @@ import { User, Camera, Save, LogOut, Mail, UserCircle } from 'lucide-react-nativ
 import api from '../lib/axios';
 import { useAuthStore } from '../store/useAuthStore';
 
-// Base URL for images (using the development URL provided)
-const BASE_URL = 'https://ais-dev-dt5wflxz22iihcij747x5r-137896224739.europe-west1.run.app';
+// Base URL for images derived from API URL
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://ais-dev-dt5wflxz22iihcij747x5r-137896224739.europe-west1.run.app/api';
+const BASE_URL = API_URL.replace('/api', '');
 
 export default function ProfileScreen() {
   const { user, logout, login } = useAuthStore();
@@ -45,7 +46,7 @@ export default function ProfileScreen() {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.5,
