@@ -117,4 +117,15 @@ describe('Attendance API', () => {
     expect(res.status).toBe(403);
     expect(res.body.error).toMatch(/Away from job/);
   });
+
+  it('should allow employee to fetch their own attendance logs', async () => {
+    const res = await request(app)
+      .get('/api/attendance/my-logs')
+      .set('Authorization', `Bearer ${employeeToken}`);
+    
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.length).toBeGreaterThan(0);
+    expect(res.body[0]).toHaveProperty('check_in');
+  });
 });

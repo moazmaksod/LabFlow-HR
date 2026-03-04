@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS profiles (
     user_id INTEGER NOT NULL UNIQUE,
     job_id INTEGER,
     profile_picture_url TEXT,
+    age INTEGER,
+    gender TEXT,
     status TEXT NOT NULL CHECK(status IN ('active', 'inactive', 'suspended')) DEFAULT 'inactive',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,

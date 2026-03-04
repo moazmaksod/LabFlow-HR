@@ -12,7 +12,7 @@ async function startServer() {
   initDb();
   await seedDb();
 
-  // Vite middleware for development (React Web Dashboard)
+  // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },

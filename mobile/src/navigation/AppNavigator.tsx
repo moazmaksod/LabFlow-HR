@@ -2,7 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { LayoutDashboard, History } from 'lucide-react-native';
+import { LayoutDashboard, History, User } from 'lucide-react-native';
 import { useAuthStore } from '../store/useAuthStore';
 
 // Screens
@@ -11,6 +11,7 @@ import RegisterScreen from '../screens/auth/RegisterScreen';
 import PendingApprovalScreen from '../screens/PendingApprovalScreen';
 import DashboardScreen from '../screens/DashboardScreen';
 import HistoryScreen from '../screens/HistoryScreen';
+import ProfileScreen from '../screens/ProfileScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -43,6 +44,14 @@ function MainTabs() {
         options={{
           tabBarLabel: 'History',
           tabBarIcon: ({ color, size }) => <History color={color} size={size} />,
+        }}
+      />
+      <Tab.Screen 
+        name="Profile" 
+        component={ProfileScreen} 
+        options={{
+          tabBarLabel: 'Profile',
+          tabBarIcon: ({ color, size }) => <User color={color} size={size} />,
         }}
       />
     </Tab.Navigator>
