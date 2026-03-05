@@ -20,6 +20,7 @@
     "axios": "^1.13.6",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.4.1",
+    "buffer": "^6.0.3",
     "clsx": "^2.1.1",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
