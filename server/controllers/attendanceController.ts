@@ -50,12 +50,12 @@ export const clockAttendance = (req: Request, res: Response): void => {
         // Extract date from timestamp (YYYY-MM-DD)
         const date = new Date(timestamp).toISOString().split('T')[0];
 
-        // Check if a record exists for today
-        const existingRecord = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ?').get(userId, date) as any;
+        // Check if there is an active session (not checked out)
+        const activeSession = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ? AND check_out IS NULL').get(userId, date) as any;
 
         if (type === 'check_in') {
-            if (existingRecord) {
-                res.status(400).json({ error: 'Already checked in for today' });
+            if (activeSession) {
+                res.status(400).json({ error: 'You already have an active session for today. Please check out first.' });
                 return;
             }
 
@@ -104,13 +104,8 @@ export const clockAttendance = (req: Request, res: Response): void => {
             
             res.status(201).json(newRecord);
         } else if (type === 'check_out') {
-            if (!existingRecord) {
-                res.status(400).json({ error: 'No check-in record found for today' });
-                return;
-            }
-
-            if (existingRecord.check_out) {
-                res.status(400).json({ error: 'Already checked out for today' });
+            if (!activeSession) {
+                res.status(400).json({ error: 'No active check-in record found for today' });
                 return;
             }
 
@@ -119,9 +114,9 @@ export const clockAttendance = (req: Request, res: Response): void => {
                 UPDATE attendance 
                 SET check_out = ?, location_lat = ?, location_lng = ?
                 WHERE id = ?
-            `).run(timestamp, lat, lng, existingRecord.id);
+            `).run(timestamp, lat, lng, activeSession.id);
 
-            const updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(existingRecord.id);
+            const updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id);
             res.json(updatedRecord);
         }
     } catch (error) {
