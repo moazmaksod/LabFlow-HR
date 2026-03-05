@@ -19,7 +19,7 @@ interface WeeklySchedule {
   [key: string]: ScheduleDay;
 }
 
-const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const DAYS = ['saturday', 'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
 
 export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps) {
   const queryClient = useQueryClient();
@@ -148,7 +148,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
         {/* Personal Info */}
         <section className="space-y-4">
           <h4 className="flex items-center gap-2 font-semibold text-sm uppercase tracking-wider text-muted-foreground">
-            <User className="w-4 h-4" /> Personal Information
+            <User className="w-4 h-4" /> Personal Information (Read-Only)
           </h4>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
@@ -156,8 +156,8 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
               <input 
                 type="text" 
                 value={formData.name} 
-                onChange={(e) => setFormData({...formData, name: e.target.value})}
-                className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                disabled
+                className="w-full px-3 py-2 bg-muted border border-border rounded-md text-sm text-muted-foreground cursor-not-allowed"
               />
             </div>
             <div className="space-y-1.5">
@@ -174,16 +174,16 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
               <input 
                 type="number" 
                 value={formData.age} 
-                onChange={(e) => setFormData({...formData, age: e.target.value})}
-                className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                disabled
+                className="w-full px-3 py-2 bg-muted border border-border rounded-md text-sm text-muted-foreground cursor-not-allowed"
               />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">Gender</label>
               <select 
                 value={formData.gender} 
-                onChange={(e) => setFormData({...formData, gender: e.target.value})}
-                className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                disabled
+                className="w-full px-3 py-2 bg-muted border border-border rounded-md text-sm text-muted-foreground cursor-not-allowed"
               >
                 <option value="">Select...</option>
                 <option value="male">Male</option>
@@ -322,7 +322,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
         {/* Emergency Contact */}
         <section className="space-y-4">
           <h4 className="flex items-center gap-2 font-semibold text-sm uppercase tracking-wider text-muted-foreground">
-            <Phone className="w-4 h-4" /> Emergency Contact
+            <Phone className="w-4 h-4" /> Emergency Contact (Read-Only)
           </h4>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
@@ -330,8 +330,8 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
               <input 
                 type="text" 
                 value={formData.emergency_contact_name} 
-                onChange={(e) => setFormData({...formData, emergency_contact_name: e.target.value})}
-                className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                disabled
+                className="w-full px-3 py-2 bg-muted border border-border rounded-md text-sm text-muted-foreground cursor-not-allowed"
                 placeholder="Name"
               />
             </div>
@@ -340,8 +340,8 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
               <input 
                 type="text" 
                 value={formData.emergency_contact_phone} 
-                onChange={(e) => setFormData({...formData, emergency_contact_phone: e.target.value})}
-                className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                disabled
+                className="w-full px-3 py-2 bg-muted border border-border rounded-md text-sm text-muted-foreground cursor-not-allowed"
                 placeholder="+1 234 567 890"
               />
             </div>

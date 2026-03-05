@@ -62,6 +62,63 @@ export const createJob = (req: Request, res: Response): void => {
     }
 };
 
+export const updateJob = (req: Request, res: Response): void => {
+    try {
+        const { id } = req.params;
+        const { 
+            title, 
+            hourly_rate, 
+            required_hours_per_week,
+            preferred_gender,
+            min_age,
+            max_age,
+            grace_period 
+        } = req.body;
+
+        if (!title || hourly_rate === undefined || required_hours_per_week === undefined) {
+            res.status(400).json({ error: 'Missing required fields' });
+            return;
+        }
+
+        const update = db.prepare(`
+            UPDATE jobs SET 
+                title = ?, 
+                hourly_rate = ?, 
+                required_hours = ?, 
+                required_hours_per_week = ?,
+                preferred_gender = ?,
+                min_age = ?,
+                max_age = ?,
+                grace_period = ?
+            WHERE id = ?
+        `);
+        
+        const result = update.run(
+            title, 
+            hourly_rate, 
+            required_hours_per_week, 
+            required_hours_per_week,
+            preferred_gender || 'any',
+            min_age || null,
+            max_age || null,
+            grace_period || 15,
+            id
+        );
+
+        if (result.changes === 0) {
+            res.status(404).json({ error: 'Job not found' });
+            return;
+        }
+        
+        const updatedJob = db.prepare('SELECT * FROM jobs WHERE id = ?').get(id);
+        
+        res.json(updatedJob);
+    } catch (error) {
+        console.error('Error updating job:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const deleteJob = (req: Request, res: Response): void => {
     try {
         const { id } = req.params;

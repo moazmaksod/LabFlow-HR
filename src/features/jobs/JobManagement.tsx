@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/axios';
-import { Plus, Briefcase, Trash2, AlertCircle } from 'lucide-react';
+import { Plus, Briefcase, Trash2, Edit2, AlertCircle } from 'lucide-react';
 
 interface Job {
   id: number;
@@ -17,6 +17,7 @@ interface Job {
 export default function JobManagement() {
   const queryClient = useQueryClient();
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingJobId, setEditingJobId] = useState<number | null>(null);
   
   const [formData, setFormData] = useState({
     title: '',
@@ -43,16 +44,18 @@ export default function JobManagement() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
-      setIsFormOpen(false);
-      setFormData({
-        title: '',
-        hourly_rate: '',
-        required_hours_per_week: '40',
-        grace_period: '15',
-        preferred_gender: 'any',
-        min_age: '',
-        max_age: ''
-      });
+      resetForm();
+    }
+  });
+
+  const updateJobMutation = useMutation({
+    mutationFn: async (updatedJob: any) => {
+      const res = await api.put(`/jobs/${editingJobId}`, updatedJob);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      resetForm();
     }
   });
 
@@ -69,16 +72,50 @@ export default function JobManagement() {
     }
   });
 
+  const resetForm = () => {
+    setIsFormOpen(false);
+    setEditingJobId(null);
+    setFormData({
+      title: '',
+      hourly_rate: '',
+      required_hours_per_week: '40',
+      grace_period: '15',
+      preferred_gender: 'any',
+      min_age: '',
+      max_age: ''
+    });
+  };
+
+  const handleEdit = (job: Job) => {
+    setEditingJobId(job.id);
+    setFormData({
+      title: job.title,
+      hourly_rate: job.hourly_rate.toString(),
+      required_hours_per_week: job.required_hours_per_week.toString(),
+      grace_period: job.grace_period.toString(),
+      preferred_gender: job.preferred_gender,
+      min_age: job.min_age ? job.min_age.toString() : '',
+      max_age: job.max_age ? job.max_age.toString() : ''
+    });
+    setIsFormOpen(true);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    createJobMutation.mutate({
+    const payload = {
       ...formData,
       hourly_rate: Number(formData.hourly_rate),
       required_hours_per_week: Number(formData.required_hours_per_week),
       grace_period: Number(formData.grace_period),
       min_age: formData.min_age ? Number(formData.min_age) : null,
       max_age: formData.max_age ? Number(formData.max_age) : null,
-    });
+    };
+
+    if (editingJobId) {
+      updateJobMutation.mutate(payload);
+    } else {
+      createJobMutation.mutate(payload);
+    }
   };
 
   const handleDelete = (id: number, title: string) => {
@@ -92,17 +129,23 @@ export default function JobManagement() {
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold tracking-tight">Job Roles</h2>
         <button 
-          onClick={() => setIsFormOpen(!isFormOpen)}
+          onClick={() => {
+            if (isFormOpen) {
+              resetForm();
+            } else {
+              setIsFormOpen(true);
+            }
+          }}
           className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg font-medium hover:bg-primary/90 transition-colors"
         >
           <Plus className="w-4 h-4" />
-          Add Job
+          {isFormOpen ? 'Cancel' : 'Add Job'}
         </button>
       </div>
 
       {isFormOpen && (
         <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-          <h3 className="text-lg font-semibold mb-4">Create New Job Role</h3>
+          <h3 className="text-lg font-semibold mb-4">{editingJobId ? 'Edit Job Role' : 'Create New Job Role'}</h3>
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="space-y-2 md:col-span-2 lg:col-span-1">
               <label className="text-sm font-medium">Job Title</label>
@@ -141,9 +184,9 @@ export default function JobManagement() {
               <input type="number" value={formData.max_age} onChange={e => setFormData({...formData, max_age: e.target.value})} className="w-full px-3 py-2 bg-background border border-border rounded-lg" placeholder="e.g. 65" />
             </div>
             <div className="md:col-span-2 lg:col-span-3 flex justify-end gap-3 mt-2">
-              <button type="button" onClick={() => setIsFormOpen(false)} className="px-4 py-2 text-sm font-medium hover:bg-muted rounded-lg transition-colors">Cancel</button>
-              <button type="submit" disabled={createJobMutation.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors">
-                {createJobMutation.isPending ? 'Saving...' : 'Save Job'}
+              <button type="button" onClick={resetForm} className="px-4 py-2 text-sm font-medium hover:bg-muted rounded-lg transition-colors">Cancel</button>
+              <button type="submit" disabled={createJobMutation.isPending || updateJobMutation.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors">
+                {createJobMutation.isPending || updateJobMutation.isPending ? 'Saving...' : (editingJobId ? 'Update Job' : 'Save Job')}
               </button>
             </div>
           </form>
@@ -183,7 +226,14 @@ export default function JobManagement() {
                       {job.min_age || 'Any'} - {job.max_age || 'Any'}
                     </td>
                     <td className="px-6 py-4">{job.grace_period}m</td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-6 py-4 text-right flex justify-end gap-2">
+                      <button 
+                        onClick={() => handleEdit(job)}
+                        className="p-2 text-muted-foreground hover:text-primary transition-colors"
+                        title="Edit Job Role"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
                       <button 
                         onClick={() => handleDelete(job.id, job.title)}
                         className="p-2 text-muted-foreground hover:text-destructive transition-colors"

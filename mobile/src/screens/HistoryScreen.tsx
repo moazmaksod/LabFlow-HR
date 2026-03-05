@@ -24,6 +24,9 @@ export default function HistoryScreen() {
   const [newCheckOut, setNewCheckOut] = useState(new Date());
   const [reason, setReason] = useState('');
 
+  const [showCheckInPicker, setShowCheckInPicker] = useState(false);
+  const [showCheckOutPicker, setShowCheckOutPicker] = useState(false);
+
   const fetchLogs = useCallback(async () => {
     try {
       const response = await api.get('/attendance/my-logs');
@@ -54,6 +57,18 @@ export default function HistoryScreen() {
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+  };
+
+  const handleCheckInChange = (event: any, date?: Date) => {
+    setShowCheckInPicker(false);
+    if (event.type === 'dismissed') return;
+    if (date) setNewCheckIn(date);
+  };
+
+  const handleCheckOutChange = (event: any, date?: Date) => {
+    setShowCheckOutPicker(false);
+    if (event.type === 'dismissed') return;
+    if (date) setNewCheckOut(date);
   };
 
   const handleRequestEdit = async () => {
@@ -153,10 +168,20 @@ export default function HistoryScreen() {
             </View>
             
             <Text style={styles.label}>Proposed Check In</Text>
-            <DateTimePicker value={newCheckIn} mode="time" onChange={(e, date) => date && setNewCheckIn(date)} />
+            <TouchableOpacity onPress={() => setShowCheckInPicker(true)} style={styles.timeButton}>
+              <Text style={styles.timeButtonText}>{formatTime(newCheckIn.toISOString())}</Text>
+            </TouchableOpacity>
+            {showCheckInPicker && (
+              <DateTimePicker value={newCheckIn} mode="time" onChange={handleCheckInChange} />
+            )}
             
             <Text style={styles.label}>Proposed Check Out</Text>
-            <DateTimePicker value={newCheckOut} mode="time" onChange={(e, date) => date && setNewCheckOut(date)} />
+            <TouchableOpacity onPress={() => setShowCheckOutPicker(true)} style={styles.timeButton}>
+              <Text style={styles.timeButtonText}>{formatTime(newCheckOut.toISOString())}</Text>
+            </TouchableOpacity>
+            {showCheckOutPicker && (
+              <DateTimePicker value={newCheckOut} mode="time" onChange={handleCheckOutChange} />
+            )}
             
             <Text style={styles.label}>Reason</Text>
             <TextInput style={styles.input} value={reason} onChangeText={setReason} multiline placeholder="Enter reason for edit" />
@@ -209,6 +234,8 @@ const styles = StyleSheet.create({
   modalContent: { backgroundColor: '#fff', borderRadius: 16, padding: 20 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 18, fontWeight: 'bold' },
+  timeButton: { backgroundColor: '#f4f4f5', padding: 12, borderRadius: 8, marginBottom: 15, alignItems: 'center' },
+  timeButtonText: { fontSize: 16, fontWeight: '600', color: '#18181b' },
   input: { borderWidth: 1, borderColor: '#e4e4e7', borderRadius: 8, padding: 10, marginTop: 5, marginBottom: 15, height: 80 },
   submitButton: { backgroundColor: '#18181b', padding: 15, borderRadius: 8, alignItems: 'center' },
   submitButtonText: { color: '#fff', fontWeight: 'bold' },

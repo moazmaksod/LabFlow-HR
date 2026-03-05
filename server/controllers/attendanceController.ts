@@ -31,6 +31,12 @@ export const clockAttendance = (req: Request, res: Response): void => {
         const profile = db.prepare('SELECT device_id FROM profiles WHERE user_id = ?').get(userId) as any;
         if (!profile.device_id) {
             // First time clocking in, bind device
+            // Check if this device is already registered to someone else
+            const existingDevice = db.prepare('SELECT user_id FROM profiles WHERE device_id = ?').get(deviceId) as any;
+            if (existingDevice) {
+                res.status(403).json({ error: 'Security Alert: This device is already registered to another employee. One device per employee is allowed.' });
+                return;
+            }
             db.prepare('UPDATE profiles SET device_id = ? WHERE user_id = ?').run(deviceId, userId);
         } else if (profile.device_id !== deviceId) {
             res.status(403).json({ error: 'Security Alert: You are trying to clock in from an unauthorized device. Please use your registered phone or contact the manager.' });
