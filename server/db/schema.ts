@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     emergency_contact_name TEXT,
     emergency_contact_phone TEXT,
     leave_balance INTEGER DEFAULT 21,
+    device_id TEXT,
     status TEXT NOT NULL CHECK(status IN ('active', 'inactive', 'suspended')) DEFAULT 'inactive',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,

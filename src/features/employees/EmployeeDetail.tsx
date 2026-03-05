@@ -247,6 +247,21 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                 className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-2 focus:ring-primary/20 outline-none"
               />
             </div>
+            <div className="space-y-1.5 col-span-2">
+              <label className="text-xs font-medium text-muted-foreground">Device Binding</label>
+              <button 
+                onClick={async () => {
+                  if (confirm('Are you sure you want to reset the device binding for this employee?')) {
+                    await api.put(`/users/${userId}/reset-device`);
+                    alert('Device binding reset successfully');
+                    queryClient.invalidateQueries({ queryKey: ['user', userId] });
+                  }
+                }}
+                className="w-full px-3 py-2 bg-amber-100 text-amber-700 border border-amber-200 rounded-md text-sm font-medium hover:bg-amber-200 transition-colors"
+              >
+                Reset Device Binding
+              </button>
+            </div>
           </div>
         </section>
 

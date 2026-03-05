@@ -20,10 +20,20 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
 export const clockAttendance = (req: Request, res: Response): void => {
     try {
         const userId = (req as any).user.id;
-        const { type, timestamp, lat, lng } = req.body;
+        const { type, timestamp, lat, lng, deviceId } = req.body;
 
-        if (!type || !['check_in', 'check_out'].includes(type) || !timestamp || lat === undefined || lng === undefined) {
-            res.status(400).json({ error: 'Missing required fields' });
+        if (!type || !['check_in', 'check_out'].includes(type) || !timestamp || lat === undefined || lng === undefined || !deviceId) {
+            res.status(400).json({ error: 'Missing required fields or deviceId' });
+            return;
+        }
+
+        // Device Binding Security Check
+        const profile = db.prepare('SELECT device_id FROM profiles WHERE user_id = ?').get(userId) as any;
+        if (!profile.device_id) {
+            // First time clocking in, bind device
+            db.prepare('UPDATE profiles SET device_id = ? WHERE user_id = ?').run(deviceId, userId);
+        } else if (profile.device_id !== deviceId) {
+            res.status(403).json({ error: 'Security Alert: You are trying to clock in from an unauthorized device. Please use your registered phone or contact the manager.' });
             return;
         }
 
@@ -243,10 +253,17 @@ export const getAttendanceStats = (req: Request, res: Response): void => {
 export const stepAway = (req: Request, res: Response): void => {
     try {
         const userId = (req as any).user.id;
-        const { timestamp } = req.body;
+        const { timestamp, deviceId } = req.body;
 
-        if (!timestamp) {
-            res.status(400).json({ error: 'Missing timestamp' });
+        if (!timestamp || !deviceId) {
+            res.status(400).json({ error: 'Missing timestamp or deviceId' });
+            return;
+        }
+
+        // Device Binding Security Check
+        const profile = db.prepare('SELECT device_id FROM profiles WHERE user_id = ?').get(userId) as any;
+        if (!profile.device_id || profile.device_id !== deviceId) {
+            res.status(403).json({ error: 'Security Alert: Unauthorized device.' });
             return;
         }
 
@@ -308,10 +325,17 @@ export const stepAway = (req: Request, res: Response): void => {
 export const resumeWork = (req: Request, res: Response): void => {
     try {
         const userId = (req as any).user.id;
-        const { timestamp } = req.body;
+        const { timestamp, deviceId } = req.body;
 
-        if (!timestamp) {
-            res.status(400).json({ error: 'Missing timestamp' });
+        if (!timestamp || !deviceId) {
+            res.status(400).json({ error: 'Missing timestamp or deviceId' });
+            return;
+        }
+
+        // Device Binding Security Check
+        const profile = db.prepare('SELECT device_id FROM profiles WHERE user_id = ?').get(userId) as any;
+        if (!profile.device_id || profile.device_id !== deviceId) {
+            res.status(403).json({ error: 'Security Alert: Unauthorized device.' });
             return;
         }
 

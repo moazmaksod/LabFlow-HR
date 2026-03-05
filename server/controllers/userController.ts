@@ -298,6 +298,17 @@ export const updateUserProfile = (req: Request, res: Response): void => {
     }
 };
 
+export const resetDevice = (req: Request, res: Response): void => {
+    try {
+        const { id } = req.params;
+        db.prepare('UPDATE profiles SET device_id = NULL WHERE user_id = ?').run(id);
+        res.json({ message: 'Device binding reset successfully' });
+    } catch (error) {
+        console.error('Error resetting device binding:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const uploadAvatar = (req: Request, res: Response): void => {
     try {
         if (!req.file) {

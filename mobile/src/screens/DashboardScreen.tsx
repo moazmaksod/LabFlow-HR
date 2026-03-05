@@ -5,6 +5,7 @@ import { Pause, Play, LayoutDashboard, LogOut, RefreshCw } from 'lucide-react-na
 import { useAuthStore } from '../store/useAuthStore';
 import api from '../lib/axios';
 import { initLocalDb, saveOfflineLog, getUnsyncedLogs, markLogsAsSynced } from '../lib/db';
+import { getUniqueDeviceId } from '../utils/device';
 
 export default function DashboardScreen() {
   const { user, logout } = useAuthStore();
@@ -44,6 +45,7 @@ export default function DashboardScreen() {
   const handleClock = async (type: 'check_in' | 'check_out') => {
     setLoading(true);
     try {
+      const deviceId = await getUniqueDeviceId();
       // 1. Request Location Permissions
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
@@ -65,6 +67,7 @@ export default function DashboardScreen() {
           timestamp,
           lat: latitude,
           lng: longitude,
+          deviceId,
         });
         Alert.alert('Success', `Successfully clocked ${type === 'check_in' ? 'in' : 'out'}!`);
         setCurrentStatus(type === 'check_in' ? 'working' : 'none');
@@ -121,8 +124,9 @@ export default function DashboardScreen() {
   const handleStepAway = async () => {
     setLoading(true);
     try {
+      const deviceId = await getUniqueDeviceId();
       const timestamp = new Date().toISOString();
-      const response = await api.post('/attendance/step-away', { timestamp });
+      const response = await api.post('/attendance/step-away', { timestamp, deviceId });
       
       if (!response.data.hasBreakBalance) {
         Alert.alert('Notice', 'You have no break balance. A permission request has been sent to your manager.');
@@ -141,8 +145,9 @@ export default function DashboardScreen() {
   const handleResumeWork = async () => {
     setLoading(true);
     try {
+      const deviceId = await getUniqueDeviceId();
       const timestamp = new Date().toISOString();
-      await api.post('/attendance/resume-work', { timestamp });
+      await api.post('/attendance/resume-work', { timestamp, deviceId });
       Alert.alert('Success', 'Welcome back! You have resumed work.');
       setCurrentStatus('working');
     } catch (error: any) {

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getUsers, updateUserRole, updateProfile, uploadAvatar, getProfile, getUserById, updateUserProfile } from '../controllers/userController.js';
+import { getUsers, updateUserRole, updateProfile, uploadAvatar, getProfile, getUserById, updateUserProfile, resetDevice } from '../controllers/userController.js';
 import { authenticate, requireRole } from '../middlewares/authMiddleware.js';
 import multer from 'multer';
 import path from 'path';
@@ -37,5 +37,6 @@ router.get('/', requireRole(['manager']), getUsers);
 router.get('/:id', requireRole(['manager']), getUserById);
 router.put('/:id/role', requireRole(['manager']), updateUserRole);
 router.put('/:id/profile', requireRole(['manager']), updateUserProfile);
+router.put('/:id/reset-device', requireRole(['manager']), resetDevice);
 
 export default router;

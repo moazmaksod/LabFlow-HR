@@ -57,6 +57,9 @@ export function initDb() {
     if (!profileColumns.some(c => c.name === 'leave_balance')) {
       db.exec("ALTER TABLE profiles ADD COLUMN leave_balance INTEGER DEFAULT 21;");
     }
+    if (!profileColumns.some(c => c.name === 'device_id')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN device_id TEXT;");
+    }
 
     // Attendance migrations
     if (!attendanceColumns.some(c => c.name === 'current_status')) {
