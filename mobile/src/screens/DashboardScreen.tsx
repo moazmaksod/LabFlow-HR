@@ -26,9 +26,10 @@ export default function DashboardScreen() {
       const response = await api.get('/attendance/my-logs');
       const logs = response.data;
       const today = new Date().toISOString().split('T')[0];
-      const todayLog = logs.find((l: any) => l.date === today && !l.check_out);
-      if (todayLog) {
-        setCurrentStatus(todayLog.current_status || 'working');
+      // Check if there is an active session (today and check_out is null)
+      const activeSession = logs.find((l: any) => l.date === today && !l.check_out);
+      if (activeSession) {
+        setCurrentStatus(activeSession.current_status || 'working');
       } else {
         setCurrentStatus('none');
       }
