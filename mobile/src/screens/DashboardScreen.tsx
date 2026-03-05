@@ -43,56 +43,65 @@ export default function DashboardScreen() {
   };
 
   const handleClock = async (type: 'check_in' | 'check_out') => {
-    setLoading(true);
-    try {
-      const deviceId = await getUniqueDeviceId();
-      // 1. Request Location Permissions
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Location permission is required to clock in/out.');
-        setLoading(false);
-        return;
-      }
+    Alert.alert(
+      `Confirm Clock ${type === 'check_in' ? 'In' : 'Out'}`,
+      `Are you sure you want to clock ${type === 'check_in' ? 'in' : 'out'} now?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Yes', onPress: async () => {
+          setLoading(true);
+          try {
+            const deviceId = await getUniqueDeviceId();
+            // 1. Request Location Permissions
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            if (status !== 'granted') {
+              Alert.alert('Permission Denied', 'Location permission is required to clock in/out.');
+              setLoading(false);
+              return;
+            }
 
-      // 2. Get Current Location
-      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      const { latitude, longitude } = location.coords;
+            // 2. Get Current Location
+            const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+            const { latitude, longitude } = location.coords;
 
-      const timestamp = new Date().toISOString();
+            const timestamp = new Date().toISOString();
 
-      // 3. Try to call the Backend API
-      try {
-        await api.post('/attendance/clock', {
-          type,
-          timestamp,
-          lat: latitude,
-          lng: longitude,
-          deviceId,
-        });
-        Alert.alert('Success', `Successfully clocked ${type === 'check_in' ? 'in' : 'out'}!`);
-        setCurrentStatus(type === 'check_in' ? 'working' : 'none');
-      } catch (apiError: any) {
-        const errorMessage = apiError.response?.data?.error || apiError.message;
+            // 3. Try to call the Backend API
+            try {
+              await api.post('/attendance/clock', {
+                type,
+                timestamp,
+                lat: latitude,
+                lng: longitude,
+                deviceId,
+              });
+              Alert.alert('Success', `Successfully clocked ${type === 'check_in' ? 'in' : 'out'}!`);
+              setCurrentStatus(type === 'check_in' ? 'working' : 'none');
+            } catch (apiError: any) {
+              const errorMessage = apiError.response?.data?.error || apiError.message;
 
-        // If it's a server response error (e.g., 403 Out of Range), show the error
-        if (apiError.response) {
-          Alert.alert('Attendance Error', errorMessage);
-        } else {
-          // Network error, save to local SQLite for later sync
-          console.log('Network Error, saving offline:', apiError.message);
-          saveOfflineLog(type, timestamp, latitude, longitude);
-          Alert.alert(
-            'Offline Mode',
-            `Network error. Your ${type === 'check_in' ? 'check-in' : 'check-out'} was saved locally and will be synced later.`
-          );
-          checkUnsyncedLogs();
-        }
-      }
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'An unexpected error occurred.');
-    } finally {
-      setLoading(false);
-    }
+              // If it's a server response error (e.g., 403 Out of Range), show the error
+              if (apiError.response) {
+                Alert.alert('Attendance Error', errorMessage);
+              } else {
+                // Network error, save to local SQLite for later sync
+                console.log('Network Error, saving offline:', apiError.message);
+                saveOfflineLog(type, timestamp, latitude, longitude);
+                Alert.alert(
+                  'Offline Mode',
+                  `Network error. Your ${type === 'check_in' ? 'check-in' : 'check-out'} was saved locally and will be synced later.`
+                );
+                checkUnsyncedLogs();
+              }
+            }
+          } catch (error: any) {
+            Alert.alert('Error', error.message || 'An unexpected error occurred.');
+          } finally {
+            setLoading(false);
+          }
+        }}
+      ]
+    );
   };
 
   const handleSync = async () => {

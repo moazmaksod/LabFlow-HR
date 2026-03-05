@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl } from 'react-native';
-import { Clock, Calendar, MapPin } from 'lucide-react-native';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl, TouchableOpacity, Modal, TextInput, Alert } from 'react-native';
+import { Clock, Calendar, MapPin, X } from 'lucide-react-native';
 import api from '../lib/axios';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 interface AttendanceLog {
   id: number;
@@ -17,6 +18,11 @@ export default function HistoryScreen() {
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedLog, setSelectedLog] = useState<AttendanceLog | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [newCheckIn, setNewCheckIn] = useState(new Date());
+  const [newCheckOut, setNewCheckOut] = useState(new Date());
+  const [reason, setReason] = useState('');
 
   const fetchLogs = useCallback(async () => {
     try {
@@ -50,8 +56,34 @@ export default function HistoryScreen() {
     return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
   };
 
+  const handleRequestEdit = async () => {
+    if (!selectedLog || !reason) {
+      Alert.alert('Error', 'Please provide a reason for the edit.');
+      return;
+    }
+
+    try {
+      await api.post('/requests/attendance-correction', {
+        attendance_id: selectedLog.id,
+        new_clock_in: newCheckIn.toISOString(),
+        new_clock_out: newCheckOut.toISOString(),
+        reason
+      });
+      Alert.alert('Success', 'Attendance correction request submitted.');
+      setModalVisible(false);
+      setReason('');
+    } catch (error: any) {
+      Alert.alert('Error', error.response?.data?.error || 'Failed to submit request');
+    }
+  };
+
   const renderItem = ({ item }: { item: AttendanceLog }) => (
-    <View style={styles.logCard}>
+    <TouchableOpacity style={styles.logCard} onPress={() => {
+      setSelectedLog(item);
+      setNewCheckIn(item.check_in ? new Date(item.check_in) : new Date());
+      setNewCheckOut(item.check_out ? new Date(item.check_out) : new Date());
+      setModalVisible(true);
+    }}>
       <View style={styles.logHeader}>
         <View style={styles.dateContainer}>
           <Calendar size={16} color="#71717a" />
@@ -81,14 +113,7 @@ export default function HistoryScreen() {
           </View>
         </View>
       </View>
-
-      <View style={styles.locationRow}>
-        <MapPin size={14} color="#71717a" />
-        <Text style={styles.locationText}>
-          {item.location_lat.toFixed(4)}, {item.location_lng.toFixed(4)}
-        </Text>
-      </View>
-    </View>
+    </TouchableOpacity>
   );
 
   if (loading && !refreshing) {
@@ -116,6 +141,32 @@ export default function HistoryScreen() {
           </View>
         }
       />
+
+      <Modal visible={modalVisible} animationType="slide" transparent={true}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Request Attendance Edit</Text>
+              <TouchableOpacity onPress={() => setModalVisible(false)}>
+                <X size={24} color="#18181b" />
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={styles.label}>Proposed Check In</Text>
+            <DateTimePicker value={newCheckIn} mode="time" onChange={(e, date) => date && setNewCheckIn(date)} />
+            
+            <Text style={styles.label}>Proposed Check Out</Text>
+            <DateTimePicker value={newCheckOut} mode="time" onChange={(e, date) => date && setNewCheckOut(date)} />
+            
+            <Text style={styles.label}>Reason</Text>
+            <TextInput style={styles.input} value={reason} onChangeText={setReason} multiline placeholder="Enter reason for edit" />
+            
+            <TouchableOpacity style={styles.submitButton} onPress={handleRequestEdit}>
+              <Text style={styles.submitButtonText}>Submit Request</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -154,4 +205,11 @@ const styles = StyleSheet.create({
   locationText: { fontSize: 12, color: '#a1a1aa' },
   emptyContainer: { alignItems: 'center', marginTop: 100 },
   emptyText: { color: '#71717a', fontSize: 16 },
+  modalContainer: { flex: 1, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)', padding: 20 },
+  modalContent: { backgroundColor: '#fff', borderRadius: 16, padding: 20 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold' },
+  input: { borderWidth: 1, borderColor: '#e4e4e7', borderRadius: 8, padding: 10, marginTop: 5, marginBottom: 15, height: 80 },
+  submitButton: { backgroundColor: '#18181b', padding: 15, borderRadius: 8, alignItems: 'center' },
+  submitButtonText: { color: '#fff', fontWeight: 'bold' },
 });

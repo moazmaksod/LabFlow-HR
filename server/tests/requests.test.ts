@@ -99,4 +99,37 @@ describe('Requests API', () => {
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error', 'Request is already processed');
   });
+
+  it('should allow employee to submit attendance correction request', async () => {
+    // Create attendance record
+    const attInsert = db.prepare(`INSERT INTO attendance (user_id, check_in, date) VALUES (?, ?, ?)`).run(employeeId, new Date().toISOString(), new Date().toISOString().split('T')[0]);
+    const attendanceId = attInsert.lastInsertRowid;
+
+    const res = await request(app)
+      .post('/api/requests/attendance-correction')
+      .set('Authorization', `Bearer ${employeeToken}`)
+      .send({
+        attendance_id: attendanceId,
+        new_clock_in: new Date().toISOString(),
+        new_clock_out: new Date().toISOString(),
+        reason: 'Forgot to clock out'
+      });
+    
+    expect(res.status).toBe(201);
+    expect(res.body.type).toBe('attendance_correction');
+    
+    // Approve it
+    const approveRes = await request(app)
+      .put(`/api/requests/${res.body.id}/status`)
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ status: 'approved' });
+    
+    expect(approveRes.status).toBe(200);
+    expect(approveRes.body.status).toBe('approved');
+    
+    // Verify attendance update
+    const attendance = db.prepare('SELECT * FROM attendance WHERE id = ?').get(attendanceId) as any;
+    expect(attendance.check_in).toBeDefined();
+    expect(attendance.check_out).toBeDefined();
+  });
 });

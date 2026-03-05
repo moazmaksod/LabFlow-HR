@@ -280,8 +280,8 @@ export const stepAway = (req: Request, res: Response): void => {
             return;
         }
 
-        const profile = db.prepare('SELECT lunch_break_minutes FROM profiles WHERE user_id = ?').get(userId) as any;
-        const hasBreakBalance = profile && profile.lunch_break_minutes > 0;
+        const breakProfile = db.prepare('SELECT lunch_break_minutes FROM profiles WHERE user_id = ?').get(userId) as any;
+        const hasBreakBalance = breakProfile && breakProfile.lunch_break_minutes > 0;
 
         const status = hasBreakBalance ? 'auto_approved' : 'pending_manager';
 

@@ -73,6 +73,9 @@ export function initDb() {
     if (!requestColumns.some(c => c.name === 'reference_id')) {
       db.exec("ALTER TABLE requests ADD COLUMN reference_id INTEGER;");
     }
+    if (!requestColumns.some(c => c.name === 'details')) {
+      db.exec("ALTER TABLE requests ADD COLUMN details TEXT;");
+    }
 
     console.log('Database schema initialized successfully.');
   } catch (error) {
