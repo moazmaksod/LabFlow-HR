@@ -239,3 +239,119 @@ export const getAttendanceStats = (req: Request, res: Response): void => {
         res.status(500).json({ error: 'Internal server error' });
     }
 };
+
+export const stepAway = (req: Request, res: Response): void => {
+    try {
+        const userId = (req as any).user.id;
+        const { timestamp } = req.body;
+
+        if (!timestamp) {
+            res.status(400).json({ error: 'Missing timestamp' });
+            return;
+        }
+
+        const date = new Date(timestamp).toISOString().split('T')[0];
+        const activeAttendance = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ? AND check_out IS NULL').get(userId, date) as any;
+
+        if (!activeAttendance) {
+            res.status(400).json({ error: 'No active attendance found for today' });
+            return;
+        }
+
+        if (activeAttendance.current_status === 'away') {
+            res.status(400).json({ error: 'Already stepped away' });
+            return;
+        }
+
+        const profile = db.prepare('SELECT lunch_break_minutes FROM profiles WHERE user_id = ?').get(userId) as any;
+        const hasBreakBalance = profile && profile.lunch_break_minutes > 0;
+
+        const status = hasBreakBalance ? 'auto_approved' : 'pending_manager';
+
+        const stepAwayTransaction = db.transaction(() => {
+            // Update attendance status
+            db.prepare('UPDATE attendance SET current_status = ? WHERE id = ?').run('away', activeAttendance.id);
+
+            // Insert shift interruption
+            const insertInterruption = db.prepare(`
+                INSERT INTO shift_interruptions (attendance_id, start_time, type, status)
+                VALUES (?, ?, 'step_away', ?)
+            `);
+            const info = insertInterruption.run(activeAttendance.id, timestamp, status);
+            const interruptionId = info.lastInsertRowid;
+
+            // If no break balance, create a request
+            if (!hasBreakBalance) {
+                db.prepare(`
+                    INSERT INTO requests (user_id, attendance_id, type, reference_id, reason, status)
+                    VALUES (?, ?, 'permission_to_leave', ?, 'Step away with 0 break balance', 'pending')
+                `).run(userId, activeAttendance.id, interruptionId);
+            }
+
+            return { interruptionId, status };
+        });
+
+        const result = stepAwayTransaction();
+
+        res.status(201).json({ 
+            message: 'Stepped away successfully', 
+            status: result.status,
+            interruptionId: result.interruptionId,
+            hasBreakBalance
+        });
+    } catch (error) {
+        console.error('Error stepping away:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const resumeWork = (req: Request, res: Response): void => {
+    try {
+        const userId = (req as any).user.id;
+        const { timestamp } = req.body;
+
+        if (!timestamp) {
+            res.status(400).json({ error: 'Missing timestamp' });
+            return;
+        }
+
+        const date = new Date(timestamp).toISOString().split('T')[0];
+        const activeAttendance = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ? AND check_out IS NULL').get(userId, date) as any;
+
+        if (!activeAttendance) {
+            res.status(400).json({ error: 'No active attendance found for today' });
+            return;
+        }
+
+        if (activeAttendance.current_status === 'working') {
+            res.status(400).json({ error: 'Already working' });
+            return;
+        }
+
+        const activeInterruption = db.prepare(`
+            SELECT * FROM shift_interruptions 
+            WHERE attendance_id = ? AND end_time IS NULL 
+            ORDER BY start_time DESC LIMIT 1
+        `).get(activeAttendance.id) as any;
+
+        if (!activeInterruption) {
+            res.status(400).json({ error: 'No active interruption found' });
+            return;
+        }
+
+        const resumeTransaction = db.transaction(() => {
+            // Update interruption end_time
+            db.prepare('UPDATE shift_interruptions SET end_time = ? WHERE id = ?').run(timestamp, activeInterruption.id);
+
+            // Update attendance status
+            db.prepare('UPDATE attendance SET current_status = ? WHERE id = ?').run('working', activeAttendance.id);
+        });
+
+        resumeTransaction();
+
+        res.json({ message: 'Resumed work successfully' });
+    } catch (error) {
+        console.error('Error resuming work:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};

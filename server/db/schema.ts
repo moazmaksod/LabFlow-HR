@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS attendance (
     check_out DATETIME,
     date DATE NOT NULL,
     status TEXT NOT NULL CHECK(status IN ('present', 'late', 'absent', 'half-day')) DEFAULT 'present',
+    current_status TEXT NOT NULL CHECK(current_status IN ('working', 'away')) DEFAULT 'working',
     location_lat REAL,
     location_lng REAL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -67,12 +68,26 @@ CREATE TABLE IF NOT EXISTS requests (
     attendance_id INTEGER,
     requested_check_in DATETIME,
     requested_check_out DATETIME,
+    type TEXT, -- 'manual_clock', 'permission_to_leave'
+    reference_id INTEGER, -- points to shift_interruptions.id if type is 'permission_to_leave'
     reason TEXT NOT NULL,
     status TEXT NOT NULL CHECK(status IN ('pending', 'approved', 'rejected')) DEFAULT 'pending',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (attendance_id) REFERENCES attendance(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS shift_interruptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    attendance_id INTEGER NOT NULL,
+    start_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    end_time DATETIME,
+    type TEXT NOT NULL DEFAULT 'step_away',
+    status TEXT NOT NULL CHECK(status IN ('auto_approved', 'pending_manager', 'manager_approved', 'manager_rejected')) DEFAULT 'auto_approved',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (attendance_id) REFERENCES attendance(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS notifications (
@@ -103,6 +118,7 @@ CREATE INDEX IF NOT EXISTS idx_attendance_user_id ON attendance(user_id);
 CREATE INDEX IF NOT EXISTS idx_requests_user_id ON requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_requests_attendance_id ON requests(attendance_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_shift_interruptions_attendance_id ON shift_interruptions(attendance_id);
 
 -- Triggers for updated_at (with safety condition to prevent infinite loops)
 CREATE TRIGGER IF NOT EXISTS update_users_updated_at AFTER UPDATE ON users
@@ -124,6 +140,10 @@ BEGIN UPDATE attendance SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; EN
 CREATE TRIGGER IF NOT EXISTS update_requests_updated_at AFTER UPDATE ON requests
 FOR EACH ROW WHEN NEW.updated_at <= OLD.updated_at
 BEGIN UPDATE requests SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;
+
+CREATE TRIGGER IF NOT EXISTS update_shift_interruptions_updated_at AFTER UPDATE ON shift_interruptions
+FOR EACH ROW WHEN NEW.updated_at <= OLD.updated_at
+BEGIN UPDATE shift_interruptions SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;
 
 CREATE TRIGGER IF NOT EXISTS update_notifications_updated_at AFTER UPDATE ON notifications
 FOR EACH ROW WHEN NEW.updated_at <= OLD.updated_at

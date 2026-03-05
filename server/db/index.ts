@@ -21,6 +21,8 @@ export function initDb() {
     // Migration: Add new columns to jobs and profiles
     const jobColumns = db.prepare("PRAGMA table_info(jobs)").all() as any[];
     const profileColumns = db.prepare("PRAGMA table_info(profiles)").all() as any[];
+    const attendanceColumns = db.prepare("PRAGMA table_info(attendance)").all() as any[];
+    const requestColumns = db.prepare("PRAGMA table_info(requests)").all() as any[];
 
     // Jobs migrations
     if (!jobColumns.some(c => c.name === 'required_hours_per_week')) {
@@ -54,6 +56,19 @@ export function initDb() {
     }
     if (!profileColumns.some(c => c.name === 'leave_balance')) {
       db.exec("ALTER TABLE profiles ADD COLUMN leave_balance INTEGER DEFAULT 21;");
+    }
+
+    // Attendance migrations
+    if (!attendanceColumns.some(c => c.name === 'current_status')) {
+      db.exec("ALTER TABLE attendance ADD COLUMN current_status TEXT NOT NULL DEFAULT 'working';");
+    }
+
+    // Requests migrations
+    if (!requestColumns.some(c => c.name === 'type')) {
+      db.exec("ALTER TABLE requests ADD COLUMN type TEXT;");
+    }
+    if (!requestColumns.some(c => c.name === 'reference_id')) {
+      db.exec("ALTER TABLE requests ADD COLUMN reference_id INTEGER;");
     }
 
     console.log('Database schema initialized successfully.');

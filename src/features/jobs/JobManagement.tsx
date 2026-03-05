@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/axios';
-import { Plus, Briefcase } from 'lucide-react';
+import { Plus, Briefcase, Trash2, AlertCircle } from 'lucide-react';
 
 interface Job {
   id: number;
   title: string;
   hourly_rate: number;
-  required_hours: number;
-  shift_start: string;
-  shift_end: string;
+  required_hours_per_week: number;
   grace_period: number;
+  preferred_gender: string;
+  min_age: number | null;
+  max_age: number | null;
 }
 
 export default function JobManagement() {
@@ -20,10 +21,11 @@ export default function JobManagement() {
   const [formData, setFormData] = useState({
     title: '',
     hourly_rate: '',
-    required_hours: '',
-    shift_start: '09:00',
-    shift_end: '17:00',
-    grace_period: '15'
+    required_hours_per_week: '40',
+    grace_period: '15',
+    preferred_gender: 'any',
+    min_age: '',
+    max_age: ''
   });
 
   const { data: jobs, isLoading } = useQuery<Job[]>({
@@ -45,11 +47,25 @@ export default function JobManagement() {
       setFormData({
         title: '',
         hourly_rate: '',
-        required_hours: '',
-        shift_start: '09:00',
-        shift_end: '17:00',
-        grace_period: '15'
+        required_hours_per_week: '40',
+        grace_period: '15',
+        preferred_gender: 'any',
+        min_age: '',
+        max_age: ''
       });
+    }
+  });
+
+  const deleteJobMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await api.delete(`/jobs/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    },
+    onError: (error: any) => {
+      const message = error.response?.data?.error || 'Failed to delete job role';
+      alert(message);
     }
   });
 
@@ -58,9 +74,17 @@ export default function JobManagement() {
     createJobMutation.mutate({
       ...formData,
       hourly_rate: Number(formData.hourly_rate),
-      required_hours: Number(formData.required_hours),
-      grace_period: Number(formData.grace_period)
+      required_hours_per_week: Number(formData.required_hours_per_week),
+      grace_period: Number(formData.grace_period),
+      min_age: formData.min_age ? Number(formData.min_age) : null,
+      max_age: formData.max_age ? Number(formData.max_age) : null,
     });
+  };
+
+  const handleDelete = (id: number, title: string) => {
+    if (window.confirm(`Are you sure you want to delete the "${title}" job role?`)) {
+      deleteJobMutation.mutate(id);
+    }
   };
 
   return (
@@ -79,8 +103,8 @@ export default function JobManagement() {
       {isFormOpen && (
         <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
           <h3 className="text-lg font-semibold mb-4">Create New Job Role</h3>
-          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="space-y-2 md:col-span-2 lg:col-span-1">
               <label className="text-sm font-medium">Job Title</label>
               <input required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full px-3 py-2 bg-background border border-border rounded-lg" placeholder="e.g. Senior Developer" />
             </div>
@@ -89,22 +113,34 @@ export default function JobManagement() {
               <input required type="number" step="0.01" value={formData.hourly_rate} onChange={e => setFormData({...formData, hourly_rate: e.target.value})} className="w-full px-3 py-2 bg-background border border-border rounded-lg" placeholder="e.g. 25.50" />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Required Hours (per week)</label>
-              <input required type="number" step="0.5" value={formData.required_hours} onChange={e => setFormData({...formData, required_hours: e.target.value})} className="w-full px-3 py-2 bg-background border border-border rounded-lg" placeholder="e.g. 40" />
+              <label className="text-sm font-medium">Weekly Required Hours</label>
+              <input required type="number" step="0.5" value={formData.required_hours_per_week} onChange={e => setFormData({...formData, required_hours_per_week: e.target.value})} className="w-full px-3 py-2 bg-background border border-border rounded-lg" placeholder="e.g. 40" />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Grace Period (minutes)</label>
               <input required type="number" value={formData.grace_period} onChange={e => setFormData({...formData, grace_period: e.target.value})} className="w-full px-3 py-2 bg-background border border-border rounded-lg" placeholder="e.g. 15" />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Shift Start</label>
-              <input required type="time" value={formData.shift_start} onChange={e => setFormData({...formData, shift_start: e.target.value})} className="w-full px-3 py-2 bg-background border border-border rounded-lg" />
+              <label className="text-sm font-medium">Preferred Gender</label>
+              <select 
+                value={formData.preferred_gender} 
+                onChange={e => setFormData({...formData, preferred_gender: e.target.value})}
+                className="w-full px-3 py-2 bg-background border border-border rounded-lg"
+              >
+                <option value="any">Any</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+              </select>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Shift End</label>
-              <input required type="time" value={formData.shift_end} onChange={e => setFormData({...formData, shift_end: e.target.value})} className="w-full px-3 py-2 bg-background border border-border rounded-lg" />
+              <label className="text-sm font-medium">Min Age (Optional)</label>
+              <input type="number" value={formData.min_age} onChange={e => setFormData({...formData, min_age: e.target.value})} className="w-full px-3 py-2 bg-background border border-border rounded-lg" placeholder="e.g. 18" />
             </div>
-            <div className="md:col-span-2 flex justify-end gap-3 mt-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Max Age (Optional)</label>
+              <input type="number" value={formData.max_age} onChange={e => setFormData({...formData, max_age: e.target.value})} className="w-full px-3 py-2 bg-background border border-border rounded-lg" placeholder="e.g. 65" />
+            </div>
+            <div className="md:col-span-2 lg:col-span-3 flex justify-end gap-3 mt-2">
               <button type="button" onClick={() => setIsFormOpen(false)} className="px-4 py-2 text-sm font-medium hover:bg-muted rounded-lg transition-colors">Cancel</button>
               <button type="submit" disabled={createJobMutation.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors">
                 {createJobMutation.isPending ? 'Saving...' : 'Save Job'}
@@ -129,9 +165,11 @@ export default function JobManagement() {
                 <tr>
                   <th className="px-6 py-3 font-medium">Title</th>
                   <th className="px-6 py-3 font-medium">Rate / Hr</th>
-                  <th className="px-6 py-3 font-medium">Req. Hours</th>
-                  <th className="px-6 py-3 font-medium">Shift</th>
+                  <th className="px-6 py-3 font-medium">Weekly Hours</th>
+                  <th className="px-6 py-3 font-medium">Gender</th>
+                  <th className="px-6 py-3 font-medium">Age Range</th>
                   <th className="px-6 py-3 font-medium">Grace</th>
+                  <th className="px-6 py-3 font-medium text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -139,9 +177,21 @@ export default function JobManagement() {
                   <tr key={job.id} className="hover:bg-muted/50 transition-colors">
                     <td className="px-6 py-4 font-medium">{job.title}</td>
                     <td className="px-6 py-4">${job.hourly_rate.toFixed(2)}</td>
-                    <td className="px-6 py-4">{job.required_hours}h</td>
-                    <td className="px-6 py-4">{job.shift_start} - {job.shift_end}</td>
+                    <td className="px-6 py-4">{job.required_hours_per_week}h</td>
+                    <td className="px-6 py-4 capitalize">{job.preferred_gender}</td>
+                    <td className="px-6 py-4">
+                      {job.min_age || 'Any'} - {job.max_age || 'Any'}
+                    </td>
                     <td className="px-6 py-4">{job.grace_period}m</td>
+                    <td className="px-6 py-4 text-right">
+                      <button 
+                        onClick={() => handleDelete(job.id, job.title)}
+                        className="p-2 text-muted-foreground hover:text-destructive transition-colors"
+                        title="Delete Job Role"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

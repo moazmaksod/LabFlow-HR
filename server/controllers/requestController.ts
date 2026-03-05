@@ -82,6 +82,12 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
             // Update the request status
             db.prepare('UPDATE requests SET status = ? WHERE id = ?').run(status, id);
 
+            // If it's a permission_to_leave request, update shift_interruptions
+            if (requestRecord.type === 'permission_to_leave' && requestRecord.reference_id) {
+                const interruptionStatus = status === 'approved' ? 'manager_approved' : 'manager_rejected';
+                db.prepare('UPDATE shift_interruptions SET status = ? WHERE id = ?').run(interruptionStatus, requestRecord.reference_id);
+            }
+
             // If approved and has requested times, update/insert attendance
             if (status === 'approved' && (requestRecord.requested_check_in || requestRecord.requested_check_out)) {
                 if (requestRecord.attendance_id) {

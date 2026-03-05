@@ -7,6 +7,7 @@ interface RequestLog {
   id: number;
   user_name: string;
   reason: string;
+  type: string | null;
   requested_check_in: string | null;
   requested_check_out: string | null;
   status: string;
@@ -79,6 +80,7 @@ export default function RequestManagement() {
               <thead className="text-xs text-muted-foreground uppercase bg-muted/50">
                 <tr>
                   <th className="px-6 py-3 font-medium">Employee</th>
+                  <th className="px-6 py-3 font-medium">Type</th>
                   <th className="px-6 py-3 font-medium">Reason</th>
                   <th className="px-6 py-3 font-medium">Requested In</th>
                   <th className="px-6 py-3 font-medium">Requested Out</th>
@@ -90,6 +92,13 @@ export default function RequestManagement() {
                 {filteredRequests?.map((req) => (
                   <tr key={req.id} className="hover:bg-muted/50 transition-colors">
                     <td className="px-6 py-4 font-medium">{req.user_name}</td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        req.type === 'permission_to_leave' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' : 'bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-400'
+                      }`}>
+                        {req.type?.replace(/_/g, ' ') || 'Manual Clock'}
+                      </span>
+                    </td>
                     <td className="px-6 py-4 max-w-xs truncate" title={req.reason}>{req.reason}</td>
                     <td className="px-6 py-4 font-mono text-xs">{formatTime(req.requested_check_in)}</td>
                     <td className="px-6 py-4 font-mono text-xs">{formatTime(req.requested_check_out)}</td>

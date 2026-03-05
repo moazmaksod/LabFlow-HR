@@ -119,7 +119,7 @@ describe('EmployeeDetail', () => {
     // Verify schedule is stringified in the payload if that's what the component does
     // Actually my component stringifies it in the PUT call if it's an object
     // Let's check the call arguments more closely
-    const callArgs = mockedApi.put.mock.calls[0][1];
+    const callArgs = mockedApi.put.mock.calls[0][1] as any;
     expect(typeof callArgs.weekly_schedule).toBe('object'); // Wait, my component sends it as object, backend stringifies it?
     // Let me re-read my component code
   });

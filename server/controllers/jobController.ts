@@ -16,7 +16,6 @@ export const createJob = (req: Request, res: Response): void => {
         const { 
             title, 
             hourly_rate, 
-            required_hours, 
             required_hours_per_week,
             preferred_gender,
             min_age,
@@ -24,7 +23,7 @@ export const createJob = (req: Request, res: Response): void => {
             grace_period 
         } = req.body;
 
-        if (!title || hourly_rate === undefined || required_hours === undefined) {
+        if (!title || hourly_rate === undefined || required_hours_per_week === undefined) {
             res.status(400).json({ error: 'Missing required fields' });
             return;
         }
@@ -33,7 +32,7 @@ export const createJob = (req: Request, res: Response): void => {
             INSERT INTO jobs (
                 title, 
                 hourly_rate, 
-                required_hours, 
+                required_hours, -- Keep for backward compatibility if needed, but we'll set it to 0 or same as weekly
                 required_hours_per_week,
                 preferred_gender,
                 min_age,
@@ -46,8 +45,8 @@ export const createJob = (req: Request, res: Response): void => {
         const info = insert.run(
             title, 
             hourly_rate, 
-            required_hours, 
-            required_hours_per_week || null,
+            required_hours_per_week, // Setting daily required_hours to weekly for now or just 0
+            required_hours_per_week,
             preferred_gender || 'any',
             min_age || null,
             max_age || null,
@@ -59,6 +58,32 @@ export const createJob = (req: Request, res: Response): void => {
         res.status(201).json(newJob);
     } catch (error) {
         console.error('Error creating job:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const deleteJob = (req: Request, res: Response): void => {
+    try {
+        const { id } = req.params;
+
+        // Check if any employees are assigned to this job
+        const assignedEmployees = db.prepare('SELECT id FROM profiles WHERE job_id = ?').get(id);
+
+        if (assignedEmployees) {
+            res.status(400).json({ error: 'Cannot delete this job role because employees are assigned to it.' });
+            return;
+        }
+
+        const result = db.prepare('DELETE FROM jobs WHERE id = ?').run(id);
+
+        if (result.changes === 0) {
+            res.status(404).json({ error: 'Job not found' });
+            return;
+        }
+
+        res.json({ message: 'Job deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting job:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
