@@ -68,7 +68,7 @@ export const clockAttendance = (req: Request, res: Response): void => {
             // Determine status (present or late) based on weekly_schedule
             let status = 'present';
             const userProfile = db.prepare(`
-                SELECT p.weekly_schedule, j.grace_period
+                SELECT p.weekly_schedule, j.grace_period, p.allow_overtime, p.max_overtime_hours
                 FROM profiles p
                 LEFT JOIN jobs j ON p.job_id = j.id
                 WHERE p.user_id = ?
@@ -81,7 +81,37 @@ export const clockAttendance = (req: Request, res: Response): void => {
                     const todayName = days[new Date(timestamp).getDay()];
                     const todaySchedule = schedule[todayName];
 
-                    if (todaySchedule && !todaySchedule.isOff && todaySchedule.start) {
+                    if (Array.isArray(todaySchedule) && todaySchedule.length > 0) {
+                        const clockInTime = new Date(timestamp);
+                        
+                        // Find closest shift
+                        let closestShift = todaySchedule[0];
+                        let minDiff = Infinity;
+                        
+                        todaySchedule.forEach(shift => {
+                            const [schedHours, schedMinutes] = shift.start.split(':').map(Number);
+                            const scheduledTime = new Date(timestamp);
+                            scheduledTime.setHours(schedHours, schedMinutes, 0, 0);
+                            
+                            const diff = Math.abs(clockInTime.getTime() - scheduledTime.getTime());
+                            if (diff < minDiff) {
+                                minDiff = diff;
+                                closestShift = shift;
+                            }
+                        });
+
+                        const [schedHours, schedMinutes] = closestShift.start.split(':').map(Number);
+                        const scheduledTime = new Date(timestamp);
+                        scheduledTime.setHours(schedHours, schedMinutes, 0, 0);
+
+                        const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
+                        const gracePeriod = userProfile.grace_period || 15;
+
+                        if (diffMinutes > gracePeriod) {
+                            status = 'late';
+                        }
+                    } else if (todaySchedule && !todaySchedule.isOff && todaySchedule.start) {
+                        // Legacy support
                         const [schedHours, schedMinutes] = todaySchedule.start.split(':').map(Number);
                         const clockInTime = new Date(timestamp);
                         const scheduledTime = new Date(timestamp);
@@ -122,7 +152,77 @@ export const clockAttendance = (req: Request, res: Response): void => {
                 WHERE id = ?
             `).run(timestamp, lat, lng, activeSession.id);
 
-            const updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id);
+            const updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id) as any;
+            
+            // Calculate Overtime
+            const userProfile = db.prepare(`
+                SELECT p.weekly_schedule, j.grace_period, p.allow_overtime, p.max_overtime_hours
+                FROM profiles p
+                LEFT JOIN jobs j ON p.job_id = j.id
+                WHERE p.user_id = ?
+            `).get(userId) as any;
+
+            if (userProfile && userProfile.weekly_schedule && userProfile.allow_overtime) {
+                try {
+                    const schedule = JSON.parse(userProfile.weekly_schedule);
+                    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+                    const todayName = days[new Date(timestamp).getDay()];
+                    const todaySchedule = schedule[todayName];
+
+                    if (Array.isArray(todaySchedule) && todaySchedule.length > 0) {
+                        const clockOutTime = new Date(timestamp);
+                        
+                        // Find closest shift based on end time
+                        let closestShift = todaySchedule[0];
+                        let minDiff = Infinity;
+                        
+                        todaySchedule.forEach(shift => {
+                            const [schedHours, schedMinutes] = shift.end.split(':').map(Number);
+                            const scheduledTime = new Date(timestamp);
+                            scheduledTime.setHours(schedHours, schedMinutes, 0, 0);
+                            
+                            const diff = Math.abs(clockOutTime.getTime() - scheduledTime.getTime());
+                            if (diff < minDiff) {
+                                minDiff = diff;
+                                closestShift = shift;
+                            }
+                        });
+
+                        const [schedHours, schedMinutes] = closestShift.end.split(':').map(Number);
+                        const scheduledTime = new Date(timestamp);
+                        scheduledTime.setHours(schedHours, schedMinutes, 0, 0);
+
+                        const diffMinutes = (clockOutTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
+                        const gracePeriod = userProfile.grace_period || 15;
+
+                        if (diffMinutes > gracePeriod) {
+                            // Create pending overtime request
+                            const otMinutes = Math.floor(diffMinutes);
+                            
+                            // Check max overtime hours
+                            const maxOtMinutes = (userProfile.max_overtime_hours || 0) * 60;
+                            const requestedOtMinutes = maxOtMinutes > 0 ? Math.min(otMinutes, maxOtMinutes) : otMinutes;
+                            
+                            if (requestedOtMinutes > 0) {
+                                db.prepare(`
+                                    INSERT INTO requests (user_id, attendance_id, type, reason, details, status)
+                                    VALUES (?, ?, ?, ?, ?, ?)
+                                `).run(
+                                    userId, 
+                                    activeSession.id, 
+                                    'overtime_approval', 
+                                    `System detected ${otMinutes} minutes of overtime.`,
+                                    JSON.stringify({ raw_overtime_minutes: otMinutes, requested_overtime_minutes: requestedOtMinutes }),
+                                    'pending'
+                                );
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error parsing weekly schedule for OT:', e);
+                }
+            }
+
             res.json(updatedRecord);
         }
     } catch (error) {

@@ -87,7 +87,7 @@ export const createAttendanceCorrection = (req: Request, res: Response): void =>
 export const updateRequestStatus = (req: Request, res: Response): void => {
     try {
         const { id } = req.params;
-        const { status } = req.body;
+        const { status, manager_note, approved_minutes } = req.body;
 
         if (!['approved', 'rejected'].includes(status)) {
             res.status(400).json({ error: 'Invalid status' });
@@ -106,8 +106,8 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
         }
 
         const transaction = db.transaction(() => {
-            // Update the request status
-            db.prepare('UPDATE requests SET status = ? WHERE id = ?').run(status, id);
+            // Update the request status and manager note
+            db.prepare('UPDATE requests SET status = ?, manager_note = ? WHERE id = ?').run(status, manager_note || null, id);
 
             // If it's a permission_to_leave request, update shift_interruptions
             if (requestRecord.type === 'permission_to_leave' && requestRecord.reference_id) {
@@ -115,9 +115,18 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                 db.prepare('UPDATE shift_interruptions SET status = ? WHERE id = ?').run(interruptionStatus, requestRecord.reference_id);
             }
 
-            // If approved and has requested times, update/insert attendance
+            // If approved, handle specific request types
             if (status === 'approved') {
-                if (requestRecord.type === 'attendance_correction' && requestRecord.details) {
+                if (requestRecord.type === 'overtime_approval' && requestRecord.attendance_id) {
+                    // Update approved overtime minutes
+                    const minutesToApprove = approved_minutes !== undefined ? approved_minutes : 
+                        (requestRecord.details ? JSON.parse(requestRecord.details).requested_overtime_minutes : 0);
+                    
+                    db.prepare('UPDATE attendance SET approved_overtime_minutes = ? WHERE id = ?').run(
+                        minutesToApprove,
+                        requestRecord.attendance_id
+                    );
+                } else if (requestRecord.type === 'attendance_correction' && requestRecord.details) {
                     const details = JSON.parse(requestRecord.details);
                     const updateQuery = `
                         UPDATE attendance 

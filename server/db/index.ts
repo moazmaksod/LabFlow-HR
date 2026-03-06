@@ -37,6 +37,9 @@ export function initDb() {
     if (!jobColumns.some(c => c.name === 'max_age')) {
       db.exec("ALTER TABLE jobs ADD COLUMN max_age INTEGER;");
     }
+    if (!jobColumns.some(c => c.name === 'weekly_schedule')) {
+      db.exec("ALTER TABLE jobs ADD COLUMN weekly_schedule TEXT;");
+    }
 
     // Profiles migrations
     if (!profileColumns.some(c => c.name === 'weekly_schedule')) {
@@ -60,10 +63,19 @@ export function initDb() {
     if (!profileColumns.some(c => c.name === 'device_id')) {
       db.exec("ALTER TABLE profiles ADD COLUMN device_id TEXT;");
     }
+    if (!profileColumns.some(c => c.name === 'allow_overtime')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN allow_overtime BOOLEAN DEFAULT 0;");
+    }
+    if (!profileColumns.some(c => c.name === 'max_overtime_hours')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN max_overtime_hours REAL DEFAULT 0;");
+    }
 
     // Attendance migrations
     if (!attendanceColumns.some(c => c.name === 'current_status')) {
       db.exec("ALTER TABLE attendance ADD COLUMN current_status TEXT NOT NULL DEFAULT 'working';");
+    }
+    if (!attendanceColumns.some(c => c.name === 'approved_overtime_minutes')) {
+      db.exec("ALTER TABLE attendance ADD COLUMN approved_overtime_minutes INTEGER DEFAULT 0;");
     }
 
     // Requests migrations
@@ -75,6 +87,9 @@ export function initDb() {
     }
     if (!requestColumns.some(c => c.name === 'details')) {
       db.exec("ALTER TABLE requests ADD COLUMN details TEXT;");
+    }
+    if (!requestColumns.some(c => c.name === 'manager_note')) {
+      db.exec("ALTER TABLE requests ADD COLUMN manager_note TEXT;");
     }
 
     console.log('Database schema initialized successfully.');

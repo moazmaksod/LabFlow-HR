@@ -20,7 +20,8 @@ export const createJob = (req: Request, res: Response): void => {
             preferred_gender,
             min_age,
             max_age,
-            grace_period 
+            grace_period,
+            weekly_schedule
         } = req.body;
 
         if (!title || hourly_rate === undefined || required_hours_per_week === undefined) {
@@ -37,9 +38,10 @@ export const createJob = (req: Request, res: Response): void => {
                 preferred_gender,
                 min_age,
                 max_age,
-                grace_period
+                grace_period,
+                weekly_schedule
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         
         const info = insert.run(
@@ -50,7 +52,8 @@ export const createJob = (req: Request, res: Response): void => {
             preferred_gender || 'any',
             min_age || null,
             max_age || null,
-            grace_period || 15
+            grace_period || 15,
+            weekly_schedule || null
         );
         
         const newJob = db.prepare('SELECT * FROM jobs WHERE id = ?').get(info.lastInsertRowid);
@@ -72,7 +75,8 @@ export const updateJob = (req: Request, res: Response): void => {
             preferred_gender,
             min_age,
             max_age,
-            grace_period 
+            grace_period,
+            weekly_schedule
         } = req.body;
 
         if (!title || hourly_rate === undefined || required_hours_per_week === undefined) {
@@ -80,32 +84,52 @@ export const updateJob = (req: Request, res: Response): void => {
             return;
         }
 
-        const update = db.prepare(`
-            UPDATE jobs SET 
-                title = ?, 
-                hourly_rate = ?, 
-                required_hours = ?, 
-                required_hours_per_week = ?,
-                preferred_gender = ?,
-                min_age = ?,
-                max_age = ?,
-                grace_period = ?
-            WHERE id = ?
-        `);
-        
-        const result = update.run(
-            title, 
-            hourly_rate, 
-            required_hours_per_week, 
-            required_hours_per_week,
-            preferred_gender || 'any',
-            min_age || null,
-            max_age || null,
-            grace_period || 15,
-            id
-        );
+        const transaction = db.transaction(() => {
+            const update = db.prepare(`
+                UPDATE jobs SET 
+                    title = ?, 
+                    hourly_rate = ?, 
+                    required_hours = ?, 
+                    required_hours_per_week = ?,
+                    preferred_gender = ?,
+                    min_age = ?,
+                    max_age = ?,
+                    grace_period = ?,
+                    weekly_schedule = ?
+                WHERE id = ?
+            `);
+            
+            const result = update.run(
+                title, 
+                hourly_rate, 
+                required_hours_per_week, 
+                required_hours_per_week,
+                preferred_gender || 'any',
+                min_age || null,
+                max_age || null,
+                grace_period || 15,
+                weekly_schedule || null,
+                id
+            );
 
-        if (result.changes === 0) {
+            if (result.changes === 0) {
+                return false;
+            }
+
+            // Inheritance Logic: Cascade update to all employees assigned to this job
+            // Only update if they haven't overridden their schedule (for simplicity, we update all)
+            db.prepare(`
+                UPDATE profiles 
+                SET weekly_schedule = ?
+                WHERE job_id = ?
+            `).run(weekly_schedule || null, id);
+
+            return true;
+        });
+
+        const success = transaction();
+
+        if (!success) {
             res.status(404).json({ error: 'Job not found' });
             return;
         }

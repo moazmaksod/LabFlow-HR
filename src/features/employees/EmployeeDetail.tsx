@@ -9,14 +9,13 @@ interface EmployeeDetailProps {
   onClose: () => void;
 }
 
-interface ScheduleDay {
+interface Shift {
   start: string;
   end: string;
-  isOff: boolean;
 }
 
 interface WeeklySchedule {
-  [key: string]: ScheduleDay;
+  [key: string]: Shift[];
 }
 
 const DAYS = ['saturday', 'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
@@ -54,7 +53,15 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
       // Ensure all days exist in schedule
       const fullSchedule: WeeklySchedule = {};
       DAYS.forEach(day => {
-        fullSchedule[day] = (schedule as any)[day] || { start: '09:00', end: '17:00', isOff: day === 'sunday' };
+        const daySchedule = (schedule as any)[day];
+        if (Array.isArray(daySchedule)) {
+          fullSchedule[day] = daySchedule;
+        } else if (daySchedule && !daySchedule.isOff) {
+          // Migrate old format
+          fullSchedule[day] = [{ start: daySchedule.start || '09:00', end: daySchedule.end || '17:00' }];
+        } else {
+          fullSchedule[day] = [];
+        }
       });
 
       setFormData({
@@ -66,7 +73,9 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
         emergency_contact_name: employee.emergency_contact_name || '',
         emergency_contact_phone: employee.emergency_contact_phone || '',
         age: employee.age || '',
-        gender: employee.gender || ''
+        gender: employee.gender || '',
+        allow_overtime: employee.allow_overtime || false,
+        max_overtime_hours: employee.max_overtime_hours || 0
       });
     }
   }, [employee]);
@@ -90,17 +99,38 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
     });
   };
 
-  const updateSchedule = (day: string, field: keyof ScheduleDay, value: any) => {
+  const addShift = (day: string) => {
     setFormData((prev: any) => ({
       ...prev,
       weekly_schedule: {
         ...prev.weekly_schedule,
-        [day]: {
-          ...prev.weekly_schedule[day],
-          [field]: value
-        }
+        [day]: [...prev.weekly_schedule[day], { start: '09:00', end: '17:00' }]
       }
     }));
+  };
+
+  const removeShift = (day: string, index: number) => {
+    setFormData((prev: any) => ({
+      ...prev,
+      weekly_schedule: {
+        ...prev.weekly_schedule,
+        [day]: prev.weekly_schedule[day].filter((_: any, i: number) => i !== index)
+      }
+    }));
+  };
+
+  const updateShift = (day: string, index: number, field: keyof Shift, value: string) => {
+    setFormData((prev: any) => {
+      const newShifts = [...prev.weekly_schedule[day]];
+      newShifts[index] = { ...newShifts[index], [field]: value };
+      return {
+        ...prev,
+        weekly_schedule: {
+          ...prev.weekly_schedule,
+          [day]: newShifts
+        }
+      };
+    });
   };
 
   if (isLoading || !formData) {
@@ -247,6 +277,33 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                 className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-2 focus:ring-primary/20 outline-none"
               />
             </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                <Clock className="w-3 h-3" /> Allow Overtime
+              </label>
+              <div className="flex items-center h-9">
+                <input 
+                  type="checkbox" 
+                  checked={formData.allow_overtime} 
+                  onChange={(e) => setFormData({...formData, allow_overtime: e.target.checked})}
+                  className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
+                />
+                <span className="ml-2 text-sm text-muted-foreground">Enable OT</span>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                <Clock className="w-3 h-3" /> Max OT Hours
+              </label>
+              <input 
+                type="number" 
+                step="0.5"
+                value={formData.max_overtime_hours} 
+                onChange={(e) => setFormData({...formData, max_overtime_hours: Number(e.target.value)})}
+                disabled={!formData.allow_overtime}
+                className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-2 focus:ring-primary/20 outline-none disabled:opacity-50"
+              />
+            </div>
             <div className="space-y-1.5 col-span-2">
               <label className="text-xs font-medium text-muted-foreground">Device Binding</label>
               <button 
@@ -284,35 +341,47 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
           
           <div className="space-y-2 border border-border rounded-lg overflow-hidden">
             {DAYS.map((day) => (
-              <div key={day} className={`flex items-center justify-between p-3 text-sm ${formData.weekly_schedule[day].isOff ? 'bg-muted/30' : 'bg-background'} border-b border-border last:border-0`}>
-                <div className="flex items-center gap-3 w-32">
-                  <input 
-                    type="checkbox" 
-                    checked={!formData.weekly_schedule[day].isOff}
-                    onChange={(e) => updateSchedule(day, 'isOff', !e.target.checked)}
-                    className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
-                  />
-                  <span className="capitalize font-medium">{day}</span>
+              <div key={day} className={`flex flex-col p-3 text-sm ${formData.weekly_schedule[day].length === 0 ? 'bg-muted/30' : 'bg-background'} border-b border-border last:border-0`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-3 w-32">
+                    <span className="capitalize font-medium">{day}</span>
+                  </div>
+                  <button 
+                    onClick={() => addShift(day)}
+                    className="text-xs text-primary font-medium hover:underline flex items-center gap-1"
+                  >
+                    + Add Shift
+                  </button>
                 </div>
                 
-                {!formData.weekly_schedule[day].isOff ? (
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="time" 
-                      value={formData.weekly_schedule[day].start}
-                      onChange={(e) => updateSchedule(day, 'start', e.target.value)}
-                      className="px-2 py-1 bg-background border border-border rounded text-xs outline-none focus:ring-1 focus:ring-primary"
-                    />
-                    <span className="text-muted-foreground">to</span>
-                    <input 
-                      type="time" 
-                      value={formData.weekly_schedule[day].end}
-                      onChange={(e) => updateSchedule(day, 'end', e.target.value)}
-                      className="px-2 py-1 bg-background border border-border rounded text-xs outline-none focus:ring-1 focus:ring-primary"
-                    />
+                {formData.weekly_schedule[day].length > 0 ? (
+                  <div className="space-y-2">
+                    {formData.weekly_schedule[day].map((shift: Shift, index: number) => (
+                      <div key={index} className="flex items-center gap-2 pl-4">
+                        <input 
+                          type="time" 
+                          value={shift.start}
+                          onChange={(e) => updateShift(day, index, 'start', e.target.value)}
+                          className="px-2 py-1 bg-background border border-border rounded text-xs outline-none focus:ring-1 focus:ring-primary"
+                        />
+                        <span className="text-muted-foreground">to</span>
+                        <input 
+                          type="time" 
+                          value={shift.end}
+                          onChange={(e) => updateShift(day, index, 'end', e.target.value)}
+                          className="px-2 py-1 bg-background border border-border rounded text-xs outline-none focus:ring-1 focus:ring-primary"
+                        />
+                        <button 
+                          onClick={() => removeShift(day, index)}
+                          className="p-1 text-muted-foreground hover:text-destructive transition-colors ml-2"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 ) : (
-                  <span className="text-xs text-muted-foreground italic">Day Off</span>
+                  <span className="text-xs text-muted-foreground italic pl-4">Day Off</span>
                 )}
               </div>
             ))}

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl, TouchableOpacity, Modal, TextInput, Alert } from 'react-native';
-import { Clock, Calendar, MapPin, X } from 'lucide-react-native';
+import { Clock, Calendar, MapPin, X, FileText, CheckCircle } from 'lucide-react-native';
 import api from '../lib/axios';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
@@ -12,6 +12,8 @@ interface AttendanceLog {
   status: string;
   location_lat: number;
   location_lng: number;
+  approved_overtime_minutes?: number;
+  manager_note?: string;
 }
 
 export default function HistoryScreen() {
@@ -128,6 +130,28 @@ export default function HistoryScreen() {
           </View>
         </View>
       </View>
+
+      {/* Overtime and Notes Section */}
+      {(item.approved_overtime_minutes > 0 || item.manager_note) && (
+        <View style={styles.extraInfoContainer}>
+          {item.approved_overtime_minutes > 0 && (
+            <View style={styles.overtimeRow}>
+              <CheckCircle size={14} color="#8b5cf6" />
+              <Text style={styles.overtimeText}>
+                Approved Overtime: <Text style={styles.overtimeValue}>{item.approved_overtime_minutes} mins</Text>
+              </Text>
+            </View>
+          )}
+          {item.manager_note && (
+            <View style={styles.noteRow}>
+              <FileText size={14} color="#71717a" />
+              <Text style={styles.noteText}>
+                Manager Note: <Text style={styles.noteValue}>{item.manager_note}</Text>
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
     </TouchableOpacity>
   );
 
@@ -239,4 +263,11 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderColor: '#e4e4e7', borderRadius: 8, padding: 10, marginTop: 5, marginBottom: 15, height: 80 },
   submitButton: { backgroundColor: '#18181b', padding: 15, borderRadius: 8, alignItems: 'center' },
   submitButtonText: { color: '#fff', fontWeight: 'bold' },
+  extraInfoContainer: { marginTop: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#f4f4f5', gap: 6 },
+  overtimeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  overtimeText: { fontSize: 12, color: '#71717a' },
+  overtimeValue: { fontWeight: '600', color: '#8b5cf6' },
+  noteRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
+  noteText: { fontSize: 12, color: '#71717a', flex: 1 },
+  noteValue: { fontStyle: 'italic', color: '#3f3f46' },
 });

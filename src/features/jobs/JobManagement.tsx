@@ -1,7 +1,16 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/axios';
-import { Plus, Briefcase, Trash2, Edit2, AlertCircle } from 'lucide-react';
+import { Plus, Briefcase, Trash2, Edit2, AlertCircle, X } from 'lucide-react';
+
+interface Shift {
+  start: string;
+  end: string;
+}
+
+interface WeeklySchedule {
+  [key: string]: Shift[];
+}
 
 interface Job {
   id: number;
@@ -12,13 +21,21 @@ interface Job {
   preferred_gender: string;
   min_age: number | null;
   max_age: number | null;
+  weekly_schedule?: string;
 }
+
+const DAYS = ['saturday', 'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
 
 export default function JobManagement() {
   const queryClient = useQueryClient();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingJobId, setEditingJobId] = useState<number | null>(null);
   
+  const defaultSchedule: WeeklySchedule = {};
+  DAYS.forEach(day => {
+    defaultSchedule[day] = [];
+  });
+
   const [formData, setFormData] = useState({
     title: '',
     hourly_rate: '',
@@ -26,7 +43,8 @@ export default function JobManagement() {
     grace_period: '15',
     preferred_gender: 'any',
     min_age: '',
-    max_age: ''
+    max_age: '',
+    weekly_schedule: defaultSchedule
   });
 
   const { data: jobs, isLoading } = useQuery<Job[]>({
@@ -82,12 +100,35 @@ export default function JobManagement() {
       grace_period: '15',
       preferred_gender: 'any',
       min_age: '',
-      max_age: ''
+      max_age: '',
+      weekly_schedule: defaultSchedule
     });
   };
 
   const handleEdit = (job: Job) => {
     setEditingJobId(job.id);
+    
+    let parsedSchedule = defaultSchedule;
+    if (job.weekly_schedule) {
+      try {
+        const parsed = JSON.parse(job.weekly_schedule);
+        const fullSchedule: WeeklySchedule = {};
+        DAYS.forEach(day => {
+          const daySchedule = parsed[day];
+          if (Array.isArray(daySchedule)) {
+            fullSchedule[day] = daySchedule;
+          } else if (daySchedule && !daySchedule.isOff) {
+            fullSchedule[day] = [{ start: daySchedule.start || '09:00', end: daySchedule.end || '17:00' }];
+          } else {
+            fullSchedule[day] = [];
+          }
+        });
+        parsedSchedule = fullSchedule;
+      } catch (e) {
+        console.error('Failed to parse schedule', e);
+      }
+    }
+
     setFormData({
       title: job.title,
       hourly_rate: job.hourly_rate.toString(),
@@ -95,9 +136,44 @@ export default function JobManagement() {
       grace_period: job.grace_period.toString(),
       preferred_gender: job.preferred_gender,
       min_age: job.min_age ? job.min_age.toString() : '',
-      max_age: job.max_age ? job.max_age.toString() : ''
+      max_age: job.max_age ? job.max_age.toString() : '',
+      weekly_schedule: parsedSchedule
     });
     setIsFormOpen(true);
+  };
+
+  const addShift = (day: string) => {
+    setFormData((prev: any) => ({
+      ...prev,
+      weekly_schedule: {
+        ...prev.weekly_schedule,
+        [day]: [...prev.weekly_schedule[day], { start: '09:00', end: '17:00' }]
+      }
+    }));
+  };
+
+  const removeShift = (day: string, index: number) => {
+    setFormData((prev: any) => ({
+      ...prev,
+      weekly_schedule: {
+        ...prev.weekly_schedule,
+        [day]: prev.weekly_schedule[day].filter((_: any, i: number) => i !== index)
+      }
+    }));
+  };
+
+  const updateShift = (day: string, index: number, field: keyof Shift, value: string) => {
+    setFormData((prev: any) => {
+      const newShifts = [...prev.weekly_schedule[day]];
+      newShifts[index] = { ...newShifts[index], [field]: value };
+      return {
+        ...prev,
+        weekly_schedule: {
+          ...prev.weekly_schedule,
+          [day]: newShifts
+        }
+      };
+    });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -109,6 +185,7 @@ export default function JobManagement() {
       grace_period: Number(formData.grace_period),
       min_age: formData.min_age ? Number(formData.min_age) : null,
       max_age: formData.max_age ? Number(formData.max_age) : null,
+      weekly_schedule: JSON.stringify(formData.weekly_schedule)
     };
 
     if (editingJobId) {
@@ -183,7 +260,61 @@ export default function JobManagement() {
               <label className="text-sm font-medium">Max Age (Optional)</label>
               <input type="number" value={formData.max_age} onChange={e => setFormData({...formData, max_age: e.target.value})} className="w-full px-3 py-2 bg-background border border-border rounded-lg" placeholder="e.g. 65" />
             </div>
-            <div className="md:col-span-2 lg:col-span-3 flex justify-end gap-3 mt-2">
+
+            <div className="md:col-span-2 lg:col-span-3 mt-4">
+              <h4 className="text-sm font-medium mb-3">Default Weekly Schedule</h4>
+              <div className="space-y-2 border border-border rounded-lg overflow-hidden">
+                {DAYS.map((day) => (
+                  <div key={day} className={`flex flex-col p-3 text-sm ${formData.weekly_schedule[day].length === 0 ? 'bg-muted/30' : 'bg-background'} border-b border-border last:border-0`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-3 w-32">
+                        <span className="capitalize font-medium">{day}</span>
+                      </div>
+                      <button 
+                        type="button"
+                        onClick={() => addShift(day)}
+                        className="text-xs text-primary font-medium hover:underline flex items-center gap-1"
+                      >
+                        + Add Shift
+                      </button>
+                    </div>
+                    
+                    {formData.weekly_schedule[day].length > 0 ? (
+                      <div className="space-y-2">
+                        {formData.weekly_schedule[day].map((shift: Shift, index: number) => (
+                          <div key={index} className="flex items-center gap-2 pl-4">
+                            <input 
+                              type="time" 
+                              value={shift.start}
+                              onChange={(e) => updateShift(day, index, 'start', e.target.value)}
+                              className="px-2 py-1 bg-background border border-border rounded text-xs outline-none focus:ring-1 focus:ring-primary"
+                            />
+                            <span className="text-muted-foreground">to</span>
+                            <input 
+                              type="time" 
+                              value={shift.end}
+                              onChange={(e) => updateShift(day, index, 'end', e.target.value)}
+                              className="px-2 py-1 bg-background border border-border rounded text-xs outline-none focus:ring-1 focus:ring-primary"
+                            />
+                            <button 
+                              type="button"
+                              onClick={() => removeShift(day, index)}
+                              className="p-1 text-muted-foreground hover:text-destructive transition-colors ml-2"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground italic pl-4">Day Off</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="md:col-span-2 lg:col-span-3 flex justify-end gap-3 mt-4">
               <button type="button" onClick={resetForm} className="px-4 py-2 text-sm font-medium hover:bg-muted rounded-lg transition-colors">Cancel</button>
               <button type="submit" disabled={createJobMutation.isPending || updateJobMutation.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors">
                 {createJobMutation.isPending || updateJobMutation.isPending ? 'Saving...' : (editingJobId ? 'Update Job' : 'Save Job')}

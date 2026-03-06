@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     min_age INTEGER,
     max_age INTEGER,
     grace_period INTEGER NOT NULL DEFAULT 15, -- In minutes
+    weekly_schedule TEXT, -- JSON stringified schedule array
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -34,13 +35,15 @@ CREATE TABLE IF NOT EXISTS profiles (
     profile_picture_url TEXT,
     age INTEGER,
     gender TEXT,
-    weekly_schedule TEXT, -- JSON stringified schedule
+    weekly_schedule TEXT, -- JSON stringified schedule array
     hourly_rate INTEGER DEFAULT 0,
     lunch_break_minutes INTEGER DEFAULT 0,
     emergency_contact_name TEXT,
     emergency_contact_phone TEXT,
     leave_balance INTEGER DEFAULT 21,
     device_id TEXT,
+    allow_overtime BOOLEAN DEFAULT 0,
+    max_overtime_hours REAL DEFAULT 0,
     status TEXT NOT NULL CHECK(status IN ('active', 'inactive', 'suspended')) DEFAULT 'inactive',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -58,6 +61,7 @@ CREATE TABLE IF NOT EXISTS attendance (
     current_status TEXT NOT NULL CHECK(current_status IN ('working', 'away')) DEFAULT 'working',
     location_lat REAL,
     location_lng REAL,
+    approved_overtime_minutes INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -69,9 +73,11 @@ CREATE TABLE IF NOT EXISTS requests (
     attendance_id INTEGER,
     requested_check_in DATETIME,
     requested_check_out DATETIME,
-    type TEXT, -- 'manual_clock', 'permission_to_leave'
+    type TEXT, -- 'manual_clock', 'permission_to_leave', 'overtime_approval'
     reference_id INTEGER, -- points to shift_interruptions.id if type is 'permission_to_leave'
     reason TEXT NOT NULL,
+    details TEXT,
+    manager_note TEXT,
     status TEXT NOT NULL CHECK(status IN ('pending', 'approved', 'rejected')) DEFAULT 'pending',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
