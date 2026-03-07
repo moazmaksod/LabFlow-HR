@@ -44,11 +44,39 @@ describe('Auth API', () => {
     expect(res.body).toHaveProperty('error', 'Email already in use');
   });
 
+  it('should not register a user with an existing email (case-insensitive)', async () => {
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({
+        name: 'Another User',
+        email: 'TEST@example.com',
+        password: 'password123',
+        age: 30,
+        gender: 'female'
+      });
+
+    expect(res.status).toBe(409);
+    expect(res.body).toHaveProperty('error', 'Email already in use');
+  });
+
   it('should login an existing user', async () => {
     const res = await request(app)
       .post('/api/auth/login')
       .send({
         email: 'test@example.com',
+        password: 'password123',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('token');
+    expect(res.body.user).toHaveProperty('email', 'test@example.com');
+  });
+
+  it('should login an existing user with uppercase email', async () => {
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({
+        email: 'TEST@example.com',
         password: 'password123',
       });
 

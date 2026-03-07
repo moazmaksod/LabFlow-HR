@@ -14,6 +14,8 @@ export const register = async (req: Request, res: Response): Promise<void> => {
             return;
         }
 
+        const normalizedEmail = email.toLowerCase();
+
         // Validate age
         const ageNum = parseInt(age);
         if (isNaN(ageNum) || ageNum < 16 || ageNum > 100) {
@@ -28,7 +30,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         }
 
         // Check if user already exists
-        const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+        const existingUser = db.prepare('SELECT id FROM users WHERE LOWER(email) = ?').get(normalizedEmail);
         if (existingUser) {
             res.status(409).json({ error: 'Email already in use' });
             return;
@@ -42,7 +44,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         const registerTransaction = db.transaction(() => {
             // Insert user (default role is 'pending' as per schema)
             const insertUser = db.prepare('INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)');
-            const info = insertUser.run(name, email, password_hash);
+            const info = insertUser.run(name, normalizedEmail, password_hash);
             const userId = info.lastInsertRowid;
 
             // Insert profile
@@ -64,7 +66,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         res.status(201).json({
             message: 'User registered successfully',
             token,
-            user: { id: userId, name, email, role: 'pending' }
+            user: { id: userId, name, email: normalizedEmail, role: 'pending' }
         });
     } catch (error) {
         console.error('Registration error:', error);
@@ -81,8 +83,10 @@ export const login = async (req: Request, res: Response): Promise<void> => {
             return;
         }
 
+        const normalizedEmail = email.toLowerCase();
+
         // Fetch user
-        const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as any;
+        const user = db.prepare('SELECT * FROM users WHERE LOWER(email) = ?').get(normalizedEmail) as any;
         if (!user) {
             res.status(401).json({ error: 'Invalid credentials' });
             return;
