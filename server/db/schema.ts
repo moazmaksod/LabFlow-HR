@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS attendance (
     check_in DATETIME NOT NULL,
     check_out DATETIME,
     date DATE NOT NULL,
-    status TEXT NOT NULL CHECK(status IN ('present', 'late', 'absent', 'half-day')) DEFAULT 'present',
+    status TEXT NOT NULL CHECK(status IN ('present', 'late', 'absent', 'half-day', 'late_in', 'on_time')) DEFAULT 'present',
     current_status TEXT NOT NULL CHECK(current_status IN ('working', 'away')) DEFAULT 'working',
     location_lat REAL,
     location_lng REAL,
@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS requests (
     attendance_id INTEGER,
     requested_check_in DATETIME,
     requested_check_out DATETIME,
-    type TEXT, -- 'manual_clock', 'permission_to_leave', 'overtime_approval'
+    type TEXT, -- 'manual_clock', 'permission_to_leave', 'overtime_approval', 'early_leave_approval', 'attendance_correction'
     reference_id INTEGER, -- points to shift_interruptions.id if type is 'permission_to_leave'
     reason TEXT NOT NULL,
     details TEXT,

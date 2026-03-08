@@ -108,7 +108,9 @@ export const clockAttendance = (req: Request, res: Response): void => {
                         const gracePeriod = userProfile.grace_period || 15;
 
                         if (diffMinutes > gracePeriod) {
-                            status = 'late';
+                            status = 'late_in';
+                        } else {
+                            status = 'on_time';
                         }
                     } else if (todaySchedule && !todaySchedule.isOff && todaySchedule.start) {
                         // Legacy support
@@ -121,7 +123,9 @@ export const clockAttendance = (req: Request, res: Response): void => {
                         const gracePeriod = userProfile.grace_period || 15;
 
                         if (diffMinutes > gracePeriod) {
-                            status = 'late';
+                            status = 'late_in';
+                        } else {
+                            status = 'on_time';
                         }
                     }
                 } catch (e) {
@@ -139,7 +143,7 @@ export const clockAttendance = (req: Request, res: Response): void => {
             const newRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(info.lastInsertRowid);
             
             // Strict evaluation block for early punch in
-            if (userProfile && userProfile.weekly_schedule && userProfile.allow_overtime) {
+            if (userProfile && userProfile.weekly_schedule) {
                 try {
                     const schedule = JSON.parse(userProfile.weekly_schedule);
                     const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -209,7 +213,7 @@ export const clockAttendance = (req: Request, res: Response): void => {
 
             const updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id) as any;
             
-            // Strict evaluation block for late punch out
+            // Strict evaluation block for late punch out and early punch out
             const userProfile = db.prepare(`
                 SELECT p.weekly_schedule, j.grace_period, p.allow_overtime, p.max_overtime_hours
                 FROM profiles p
@@ -217,7 +221,7 @@ export const clockAttendance = (req: Request, res: Response): void => {
                 WHERE p.user_id = ?
             `).get(userId) as any;
 
-            if (userProfile && userProfile.weekly_schedule && userProfile.allow_overtime) {
+            if (userProfile && userProfile.weekly_schedule) {
                 try {
                     const schedule = JSON.parse(userProfile.weekly_schedule);
                     const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -251,7 +255,7 @@ export const clockAttendance = (req: Request, res: Response): void => {
                         const gracePeriod = userProfile.grace_period || 15;
 
                         if (diffMinutes > gracePeriod) {
-                            // Create pending overtime request
+                            // Create pending overtime request for late punch out
                             const otMinutes = Math.floor(diffMinutes);
                             
                             // Check max overtime hours
@@ -270,6 +274,20 @@ export const clockAttendance = (req: Request, res: Response): void => {
                                     JSON.stringify({ raw_overtime_minutes: otMinutes, requested_overtime_minutes: requestedOtMinutes })
                                 );
                             }
+                        } else if (diffMinutes < -gracePeriod) {
+                            // Create pending early leave request for early punch out
+                            const earlyMinutes = Math.floor(Math.abs(diffMinutes));
+                            
+                            db.prepare(`
+                                INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
+                                VALUES (?, 'early_leave_approval', ?, ?, ?, ?, 'pending')
+                            `).run(
+                                userId, 
+                                activeSession.id,
+                                activeSession.id, 
+                                `System detected early leave by ${earlyMinutes} minutes.`,
+                                JSON.stringify({ early_leave_minutes: earlyMinutes })
+                            );
                         }
                     }
                 } catch (e) {

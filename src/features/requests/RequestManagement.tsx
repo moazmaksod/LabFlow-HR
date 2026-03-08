@@ -142,6 +142,7 @@ export default function RequestManagement() {
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                         req.type === 'permission_to_leave' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' : 
                         req.type === 'overtime_approval' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' :
+                        req.type === 'early_leave_approval' ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400' :
                         'bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-400'
                       }`}>
                         {req.type?.replace(/_/g, ' ') || 'Manual Clock'}

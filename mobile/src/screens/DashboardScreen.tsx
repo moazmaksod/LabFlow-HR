@@ -126,8 +126,8 @@ export default function DashboardScreen() {
   };
 
   const handleClock = async (type: 'check_in' | 'check_out') => {
-    let isOvertime = false;
-    let warningMessage = '';
+    let alertTitle = `Confirm Clock ${type === 'check_in' ? 'In' : 'Out'}`;
+    let alertMessage = `Are you sure you want to clock ${type === 'check_in' ? 'in' : 'out'} now?`;
 
     if (userProfile && userProfile.weekly_schedule) {
       try {
@@ -139,7 +139,7 @@ export default function DashboardScreen() {
         if (todayShifts && Array.isArray(todayShifts) && todayShifts.length > 0) {
           const now = new Date();
           const currentMinutes = now.getHours() * 60 + now.getMinutes();
-          const gracePeriod = 15; // default grace period
+          const gracePeriod = userProfile.grace_period || 15;
 
           // Find the closest shift
           let closestShift = todayShifts[0];
@@ -166,12 +166,22 @@ export default function DashboardScreen() {
           const startMinutes = startH * 60 + startM;
           const endMinutes = endH * 60 + endM;
 
-          if (type === 'check_in' && currentMinutes < (startMinutes - gracePeriod)) {
-            isOvertime = true;
-            warningMessage = `You are clocking in early (Shift starts at ${closestShift.start}). This will generate an overtime request.`;
-          } else if (type === 'check_out' && currentMinutes > (endMinutes + gracePeriod)) {
-            isOvertime = true;
-            warningMessage = `You are clocking out late (Shift ended at ${closestShift.end}). This will generate an overtime request.`;
+          if (type === 'check_in') {
+            if (currentMinutes < (startMinutes - gracePeriod)) {
+              alertTitle = 'Overtime Notice';
+              alertMessage = 'You are clocking in early. Since overtime needs approval (or your limit is reached), this extra time will be sent to your manager as a pending request. Proceed?';
+            } else if (currentMinutes > (startMinutes + gracePeriod)) {
+              alertTitle = 'Tardiness Notice';
+              alertMessage = 'You are clocking in late. This delay will be recorded and may result in a payroll deduction. Proceed?';
+            }
+          } else if (type === 'check_out') {
+            if (currentMinutes < (endMinutes - gracePeriod)) {
+              alertTitle = 'Early Leave Notice';
+              alertMessage = 'You are leaving before your shift ends. A request will be sent to your manager. If rejected, the missing time will be deducted from your payroll. Proceed?';
+            } else if (currentMinutes > (endMinutes + gracePeriod)) {
+              alertTitle = 'Overtime Notice';
+              alertMessage = 'You are clocking out late. This extra time will be sent to your manager for overtime approval. Proceed?';
+            }
           }
         }
       } catch (e) {
@@ -179,25 +189,14 @@ export default function DashboardScreen() {
       }
     }
 
-    if (isOvertime) {
-      Alert.alert(
-        'Warning: Overtime Detected',
-        `${warningMessage}\n\nDo you want to proceed?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Yes/Proceed', onPress: () => executeClock(type) }
-        ]
-      );
-    } else {
-      Alert.alert(
-        `Confirm Clock ${type === 'check_in' ? 'In' : 'Out'}`,
-        `Are you sure you want to clock ${type === 'check_in' ? 'in' : 'out'} now?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Yes', onPress: () => executeClock(type) }
-        ]
-      );
-    }
+    Alert.alert(
+      alertTitle,
+      alertMessage,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Yes/Proceed', onPress: () => executeClock(type) }
+      ]
+    );
   };
 
   const handleSync = async () => {
