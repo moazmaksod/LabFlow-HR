@@ -212,6 +212,54 @@ export default function RequestManagement() {
                 <p className="text-sm mt-1 bg-muted/50 p-3 rounded-lg border border-border">{selectedRequest.reason}</p>
               </div>
 
+              {selectedRequest.type === 'attendance_correction' && (
+                <div className="space-y-4 pt-2 border-t border-border">
+                  <h4 className="font-semibold text-sm text-primary">Attendance Correction Details</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-muted/30 p-3 rounded-lg border border-border">
+                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">Original (Before)</label>
+                      <div className="space-y-2">
+                        <div>
+                          <span className="text-xs text-muted-foreground">Clock In:</span>
+                          <p className="font-mono text-sm">{formatTime(selectedRequest.original_check_in || null)}</p>
+                        </div>
+                        <div>
+                          <span className="text-xs text-muted-foreground">Clock Out:</span>
+                          <p className="font-mono text-sm">{formatTime(selectedRequest.original_check_out || null)}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="bg-primary/5 p-3 rounded-lg border border-primary/20">
+                      <label className="text-xs font-bold text-primary uppercase tracking-wider mb-2 block">Proposed (After)</label>
+                      <div className="space-y-2">
+                        <div>
+                          <span className="text-xs text-muted-foreground">Clock In:</span>
+                          <p className="font-mono text-sm font-medium">
+                            {(() => {
+                              try {
+                                const details = JSON.parse(selectedRequest.details || '{}');
+                                return formatTime(details.new_clock_in || null);
+                              } catch (e) { return '-'; }
+                            })()}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-xs text-muted-foreground">Clock Out:</span>
+                          <p className="font-mono text-sm font-medium">
+                            {(() => {
+                              try {
+                                const details = JSON.parse(selectedRequest.details || '{}');
+                                return formatTime(details.new_clock_out || null);
+                              } catch (e) { return '-'; }
+                            })()}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {selectedRequest.type === 'overtime_approval' && (
                 <div className="space-y-2 pt-2">
                   <label className="text-sm font-medium">Approved Overtime (Minutes)</label>

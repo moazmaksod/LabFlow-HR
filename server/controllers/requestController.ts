@@ -33,7 +33,7 @@ export const getRequests = (req: Request, res: Response): void => {
 
         if (user.role === 'manager') {
             requests = db.prepare(`
-                SELECT r.*, u.name as user_name, a.date as attendance_date
+                SELECT r.*, u.name as user_name, a.date as attendance_date, a.check_in as original_check_in, a.check_out as original_check_out
                 FROM requests r
                 JOIN users u ON r.user_id = u.id
                 LEFT JOIN attendance a ON r.attendance_id = a.id
@@ -41,7 +41,7 @@ export const getRequests = (req: Request, res: Response): void => {
             `).all();
         } else {
             requests = db.prepare(`
-                SELECT r.*, u.name as user_name, a.date as attendance_date
+                SELECT r.*, u.name as user_name, a.date as attendance_date, a.check_in as original_check_in, a.check_out as original_check_out
                 FROM requests r
                 JOIN users u ON r.user_id = u.id
                 LEFT JOIN attendance a ON r.attendance_id = a.id
