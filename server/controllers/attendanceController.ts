@@ -138,6 +138,61 @@ export const clockAttendance = (req: Request, res: Response): void => {
             const info = insert.run(userId, timestamp, date, lat, lng, status);
             const newRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(info.lastInsertRowid);
             
+            // Strict evaluation block for early punch in
+            if (userProfile && userProfile.weekly_schedule && userProfile.allow_overtime) {
+                try {
+                    const schedule = JSON.parse(userProfile.weekly_schedule);
+                    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+                    const todayName = days[new Date(timestamp).getDay()];
+                    const todaySchedule = schedule[todayName];
+
+                    if (Array.isArray(todaySchedule) && todaySchedule.length > 0) {
+                        const clockInTime = new Date(timestamp);
+                        let closestShift = todaySchedule[0];
+                        let minDiff = Infinity;
+                        
+                        todaySchedule.forEach(shift => {
+                            const [schedHours, schedMinutes] = shift.start.split(':').map(Number);
+                            const scheduledTime = new Date(timestamp);
+                            scheduledTime.setHours(schedHours, schedMinutes, 0, 0);
+                            
+                            const diff = Math.abs(clockInTime.getTime() - scheduledTime.getTime());
+                            if (diff < minDiff) {
+                                minDiff = diff;
+                                closestShift = shift;
+                            }
+                        });
+
+                        const [schedHours, schedMinutes] = closestShift.start.split(':').map(Number);
+                        const scheduledTime = new Date(timestamp);
+                        scheduledTime.setHours(schedHours, schedMinutes, 0, 0);
+
+                        const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
+                        const gracePeriod = userProfile.grace_period || 15;
+
+                        // Punched in early
+                        if (diffMinutes < -gracePeriod) {
+                            const otMinutes = Math.floor(Math.abs(diffMinutes));
+                            const maxOtMinutes = (userProfile.max_overtime_hours || 0) * 60;
+                            const requestedOtMinutes = maxOtMinutes > 0 ? Math.min(otMinutes, maxOtMinutes) : otMinutes;
+                            
+                            db.prepare(`
+                                INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status) 
+                                VALUES (?, 'overtime_approval', ?, ?, ?, ?, 'pending')
+                            `).run(
+                                userId, 
+                                info.lastInsertRowid, 
+                                info.lastInsertRowid, 
+                                `Early clock-in by ${otMinutes} minutes`,
+                                JSON.stringify({ raw_overtime_minutes: otMinutes, requested_overtime_minutes: requestedOtMinutes })
+                            );
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error in early punch-in check:', e);
+                }
+            }
+
             res.status(201).json(newRecord);
         } else if (type === 'check_out') {
             if (!activeSession) {
@@ -154,7 +209,7 @@ export const clockAttendance = (req: Request, res: Response): void => {
 
             const updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id) as any;
             
-            // Calculate Overtime
+            // Strict evaluation block for late punch out
             const userProfile = db.prepare(`
                 SELECT p.weekly_schedule, j.grace_period, p.allow_overtime, p.max_overtime_hours
                 FROM profiles p
@@ -205,15 +260,14 @@ export const clockAttendance = (req: Request, res: Response): void => {
                             
                             if (requestedOtMinutes > 0) {
                                 db.prepare(`
-                                    INSERT INTO requests (user_id, attendance_id, type, reason, details, status)
-                                    VALUES (?, ?, ?, ?, ?, ?)
+                                    INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
+                                    VALUES (?, 'overtime_approval', ?, ?, ?, ?, 'pending')
                                 `).run(
                                     userId, 
+                                    activeSession.id,
                                     activeSession.id, 
-                                    'overtime_approval', 
                                     `System detected ${otMinutes} minutes of overtime.`,
-                                    JSON.stringify({ raw_overtime_minutes: otMinutes, requested_overtime_minutes: requestedOtMinutes }),
-                                    'pending'
+                                    JSON.stringify({ raw_overtime_minutes: otMinutes, requested_overtime_minutes: requestedOtMinutes })
                                 );
                             }
                         }
