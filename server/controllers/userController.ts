@@ -9,7 +9,7 @@ export const getUsers = (req: Request, res: Response): void => {
                 u.id, u.name, u.email, u.role, u.created_at,
                 p.status, p.job_id,
                 j.title as job_title,
-                (SELECT COUNT(*) FROM attendance a WHERE a.user_id = u.id AND a.date = date('now', 'localtime') AND a.check_out IS NULL) as is_clocked_in
+                (SELECT current_status FROM attendance a WHERE a.user_id = u.id AND a.date = date('now', 'localtime') AND a.check_out IS NULL LIMIT 1) as current_status
             FROM users u
             LEFT JOIN profiles p ON u.id = p.user_id
             LEFT JOIN jobs j ON p.job_id = j.id

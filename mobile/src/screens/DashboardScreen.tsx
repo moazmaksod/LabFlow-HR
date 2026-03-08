@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, ScrollView } from 'react-native';
 import * as Location from 'expo-location';
+import { useFocusEffect } from '@react-navigation/native';
 import { Pause, Play, LayoutDashboard, LogOut, RefreshCw } from 'lucide-react-native';
 import { useAuthStore } from '../store/useAuthStore';
 import api from '../lib/axios';
@@ -14,14 +15,20 @@ export default function DashboardScreen() {
   const [unsyncedCount, setUnsyncedCount] = useState(0);
   const [currentStatus, setCurrentStatus] = useState<'working' | 'away' | 'none'>('none');
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [consumedBreakMinutes, setConsumedBreakMinutes] = useState(0);
 
   useEffect(() => {
     // Initialize local SQLite database
     initLocalDb();
-    checkUnsyncedLogs();
-    fetchStatus();
-    fetchProfile();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      checkUnsyncedLogs();
+      fetchStatus();
+      fetchProfile();
+    }, [])
+  );
 
   const fetchProfile = async () => {
     try {
@@ -41,8 +48,19 @@ export default function DashboardScreen() {
       const activeSession = logs.find((l: any) => l.date === today && !l.check_out);
       if (activeSession) {
         setCurrentStatus(activeSession.current_status || 'working');
+        
+        let consumed = 0;
+        if (activeSession.breaks && Array.isArray(activeSession.breaks)) {
+          activeSession.breaks.forEach((b: any) => {
+            const start = new Date(b.start_time).getTime();
+            const end = b.end_time ? new Date(b.end_time).getTime() : new Date().getTime();
+            consumed += (end - start) / (1000 * 60);
+          });
+        }
+        setConsumedBreakMinutes(Math.floor(consumed));
       } else {
         setCurrentStatus('none');
+        setConsumedBreakMinutes(0);
       }
     } catch (error) {
       console.error('Error fetching status:', error);
@@ -209,24 +227,37 @@ export default function DashboardScreen() {
   };
 
   const handleStepAway = async () => {
-    setLoading(true);
-    try {
-      const deviceId = await getUniqueDeviceId();
-      const timestamp = new Date().toISOString();
-      const response = await api.post('/attendance/step-away', { timestamp, deviceId });
-      
-      if (!response.data.hasBreakBalance) {
-        Alert.alert('Notice', 'You have no break balance. A permission request has been sent to your manager.');
-      } else {
-        Alert.alert('Success', 'You have stepped away.');
-      }
-      
-      setCurrentStatus('away');
-    } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.error || 'Failed to step away');
-    } finally {
-      setLoading(false);
-    }
+    const allowedBreak = userProfile?.lunch_break_minutes || 0;
+    const remainingBreak = Math.max(0, allowedBreak - consumedBreakMinutes);
+
+    Alert.alert(
+      'Confirm Step Away',
+      `Are you sure you want to step away?\n\nRemaining Break Time: ${remainingBreak} minutes`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Yes, Step Away', onPress: async () => {
+          setLoading(true);
+          try {
+            const deviceId = await getUniqueDeviceId();
+            const timestamp = new Date().toISOString();
+            const response = await api.post('/attendance/step-away', { timestamp, deviceId });
+            
+            if (!response.data.hasBreakBalance) {
+              Alert.alert('Notice', 'You have no break balance. A permission request has been sent to your manager.');
+            } else {
+              Alert.alert('Success', 'You have stepped away.');
+            }
+            
+            setCurrentStatus('away');
+            fetchStatus(); // Refresh to update consumed time
+          } catch (error: any) {
+            Alert.alert('Error', error.response?.data?.error || 'Failed to step away');
+          } finally {
+            setLoading(false);
+          }
+        }}
+      ]
+    );
   };
 
   const handleResumeWork = async () => {
@@ -237,6 +268,7 @@ export default function DashboardScreen() {
       await api.post('/attendance/resume-work', { timestamp, deviceId });
       Alert.alert('Success', 'Welcome back! You have resumed work.');
       setCurrentStatus('working');
+      fetchStatus(); // Refresh to update consumed time
     } catch (error: any) {
       Alert.alert('Error', error.response?.data?.error || 'Failed to resume work');
     } finally {
@@ -268,6 +300,17 @@ export default function DashboardScreen() {
         <Text style={styles.cardText}>
           Make sure you are within the workplace radius before clocking in or out.
         </Text>
+
+        {currentStatus !== 'none' && userProfile && (
+          <View style={styles.breakInfoContainer}>
+            <Text style={styles.breakInfoText}>
+              Break Time: {consumedBreakMinutes} / {userProfile.lunch_break_minutes || 0} mins
+            </Text>
+            {consumedBreakMinutes >= (userProfile.lunch_break_minutes || 0) && (
+              <Text style={styles.breakWarningText}>Break time exhausted</Text>
+            )}
+          </View>
+        )}
 
         <View style={styles.buttonRow}>
           {currentStatus === 'none' ? (
@@ -382,4 +425,7 @@ const styles = StyleSheet.create({
   syncButtonText: { color: '#18181b', fontWeight: '600' },
   logoutButton: { backgroundColor: '#ef4444', padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 24 },
   buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  breakInfoContainer: { backgroundColor: '#f3f4f6', padding: 12, borderRadius: 8, marginBottom: 16 },
+  breakInfoText: { fontSize: 14, color: '#374151', fontWeight: '500' },
+  breakWarningText: { fontSize: 12, color: '#ef4444', marginTop: 4, fontWeight: 'bold' },
 });

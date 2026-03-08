@@ -343,7 +343,20 @@ export const getMyLogs = (req: Request, res: Response): void => {
             SELECT * FROM attendance 
             WHERE user_id = ? 
             ORDER BY date DESC, check_in DESC
-        `).all(userId);
+        `).all(userId) as any[];
+
+        if (logs.length > 0) {
+            const attendanceIds = logs.map(l => l.id);
+            const placeholders = attendanceIds.map(() => '?').join(',');
+            const breaks = db.prepare(`SELECT * FROM shift_interruptions WHERE attendance_id IN (${placeholders})`).all(...attendanceIds) as any[];
+            const requests = db.prepare(`SELECT * FROM requests WHERE attendance_id IN (${placeholders})`).all(...attendanceIds) as any[];
+
+            logs.forEach(log => {
+                log.breaks = breaks.filter(b => b.attendance_id === log.id);
+                log.requests = requests.filter(r => r.attendance_id === log.id);
+            });
+        }
+
         res.json(logs);
     } catch (error) {
         console.error('Error fetching my attendance logs:', error);
@@ -360,7 +373,20 @@ export const getAttendanceLogs = (req: Request, res: Response): void => {
             LEFT JOIN profiles p ON u.id = p.user_id
             LEFT JOIN jobs j ON p.job_id = j.id
             ORDER BY a.date DESC, a.check_in DESC
-        `).all();
+        `).all() as any[];
+
+        if (logs.length > 0) {
+            const attendanceIds = logs.map(l => l.id);
+            const placeholders = attendanceIds.map(() => '?').join(',');
+            const breaks = db.prepare(`SELECT * FROM shift_interruptions WHERE attendance_id IN (${placeholders})`).all(...attendanceIds) as any[];
+            const requests = db.prepare(`SELECT * FROM requests WHERE attendance_id IN (${placeholders})`).all(...attendanceIds) as any[];
+
+            logs.forEach(log => {
+                log.breaks = breaks.filter(b => b.attendance_id === log.id);
+                log.requests = requests.filter(r => r.attendance_id === log.id);
+            });
+        }
+
         res.json(logs);
     } catch (error) {
         console.error('Error fetching attendance logs:', error);

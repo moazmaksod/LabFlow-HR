@@ -13,6 +13,7 @@ interface AttendanceLog {
   status: string;
   location_lat: number | null;
   location_lng: number | null;
+  breaks?: any[];
 }
 
 export default function AttendanceLogs() {
@@ -103,6 +104,7 @@ export default function AttendanceLogs() {
                   <th className="px-6 py-3 font-medium">Date</th>
                   <th className="px-6 py-3 font-medium">Check In</th>
                   <th className="px-6 py-3 font-medium">Check Out</th>
+                  <th className="px-6 py-3 font-medium">Breaks</th>
                   <th className="px-6 py-3 font-medium">Status</th>
                 </tr>
               </thead>
@@ -116,6 +118,19 @@ export default function AttendanceLogs() {
                     <td className="px-6 py-4">{log.date}</td>
                     <td className="px-6 py-4 font-mono">{formatTime(log.check_in)}</td>
                     <td className="px-6 py-4 font-mono">{formatTime(log.check_out)}</td>
+                    <td className="px-6 py-4 font-mono text-xs">
+                      {log.breaks && log.breaks.length > 0 ? (
+                        <div className="space-y-1">
+                          {log.breaks.map((b: any, idx: number) => (
+                            <div key={idx} className="text-muted-foreground">
+                              {formatTime(b.start_time)} - {b.end_time ? formatTime(b.end_time) : 'Ongoing'}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                         log.status === 'present' ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' :

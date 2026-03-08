@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl, TouchableOpacity, Modal, TextInput, Alert } from 'react-native';
-import { Clock, Calendar, MapPin, X, FileText, CheckCircle } from 'lucide-react-native';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl, TouchableOpacity, Modal, TextInput, Alert, ScrollView } from 'react-native';
+import { Clock, Calendar, MapPin, X, FileText, CheckCircle, AlertCircle } from 'lucide-react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import api from '../lib/axios';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
@@ -14,6 +15,8 @@ interface AttendanceLog {
   location_lng: number;
   approved_overtime_minutes?: number;
   manager_note?: string;
+  breaks?: any[];
+  requests?: any[];
 }
 
 export default function HistoryScreen() {
@@ -40,6 +43,12 @@ export default function HistoryScreen() {
       setRefreshing(false);
     }
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchLogs();
+    }, [fetchLogs])
+  );
 
   useEffect(() => {
     fetchLogs();
@@ -94,66 +103,76 @@ export default function HistoryScreen() {
     }
   };
 
-  const renderItem = ({ item }: { item: AttendanceLog }) => (
-    <TouchableOpacity style={styles.logCard} onPress={() => {
-      setSelectedLog(item);
-      setNewCheckIn(item.check_in ? new Date(item.check_in) : new Date());
-      setNewCheckOut(item.check_out ? new Date(item.check_out) : new Date());
-      setModalVisible(true);
-    }}>
-      <View style={styles.logHeader}>
-        <View style={styles.dateContainer}>
-          <Calendar size={16} color="#71717a" />
-          <Text style={styles.dateText}>{formatDate(item.date)}</Text>
-        </View>
-        <View style={[styles.statusBadge, item.status === 'present' ? styles.presentBadge : styles.absentBadge]}>
-          <Text style={[styles.statusText, item.status === 'present' ? styles.presentText : styles.absentText]}>
-            {item.status.toUpperCase()}
-          </Text>
-        </View>
-      </View>
+  const renderItem = ({ item }: { item: AttendanceLog }) => {
+    const hasPendingCorrection = item.requests?.some(r => r.type === 'attendance_correction' && r.status === 'pending');
 
-      <View style={styles.logBody}>
-        <View style={styles.timeColumn}>
-          <Text style={styles.label}>Check In</Text>
-          <View style={styles.timeRow}>
-            <Clock size={14} color="#10b981" />
-            <Text style={styles.timeValue}>{formatTime(item.check_in)}</Text>
+    return (
+      <TouchableOpacity style={styles.logCard} onPress={() => {
+        setSelectedLog(item);
+        setNewCheckIn(item.check_in ? new Date(item.check_in) : new Date());
+        setNewCheckOut(item.check_out ? new Date(item.check_out) : new Date());
+        setModalVisible(true);
+      }}>
+        <View style={styles.logHeader}>
+          <View style={styles.dateContainer}>
+            <Calendar size={16} color="#71717a" />
+            <Text style={styles.dateText}>{formatDate(item.date)}</Text>
+          </View>
+          <View style={[styles.statusBadge, item.status === 'present' ? styles.presentBadge : styles.absentBadge]}>
+            <Text style={[styles.statusText, item.status === 'present' ? styles.presentText : styles.absentText]}>
+              {item.status.toUpperCase()}
+            </Text>
           </View>
         </View>
 
-        <View style={styles.timeColumn}>
-          <Text style={styles.label}>Check Out</Text>
-          <View style={styles.timeRow}>
-            <Clock size={14} color="#f59e0b" />
-            <Text style={styles.timeValue}>{formatTime(item.check_out)}</Text>
+        <View style={styles.logBody}>
+          <View style={styles.timeColumn}>
+            <Text style={styles.label}>Check In</Text>
+            <View style={styles.timeRow}>
+              <Clock size={14} color="#10b981" />
+              <Text style={styles.timeValue}>{formatTime(item.check_in)}</Text>
+            </View>
+          </View>
+
+          <View style={styles.timeColumn}>
+            <Text style={styles.label}>Check Out</Text>
+            <View style={styles.timeRow}>
+              <Clock size={14} color="#f59e0b" />
+              <Text style={styles.timeValue}>{formatTime(item.check_out)}</Text>
+            </View>
           </View>
         </View>
-      </View>
 
-      {/* Overtime and Notes Section */}
-      {(item.approved_overtime_minutes > 0 || item.manager_note) && (
-        <View style={styles.extraInfoContainer}>
-          {item.approved_overtime_minutes > 0 && (
-            <View style={styles.overtimeRow}>
-              <CheckCircle size={14} color="#8b5cf6" />
-              <Text style={styles.overtimeText}>
-                Approved Overtime: <Text style={styles.overtimeValue}>{item.approved_overtime_minutes} mins</Text>
-              </Text>
-            </View>
-          )}
-          {item.manager_note && (
-            <View style={styles.noteRow}>
-              <FileText size={14} color="#71717a" />
-              <Text style={styles.noteText}>
-                Manager Note: <Text style={styles.noteValue}>{item.manager_note}</Text>
-              </Text>
-            </View>
-          )}
-        </View>
-      )}
-    </TouchableOpacity>
-  );
+        {/* Overtime and Notes Section */}
+        {(item.approved_overtime_minutes > 0 || item.manager_note || hasPendingCorrection) && (
+          <View style={styles.extraInfoContainer}>
+            {hasPendingCorrection && (
+              <View style={styles.pendingRow}>
+                <AlertCircle size={14} color="#f59e0b" />
+                <Text style={styles.pendingText}>Pending Managerial Approval</Text>
+              </View>
+            )}
+            {item.approved_overtime_minutes > 0 && (
+              <View style={styles.overtimeRow}>
+                <CheckCircle size={14} color="#8b5cf6" />
+                <Text style={styles.overtimeText}>
+                  Approved Overtime: <Text style={styles.overtimeValue}>{item.approved_overtime_minutes} mins</Text>
+                </Text>
+              </View>
+            )}
+            {item.manager_note && (
+              <View style={styles.noteRow}>
+                <FileText size={14} color="#71717a" />
+                <Text style={styles.noteText}>
+                  Manager Note: <Text style={styles.noteValue}>{item.manager_note}</Text>
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  };
 
   if (loading && !refreshing) {
     return (
@@ -183,37 +202,64 @@ export default function HistoryScreen() {
 
       <Modal visible={modalVisible} animationType="slide" transparent={true}>
         <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
+          <ScrollView contentContainerStyle={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Request Attendance Edit</Text>
+              <Text style={styles.modalTitle}>Attendance Details</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
                 <X size={24} color="#18181b" />
               </TouchableOpacity>
             </View>
-            
-            <Text style={styles.label}>Proposed Check In</Text>
-            <TouchableOpacity onPress={() => setShowCheckInPicker(true)} style={styles.timeButton}>
-              <Text style={styles.timeButtonText}>{formatTime(newCheckIn.toISOString())}</Text>
-            </TouchableOpacity>
-            {showCheckInPicker && (
-              <DateTimePicker value={newCheckIn} mode="time" onChange={handleCheckInChange} />
+
+            {selectedLog?.breaks && selectedLog.breaks.length > 0 && (
+              <View style={styles.breakSection}>
+                <Text style={styles.sectionTitle}>Breaks Taken</Text>
+                {selectedLog.breaks.map((b, index) => (
+                  <View key={index} style={styles.breakRow}>
+                    <Clock size={14} color="#71717a" />
+                    <Text style={styles.breakText}>
+                      {formatTime(b.start_time)} - {b.end_time ? formatTime(b.end_time) : 'Ongoing'}
+                    </Text>
+                  </View>
+                ))}
+              </View>
             )}
+
+            <View style={styles.divider} />
+
+            <Text style={styles.sectionTitle}>Request Edit</Text>
             
-            <Text style={styles.label}>Proposed Check Out</Text>
-            <TouchableOpacity onPress={() => setShowCheckOutPicker(true)} style={styles.timeButton}>
-              <Text style={styles.timeButtonText}>{formatTime(newCheckOut.toISOString())}</Text>
-            </TouchableOpacity>
-            {showCheckOutPicker && (
-              <DateTimePicker value={newCheckOut} mode="time" onChange={handleCheckOutChange} />
+            {selectedLog?.requests?.some(r => r.type === 'attendance_correction' && r.status === 'pending') ? (
+              <View style={styles.pendingBadgeLarge}>
+                <AlertCircle size={20} color="#f59e0b" />
+                <Text style={styles.pendingBadgeLargeText}>Pending Managerial Approval</Text>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.label}>Proposed Check In</Text>
+                <TouchableOpacity onPress={() => setShowCheckInPicker(true)} style={styles.timeButton}>
+                  <Text style={styles.timeButtonText}>{formatTime(newCheckIn.toISOString())}</Text>
+                </TouchableOpacity>
+                {showCheckInPicker && (
+                  <DateTimePicker value={newCheckIn} mode="time" onChange={handleCheckInChange} />
+                )}
+                
+                <Text style={styles.label}>Proposed Check Out</Text>
+                <TouchableOpacity onPress={() => setShowCheckOutPicker(true)} style={styles.timeButton}>
+                  <Text style={styles.timeButtonText}>{formatTime(newCheckOut.toISOString())}</Text>
+                </TouchableOpacity>
+                {showCheckOutPicker && (
+                  <DateTimePicker value={newCheckOut} mode="time" onChange={handleCheckOutChange} />
+                )}
+                
+                <Text style={styles.label}>Reason</Text>
+                <TextInput style={styles.input} value={reason} onChangeText={setReason} multiline placeholder="Enter reason for edit" />
+                
+                <TouchableOpacity style={styles.submitButton} onPress={handleRequestEdit}>
+                  <Text style={styles.submitButtonText}>Submit Request</Text>
+                </TouchableOpacity>
+              </>
             )}
-            
-            <Text style={styles.label}>Reason</Text>
-            <TextInput style={styles.input} value={reason} onChangeText={setReason} multiline placeholder="Enter reason for edit" />
-            
-            <TouchableOpacity style={styles.submitButton} onPress={handleRequestEdit}>
-              <Text style={styles.submitButtonText}>Submit Request</Text>
-            </TouchableOpacity>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
     </View>
@@ -270,4 +316,13 @@ const styles = StyleSheet.create({
   noteRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
   noteText: { fontSize: 12, color: '#71717a', flex: 1 },
   noteValue: { fontStyle: 'italic', color: '#3f3f46' },
+  pendingRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  pendingText: { fontSize: 12, color: '#f59e0b', fontWeight: '600' },
+  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#18181b', marginBottom: 12 },
+  breakSection: { marginBottom: 16 },
+  breakRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#f4f4f5' },
+  breakText: { fontSize: 14, color: '#3f3f46' },
+  divider: { height: 1, backgroundColor: '#e4e4e7', marginVertical: 16 },
+  pendingBadgeLarge: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#fef3c7', padding: 16, borderRadius: 8, justifyContent: 'center' },
+  pendingBadgeLargeText: { color: '#d97706', fontWeight: 'bold', fontSize: 14 },
 });
