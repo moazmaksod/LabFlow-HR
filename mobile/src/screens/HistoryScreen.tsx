@@ -118,9 +118,9 @@ export default function HistoryScreen() {
             <Calendar size={16} color="#71717a" />
             <Text style={styles.dateText}>{formatDate(item.date)}</Text>
           </View>
-          <View style={[styles.statusBadge, item.status === 'present' ? styles.presentBadge : styles.absentBadge]}>
-            <Text style={[styles.statusText, item.status === 'present' ? styles.presentText : styles.absentText]}>
-              {item.status.toUpperCase()}
+          <View style={[styles.statusBadge, (item.status === 'present' || item.status === 'on_time') ? styles.presentBadge : styles.absentBadge]}>
+            <Text style={[styles.statusText, (item.status === 'present' || item.status === 'on_time') ? styles.presentText : styles.absentText]}>
+              {item.status.replace('_', ' ').toUpperCase()}
             </Text>
           </View>
         </View>
