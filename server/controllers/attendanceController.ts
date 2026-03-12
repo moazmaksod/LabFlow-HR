@@ -53,11 +53,17 @@ export const clockAttendance = (req: Request, res: Response): void => {
             }
         }
 
-        // Extract date from timestamp (YYYY-MM-DD)
-        const date = new Date(timestamp).toISOString().split('T')[0];
+        // Extract date from timestamp (YYYY-MM-DD) based on local time
+        const d = new Date(timestamp);
+        const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
         // Check if there is an active session (not checked out)
-        const activeSession = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ? AND check_out IS NULL').get(userId, date) as any;
+        let activeSession;
+        if (type === 'check_in') {
+            activeSession = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ? AND check_out IS NULL').get(userId, date) as any;
+        } else {
+            activeSession = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND check_out IS NULL ORDER BY check_in DESC LIMIT 1').get(userId) as any;
+        }
 
         if (type === 'check_in') {
             if (activeSession) {
@@ -225,7 +231,7 @@ export const clockAttendance = (req: Request, res: Response): void => {
                 try {
                     const schedule = JSON.parse(userProfile.weekly_schedule);
                     const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-                    const todayName = days[new Date(timestamp).getDay()];
+                    const todayName = days[new Date(activeSession.check_in).getDay()];
                     const todaySchedule = schedule[todayName];
 
                     if (Array.isArray(todaySchedule) && todaySchedule.length > 0) {
@@ -237,8 +243,14 @@ export const clockAttendance = (req: Request, res: Response): void => {
                         
                         todaySchedule.forEach(shift => {
                             const [schedHours, schedMinutes] = shift.end.split(':').map(Number);
-                            const scheduledTime = new Date(timestamp);
+                            const scheduledTime = new Date(activeSession.check_in);
                             scheduledTime.setHours(schedHours, schedMinutes, 0, 0);
+                            
+                            // Handle midnight crossing for shift end
+                            const [startHours, startMinutes] = shift.start.split(':').map(Number);
+                            if (schedHours < startHours || (schedHours === startHours && schedMinutes < startMinutes)) {
+                                scheduledTime.setDate(scheduledTime.getDate() + 1);
+                            }
                             
                             const diff = Math.abs(clockOutTime.getTime() - scheduledTime.getTime());
                             if (diff < minDiff) {
@@ -248,8 +260,14 @@ export const clockAttendance = (req: Request, res: Response): void => {
                         });
 
                         const [schedHours, schedMinutes] = closestShift.end.split(':').map(Number);
-                        const scheduledTime = new Date(timestamp);
+                        const scheduledTime = new Date(activeSession.check_in);
                         scheduledTime.setHours(schedHours, schedMinutes, 0, 0);
+                        
+                        // Handle midnight crossing for shift end
+                        const [startHours, startMinutes] = closestShift.start.split(':').map(Number);
+                        if (schedHours < startHours || (schedHours === startHours && schedMinutes < startMinutes)) {
+                            scheduledTime.setDate(scheduledTime.getDate() + 1);
+                        }
 
                         const diffMinutes = (clockOutTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
                         const gracePeriod = userProfile.grace_period || 15;
@@ -324,8 +342,15 @@ export const syncOfflineLogs = (req: Request, res: Response): void => {
             const results = [];
             for (const log of logsToSync) {
                 const { type, timestamp, lat, lng } = log;
-                const date = new Date(timestamp).toISOString().split('T')[0];
-                const existingRecord = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ?').get(userId, date) as any;
+                const d = new Date(timestamp);
+                const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                
+                let existingRecord;
+                if (type === 'check_in') {
+                    existingRecord = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ?').get(userId, date) as any;
+                } else {
+                    existingRecord = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND check_out IS NULL ORDER BY check_in DESC LIMIT 1').get(userId) as any;
+                }
 
                 if (type === 'check_in') {
                     if (!existingRecord) {
@@ -473,8 +498,7 @@ export const stepAway = (req: Request, res: Response): void => {
             return;
         }
 
-        const date = new Date(timestamp).toISOString().split('T')[0];
-        const activeAttendance = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ? AND check_out IS NULL').get(userId, date) as any;
+        const activeAttendance = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND check_out IS NULL ORDER BY check_in DESC LIMIT 1').get(userId) as any;
 
         if (!activeAttendance) {
             res.status(400).json({ error: 'No active attendance found for today' });
@@ -545,8 +569,7 @@ export const resumeWork = (req: Request, res: Response): void => {
             return;
         }
 
-        const date = new Date(timestamp).toISOString().split('T')[0];
-        const activeAttendance = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ? AND check_out IS NULL').get(userId, date) as any;
+        const activeAttendance = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND check_out IS NULL ORDER BY check_in DESC LIMIT 1').get(userId) as any;
 
         if (!activeAttendance) {
             res.status(400).json({ error: 'No active attendance found for today' });
