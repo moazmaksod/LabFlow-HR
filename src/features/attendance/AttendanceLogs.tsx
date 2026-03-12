@@ -80,10 +80,11 @@ export default function AttendanceLogs() {
               className="pl-9 pr-4 py-2 bg-background border border-border rounded-lg text-sm appearance-none"
             >
               <option value="">All Statuses</option>
-              <option value="present">Present</option>
-              <option value="late">Late</option>
+              <option value="on_time">On Time</option>
+              <option value="late_in">Late In</option>
+              <option value="early_out">Early Out</option>
               <option value="absent">Absent</option>
-              <option value="half-day">Half Day</option>
+              <option value="half_day">Half Day</option>
             </select>
           </div>
         </div>
@@ -133,9 +134,11 @@ export default function AttendanceLogs() {
                     </td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        log.status === 'present' || log.status === 'on_time' ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' :
-                        log.status === 'late' || log.status === 'late_in' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400' :
+                        log.status === 'on_time' ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' :
+                        log.status === 'late_in' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400' :
+                        log.status === 'early_out' ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400' :
                         log.status === 'absent' ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400' :
+                        log.status === 'half_day' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' :
                         'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400'
                       }`}>
                         {log.status.replace('_', ' ').toUpperCase()}

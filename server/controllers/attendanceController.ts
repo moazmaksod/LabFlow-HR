@@ -65,8 +65,8 @@ export const clockAttendance = (req: Request, res: Response): void => {
                 return;
             }
 
-            // Determine status (present or late) based on weekly_schedule
-            let status = 'present';
+            // Determine status (on_time or late_in) based on weekly_schedule
+            let status = 'on_time';
             const userProfile = db.prepare(`
                 SELECT p.weekly_schedule, j.grace_period, p.allow_overtime, p.max_overtime_hours
                 FROM profiles p
@@ -278,6 +278,13 @@ export const clockAttendance = (req: Request, res: Response): void => {
                             // Create pending early leave request for early punch out
                             const earlyMinutes = Math.floor(Math.abs(diffMinutes));
                             
+                            // Update status to early_out if they were on_time
+                            db.prepare(`
+                                UPDATE attendance 
+                                SET status = CASE WHEN status = 'on_time' THEN 'early_out' ELSE status END
+                                WHERE id = ?
+                            `).run(activeSession.id);
+
                             db.prepare(`
                                 INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
                                 VALUES (?, 'early_leave_approval', ?, ?, ?, ?, 'pending')
@@ -324,7 +331,7 @@ export const syncOfflineLogs = (req: Request, res: Response): void => {
                     if (!existingRecord) {
                         const info = db.prepare(`
                             INSERT INTO attendance (user_id, check_in, date, location_lat, location_lng, status)
-                            VALUES (?, ?, ?, ?, ?, 'present')
+                            VALUES (?, ?, ?, ?, ?, 'on_time')
                         `).run(userId, timestamp, date, lat, lng);
                         results.push({ logId: log.id, status: 'success', action: 'inserted' });
                     } else {
@@ -427,8 +434,8 @@ export const getAttendanceStats = (req: Request, res: Response): void => {
 
         const todayStats = db.prepare(`
             SELECT 
-                SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) as present,
-                SUM(CASE WHEN status = 'late' THEN 1 ELSE 0 END) as late,
+                SUM(CASE WHEN status = 'on_time' THEN 1 ELSE 0 END) as present,
+                SUM(CASE WHEN status = 'late_in' THEN 1 ELSE 0 END) as late,
                 SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) as absent
             FROM attendance
             WHERE date = date('now', 'localtime')

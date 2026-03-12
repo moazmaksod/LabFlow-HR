@@ -161,7 +161,7 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                         
                         db.prepare(`
                             INSERT INTO attendance (user_id, check_in, check_out, date, status)
-                            VALUES (?, ?, ?, ?, 'present')
+                            VALUES (?, ?, ?, ?, 'on_time')
                         `).run(
                             requestRecord.user_id, 
                             requestRecord.requested_check_in, 

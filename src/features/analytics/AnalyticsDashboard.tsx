@@ -7,7 +7,14 @@ import {
 } from 'recharts';
 import { Users, Clock, AlertTriangle, CheckCircle } from 'lucide-react';
 
-const COLORS = ['#10b981', '#f59e0b', '#ef4444', '#6366f1'];
+const STATUS_COLORS: Record<string, string> = {
+  'on_time': '#10b981', // green
+  'late_in': '#f59e0b', // yellow
+  'early_out': '#f97316', // orange
+  'absent': '#ef4444', // red
+  'half_day': '#a855f7', // purple
+  'default': '#6366f1' // indigo
+};
 
 interface StatsData {
   statusDistribution: { name: string, value: number }[];
@@ -108,7 +115,7 @@ export default function AnalyticsDashboard() {
                     dataKey="value"
                   >
                     {stats.statusDistribution.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      <Cell key={`cell-${index}`} fill={STATUS_COLORS[entry.name] || STATUS_COLORS['default']} />
                     ))}
                   </Pie>
                   <Tooltip 

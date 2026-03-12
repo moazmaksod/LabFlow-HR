@@ -118,8 +118,20 @@ export default function HistoryScreen() {
             <Calendar size={16} color="#71717a" />
             <Text style={styles.dateText}>{formatDate(item.date)}</Text>
           </View>
-          <View style={[styles.statusBadge, (item.status === 'present' || item.status === 'on_time') ? styles.presentBadge : styles.absentBadge]}>
-            <Text style={[styles.statusText, (item.status === 'present' || item.status === 'on_time') ? styles.presentText : styles.absentText]}>
+          <View style={[styles.statusBadge, 
+            item.status === 'on_time' ? styles.onTimeBadge : 
+            item.status === 'late_in' ? styles.lateInBadge : 
+            item.status === 'early_out' ? styles.earlyOutBadge : 
+            item.status === 'half_day' ? styles.halfDayBadge : 
+            styles.absentBadge
+          ]}>
+            <Text style={[styles.statusText, 
+              item.status === 'on_time' ? styles.onTimeText : 
+              item.status === 'late_in' ? styles.lateInText : 
+              item.status === 'early_out' ? styles.earlyOutText : 
+              item.status === 'half_day' ? styles.halfDayText : 
+              styles.absentText
+            ]}>
               {item.status.replace('_', ' ').toUpperCase()}
             </Text>
           </View>
@@ -286,10 +298,16 @@ const styles = StyleSheet.create({
   dateContainer: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   dateText: { fontSize: 16, fontWeight: '600', color: '#18181b' },
   statusBadge: { paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6 },
-  presentBadge: { backgroundColor: '#dcfce7' },
+  onTimeBadge: { backgroundColor: '#dcfce7' },
+  lateInBadge: { backgroundColor: '#fef08a' },
+  earlyOutBadge: { backgroundColor: '#ffedd5' },
+  halfDayBadge: { backgroundColor: '#f3e8ff' },
   absentBadge: { backgroundColor: '#fee2e2' },
   statusText: { fontSize: 10, fontWeight: 'bold' },
-  presentText: { color: '#166534' },
+  onTimeText: { color: '#166534' },
+  lateInText: { color: '#854d0e' },
+  earlyOutText: { color: '#c2410c' },
+  halfDayText: { color: '#7e22ce' },
   absentText: { color: '#991b1b' },
   logBody: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#f4f4f5' },
   timeColumn: { flex: 1 },

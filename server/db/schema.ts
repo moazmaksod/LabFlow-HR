@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS attendance (
     check_in DATETIME NOT NULL,
     check_out DATETIME,
     date DATE NOT NULL,
-    status TEXT NOT NULL CHECK(status IN ('present', 'late', 'absent', 'half-day', 'late_in', 'on_time')) DEFAULT 'present',
+    status TEXT NOT NULL CHECK(status IN ('on_time', 'late_in', 'early_out', 'absent', 'half_day')) DEFAULT 'on_time',
     current_status TEXT NOT NULL CHECK(current_status IN ('working', 'away')) DEFAULT 'working',
     location_lat REAL,
     location_lng REAL,

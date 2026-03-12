@@ -71,10 +71,56 @@ export function initDb() {
     }
 
     // Attendance migrations
-    if (!attendanceColumns.some(c => c.name === 'current_status')) {
+    const attendanceSql = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='attendance'").get() as any;
+    if (attendanceSql && attendanceSql.sql.includes("'present'")) {
+      console.log('Migrating attendance table to new status constraints...');
+      db.exec(`
+        PRAGMA foreign_keys=off;
+        BEGIN TRANSACTION;
+        
+        CREATE TABLE attendance_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            check_in DATETIME NOT NULL,
+            check_out DATETIME,
+            date DATE NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('on_time', 'late_in', 'early_out', 'absent', 'half_day')) DEFAULT 'on_time',
+            current_status TEXT NOT NULL CHECK(current_status IN ('working', 'away')) DEFAULT 'working',
+            location_lat REAL,
+            location_lng REAL,
+            approved_overtime_minutes INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        
+        INSERT INTO attendance_new SELECT * FROM attendance;
+        
+        -- Update legacy statuses
+        UPDATE attendance_new SET status = 'on_time' WHERE status = 'present';
+        UPDATE attendance_new SET status = 'late_in' WHERE status = 'late';
+        UPDATE attendance_new SET status = 'half_day' WHERE status = 'half-day';
+
+        DROP TABLE attendance;
+        ALTER TABLE attendance_new RENAME TO attendance;
+        
+        CREATE INDEX IF NOT EXISTS idx_attendance_user_id ON attendance(user_id);
+        
+        CREATE TRIGGER IF NOT EXISTS update_attendance_updated_at AFTER UPDATE ON attendance
+        FOR EACH ROW WHEN NEW.updated_at <= OLD.updated_at
+        BEGIN UPDATE attendance SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;
+        
+        COMMIT;
+        PRAGMA foreign_keys=on;
+      `);
+      console.log('Attendance table migrated successfully.');
+    }
+
+    const newAttendanceColumns = db.prepare("PRAGMA table_info(attendance)").all() as any[];
+    if (!newAttendanceColumns.some(c => c.name === 'current_status')) {
       db.exec("ALTER TABLE attendance ADD COLUMN current_status TEXT NOT NULL DEFAULT 'working';");
     }
-    if (!attendanceColumns.some(c => c.name === 'approved_overtime_minutes')) {
+    if (!newAttendanceColumns.some(c => c.name === 'approved_overtime_minutes')) {
       db.exec("ALTER TABLE attendance ADD COLUMN approved_overtime_minutes INTEGER DEFAULT 0;");
     }
 
