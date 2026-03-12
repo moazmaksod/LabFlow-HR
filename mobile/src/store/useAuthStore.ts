@@ -14,7 +14,7 @@ interface AuthState {
   token: string | null;
   isAuthenticated: boolean;
   login: (user: User, token: string) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 // Custom storage engine for Zustand using Expo SecureStore
@@ -50,7 +50,14 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       isAuthenticated: false,
       login: (user, token) => set({ user, token, isAuthenticated: true }),
-      logout: () => set({ user: null, token: null, isAuthenticated: false }),
+      logout: async () => {
+        set({ user: null, token: null, isAuthenticated: false });
+        try {
+          await SecureStore.deleteItemAsync('labflow-mobile-auth');
+        } catch (e) {
+          console.error('Failed to clear SecureStore on logout', e);
+        }
+      },
     }),
     {
       name: 'labflow-mobile-auth',

@@ -1,9 +1,29 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAuthStore } from '../store/useAuthStore';
+import api from '../lib/axios';
 
 export default function PendingApprovalScreen() {
-  const logout = useAuthStore((state) => state.logout);
+  const { logout, login, user, token } = useAuthStore();
+
+  useFocusEffect(
+    useCallback(() => {
+      const checkStatus = async () => {
+        try {
+          const res = await api.get('/users/profile');
+          // If the role changed to employee or manager, update the user state
+          if (res.data && res.data.role !== 'pending' && user && token) {
+            login({ ...user, role: res.data.role }, token);
+          }
+        } catch (error) {
+          // If 401, the interceptor will handle the logout
+          console.error('Error checking status:', error);
+        }
+      };
+      checkStatus();
+    }, [user, token, login])
+  );
 
   return (
     <View style={styles.container}>
@@ -17,7 +37,7 @@ export default function PendingApprovalScreen() {
           Please check back later or contact your HR administrator.
         </Text>
         
-        <TouchableOpacity style={styles.button} onPress={logout}>
+        <TouchableOpacity style={styles.button} onPress={() => logout()}>
           <Text style={styles.buttonText}>Log Out</Text>
         </TouchableOpacity>
       </View>
