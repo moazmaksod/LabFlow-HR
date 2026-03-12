@@ -6,6 +6,7 @@ import {
   PieChart, Pie, Cell, Legend
 } from 'recharts';
 import { Users, Clock, AlertTriangle, CheckCircle } from 'lucide-react';
+import { formatStatusLabel } from '../../lib/utils';
 
 const STATUS_COLORS: Record<string, string> = {
   'on_time': '#10b981', // green
@@ -36,6 +37,12 @@ export default function AnalyticsDashboard() {
   }
 
   const totalToday = (stats?.today.present || 0) + (stats?.today.late || 0) + (stats?.today.absent || 0);
+
+  const formattedStatusDistribution = stats?.statusDistribution?.map(item => ({
+    ...item,
+    originalName: item.name,
+    name: formatStatusLabel(item.name)
+  })) || [];
 
   return (
     <div className="space-y-6">
@@ -106,7 +113,7 @@ export default function AnalyticsDashboard() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={stats.statusDistribution}
+                    data={formattedStatusDistribution}
                     cx="50%"
                     cy="50%"
                     innerRadius={80}
@@ -114,8 +121,8 @@ export default function AnalyticsDashboard() {
                     paddingAngle={5}
                     dataKey="value"
                   >
-                    {stats.statusDistribution.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={STATUS_COLORS[entry.name] || STATUS_COLORS['default']} />
+                    {formattedStatusDistribution.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={STATUS_COLORS[entry.originalName] || STATUS_COLORS['default']} />
                     ))}
                   </Pie>
                   <Tooltip 

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../lib/axios';
 import { Search, Filter, Calendar as CalendarIcon } from 'lucide-react';
+import { formatStatusLabel } from '../../lib/utils';
 
 interface AttendanceLog {
   id: number;
@@ -141,7 +142,7 @@ export default function AttendanceLogs() {
                         log.status === 'half_day' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' :
                         'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400'
                       }`}>
-                        {log.status.replace('_', ' ').toUpperCase()}
+                        {formatStatusLabel(log.status)}
                       </span>
                     </td>
                   </tr>

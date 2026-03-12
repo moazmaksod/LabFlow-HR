@@ -4,6 +4,7 @@ import { Clock, Calendar, MapPin, X, FileText, CheckCircle, AlertCircle } from '
 import { useFocusEffect } from '@react-navigation/native';
 import api from '../lib/axios';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { formatStatusLabel } from '../lib/utils';
 
 interface AttendanceLog {
   id: number;
@@ -132,7 +133,7 @@ export default function HistoryScreen() {
               item.status === 'half_day' ? styles.halfDayText : 
               styles.absentText
             ]}>
-              {item.status.replace('_', ' ').toUpperCase()}
+              {formatStatusLabel(item.status)}
             </Text>
           </View>
         </View>
