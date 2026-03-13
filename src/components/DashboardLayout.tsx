@@ -4,6 +4,7 @@ import { useAppStore } from '../store/useAppStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { Moon, Sun, Globe, LayoutDashboard, Users, Calendar, FileText, Settings, LogOut, Briefcase, DollarSign } from 'lucide-react';
 import { cn } from '../lib/utils';
+import TimezoneClock from './TimezoneClock';
 
 export default function DashboardLayout() {
   const { t } = useTranslation();
@@ -75,6 +76,8 @@ export default function DashboardLayout() {
           </h2>
           
           <div className="flex items-center gap-4">
+            <TimezoneClock />
+            
             {/* Language Toggle */}
             <button 
               onClick={toggleLanguage}
