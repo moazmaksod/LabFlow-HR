@@ -4,19 +4,33 @@ import db from '../db/index.js';
 export const createRequest = (req: Request, res: Response): void => {
     try {
         const userId = (req as any).user.id;
-        const { reason, requested_check_in, requested_check_out, attendance_id } = req.body;
+        const { reason, requested_check_in, requested_check_out, attendance_id, type } = req.body;
 
         if (!reason) {
             res.status(400).json({ error: 'Reason is required' });
             return;
         }
 
+        const requestType = type || 'manual_clock';
+
+        if (attendance_id) {
+            const existingPending = db.prepare(`
+                SELECT id FROM requests 
+                WHERE user_id = ? AND attendance_id = ? AND status = 'pending' AND type = ?
+            `).get(userId, attendance_id, requestType);
+            
+            if (existingPending) {
+                res.status(400).json({ error: 'A pending request of this type already exists for this attendance record.' });
+                return;
+            }
+        }
+
         const insert = db.prepare(`
-            INSERT INTO requests (user_id, attendance_id, requested_check_in, requested_check_out, reason, status)
-            VALUES (?, ?, ?, ?, ?, 'pending')
+            INSERT INTO requests (user_id, attendance_id, requested_check_in, requested_check_out, type, reason, status)
+            VALUES (?, ?, ?, ?, ?, ?, 'pending')
         `);
         
-        const info = insert.run(userId, attendance_id || null, requested_check_in || null, requested_check_out || null, reason);
+        const info = insert.run(userId, attendance_id || null, requested_check_in || null, requested_check_out || null, requestType, reason);
         const newReq = db.prepare('SELECT * FROM requests WHERE id = ?').get(info.lastInsertRowid);
         
         res.status(201).json(newReq);
@@ -67,6 +81,16 @@ export const createAttendanceCorrection = (req: Request, res: Response): void =>
             return;
         }
 
+        const existingPending = db.prepare(`
+            SELECT id FROM requests 
+            WHERE user_id = ? AND attendance_id = ? AND status = 'pending' AND type = 'attendance_correction'
+        `).get(userId, attendance_id);
+        
+        if (existingPending) {
+            res.status(400).json({ error: 'A pending attendance correction request already exists for this record.' });
+            return;
+        }
+
         const details = JSON.stringify({ new_clock_in, new_clock_out });
         
         const insert = db.prepare(`
@@ -105,6 +129,11 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
             return;
         }
 
+        if (status === 'rejected' && (!manager_note || manager_note.trim() === '')) {
+            res.status(400).json({ error: 'A manager note is required when rejecting a request.' });
+            return;
+        }
+
         const transaction = db.transaction(() => {
             // Update the request status and manager note
             db.prepare('UPDATE requests SET status = ?, manager_note = ? WHERE id = ?').run(status, manager_note || null, id);
@@ -128,6 +157,18 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                     );
                 } else if (requestRecord.type === 'attendance_correction' && requestRecord.details) {
                     const details = JSON.parse(requestRecord.details);
+                    
+                    // Fetch original attendance to save it in the request details for auditing
+                    const originalAttendance = db.prepare('SELECT check_in, check_out FROM attendance WHERE id = ?').get(requestRecord.attendance_id) as any;
+                    if (originalAttendance) {
+                        const updatedDetails = {
+                            ...details,
+                            original_check_in: originalAttendance.check_in,
+                            original_check_out: originalAttendance.check_out
+                        };
+                        db.prepare('UPDATE requests SET details = ? WHERE id = ?').run(JSON.stringify(updatedDetails), id);
+                    }
+
                     const updateQuery = `
                         UPDATE attendance 
                         SET check_in = COALESCE(?, check_in), 
@@ -139,8 +180,22 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                         details.new_clock_out || null, 
                         requestRecord.attendance_id
                     );
-                } else if (requestRecord.requested_check_in || requestRecord.requested_check_out) {
+                } else if (requestRecord.type === 'early_leave_approval' && requestRecord.attendance_id) {
+                    db.prepare("UPDATE attendance SET status = 'on_time' WHERE id = ? AND status = 'early_out'").run(requestRecord.attendance_id);
+                } else if (requestRecord.type === 'manual_clock' && (requestRecord.requested_check_in || requestRecord.requested_check_out)) {
                     if (requestRecord.attendance_id) {
+                        // Fetch original attendance to save it in the request details for auditing
+                        const originalAttendance = db.prepare('SELECT check_in, check_out FROM attendance WHERE id = ?').get(requestRecord.attendance_id) as any;
+                        if (originalAttendance) {
+                            const details = requestRecord.details ? JSON.parse(requestRecord.details) : {};
+                            const updatedDetails = {
+                                ...details,
+                                original_check_in: originalAttendance.check_in,
+                                original_check_out: originalAttendance.check_out
+                            };
+                            db.prepare('UPDATE requests SET details = ? WHERE id = ?').run(JSON.stringify(updatedDetails), id);
+                        }
+
                         // Update existing attendance
                         const updateQuery = `
                             UPDATE attendance 
