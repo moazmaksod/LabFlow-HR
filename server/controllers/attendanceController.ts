@@ -21,9 +21,10 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
 export const clockAttendance = (req: Request, res: Response): void => {
     try {
         const userId = (req as any).user.id;
-        const { type, timestamp, lat, lng, deviceId } = req.body;
+        const { type, lat, lng, deviceId } = req.body;
+        const timestamp = new Date().toISOString(); // Server is the single source of truth
 
-        if (!type || !['check_in', 'check_out'].includes(type) || !timestamp || lat === undefined || lng === undefined || !deviceId) {
+        if (!type || !['check_in', 'check_out'].includes(type) || lat === undefined || lng === undefined || !deviceId) {
             res.status(400).json({ error: 'Missing required fields or deviceId' });
             return;
         }
@@ -344,8 +345,15 @@ export const syncOfflineLogs = (req: Request, res: Response): void => {
             const timezone = settingsForTz?.timezone || 'UTC';
 
             const results = [];
+            const currentServerTime = Date.now();
+            
             for (const log of logsToSync) {
-                const { type, timestamp, lat, lng } = log;
+                const { type, delay_in_milliseconds, lat, lng } = log;
+                
+                // Calculate true historical time securely
+                const delay = typeof delay_in_milliseconds === 'number' ? delay_in_milliseconds : 0;
+                const timestamp = new Date(currentServerTime - delay).toISOString();
+                
                 const date = getDateStringInTimezone(timestamp, timezone);
                 
                 let existingRecord;
@@ -491,10 +499,11 @@ export const getAttendanceStats = (req: Request, res: Response): void => {
 export const stepAway = (req: Request, res: Response): void => {
     try {
         const userId = (req as any).user.id;
-        const { timestamp, deviceId } = req.body;
+        const { deviceId } = req.body;
+        const timestamp = new Date().toISOString(); // Server is the single source of truth
 
-        if (!timestamp || !deviceId) {
-            res.status(400).json({ error: 'Missing timestamp or deviceId' });
+        if (!deviceId) {
+            res.status(400).json({ error: 'Missing deviceId' });
             return;
         }
 
@@ -562,10 +571,11 @@ export const stepAway = (req: Request, res: Response): void => {
 export const resumeWork = (req: Request, res: Response): void => {
     try {
         const userId = (req as any).user.id;
-        const { timestamp, deviceId } = req.body;
+        const { deviceId } = req.body;
+        const timestamp = new Date().toISOString(); // Server is the single source of truth
 
-        if (!timestamp || !deviceId) {
-            res.status(400).json({ error: 'Missing timestamp or deviceId' });
+        if (!deviceId) {
+            res.status(400).json({ error: 'Missing deviceId' });
             return;
         }
 

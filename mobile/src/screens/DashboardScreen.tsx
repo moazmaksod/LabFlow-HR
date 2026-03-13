@@ -208,7 +208,17 @@ export default function DashboardScreen() {
 
     setSyncing(true);
     try {
-      const response = await api.post('/attendance/sync', { logs });
+      const now = Date.now();
+      const logsWithDelay = logs.map(log => {
+        const originalTime = new Date(log.timestamp).getTime();
+        const delay_in_milliseconds = Math.max(0, now - originalTime);
+        return {
+          ...log,
+          delay_in_milliseconds
+        };
+      });
+
+      const response = await api.post('/attendance/sync', { logs: logsWithDelay });
       
       // Mark successfully processed logs as synced
       const syncedIds = response.data.results.map((r: any) => r.logId);
