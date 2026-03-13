@@ -13,6 +13,16 @@ interface Settings {
   timezone: string;
 }
 
+const TIMEZONE_GROUPS = {
+  "UTC": ["UTC"],
+  "Africa": ["Africa/Cairo", "Africa/Casablanca", "Africa/Johannesburg", "Africa/Lagos", "Africa/Nairobi"],
+  "America": ["America/Chicago", "America/Los_Angeles", "America/Mexico_City", "America/New_York", "America/Sao_Paulo", "America/Toronto"],
+  "Asia": ["Asia/Bangkok", "Asia/Dubai", "Asia/Hong_Kong", "Asia/Jakarta", "Asia/Karachi", "Asia/Kolkata", "Asia/Riyadh", "Asia/Seoul", "Asia/Shanghai", "Asia/Singapore", "Asia/Tokyo"],
+  "Australia": ["Australia/Brisbane", "Australia/Melbourne", "Australia/Perth", "Australia/Sydney"],
+  "Europe": ["Europe/Amsterdam", "Europe/Berlin", "Europe/Istanbul", "Europe/London", "Europe/Madrid", "Europe/Moscow", "Europe/Paris", "Europe/Rome"],
+  "Pacific": ["Pacific/Auckland", "Pacific/Fiji", "Pacific/Honolulu"]
+};
+
 export default function SettingsView() {
   const { t } = useTranslation();
   const { token } = useAuthStore();
@@ -187,14 +197,20 @@ export default function SettingsView() {
               Company Timezone (IANA Format)
             </label>
             <div className="flex items-center gap-4">
-              <input
-                type="text"
+              <select
                 required
                 value={timezone}
                 onChange={(e) => setTimezone(e.target.value)}
                 className="w-full md:w-1/2 px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                placeholder="e.g., Africa/Cairo, UTC, America/New_York"
-              />
+              >
+                {Object.entries(TIMEZONE_GROUPS).map(([region, zones]) => (
+                  <optgroup key={region} label={region}>
+                    {zones.map(zone => (
+                      <option key={zone} value={zone}>{zone}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
               <span className="text-sm text-gray-500 dark:text-gray-400">
                 Used for attendance date calculation.
               </span>
