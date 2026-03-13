@@ -3,7 +3,7 @@ import db from '../db/index.js';
 
 export const getUsers = (req: Request, res: Response): void => {
     try {
-        // Get users with their profile and job info
+        // Get users with their profile and job info, excluding managers
         const users = db.prepare(`
             SELECT 
                 u.id, u.name, u.email, u.role, u.created_at,
@@ -13,6 +13,7 @@ export const getUsers = (req: Request, res: Response): void => {
             FROM users u
             LEFT JOIN profiles p ON u.id = p.user_id
             LEFT JOIN jobs j ON p.job_id = j.id
+            WHERE u.role != 'manager'
             ORDER BY u.created_at DESC
         `).all();
         res.json(users);

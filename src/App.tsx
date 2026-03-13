@@ -17,6 +17,7 @@ import AnalyticsDashboard from './features/analytics/AnalyticsDashboard';
 import RequestManagement from './features/requests/RequestManagement';
 import PayrollView from './features/payroll/PayrollView';
 import SettingsView from './features/settings/SettingsView';
+import ManagerProfile from './features/profile/ManagerProfile';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -62,6 +63,7 @@ export default function App() {
             <Route path="requests" element={<RequestManagement />} />
             <Route path="payroll" element={<PayrollView />} />
             <Route path="settings" element={<SettingsView />} />
+            <Route path="profile" element={<ManagerProfile />} />
           </Route>
         </Routes>
       </BrowserRouter>

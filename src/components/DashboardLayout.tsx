@@ -100,10 +100,16 @@ export default function DashboardLayout() {
               )}
             </button>
             
-            {/* User Avatar Placeholder */}
-            <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-sm uppercase">
-              {user?.name?.charAt(0) || 'M'}
-            </div>
+            {/* User Avatar Placeholder & Profile Link */}
+            <NavLink 
+              to="/profile"
+              className="flex items-center gap-2 hover:bg-muted p-1.5 rounded-lg transition-colors"
+              title="My Profile"
+            >
+              <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-sm uppercase">
+                {user?.name?.charAt(0) || 'M'}
+              </div>
+            </NavLink>
           </div>
         </header>
 
