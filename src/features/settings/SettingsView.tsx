@@ -10,6 +10,7 @@ interface Settings {
   office_lat: number;
   office_lng: number;
   radius_meters: number;
+  timezone: string;
 }
 
 export default function SettingsView() {
@@ -20,6 +21,7 @@ export default function SettingsView() {
   const [lat, setLat] = useState<string>('');
   const [lng, setLng] = useState<string>('');
   const [radius, setRadius] = useState<string>('');
+  const [timezone, setTimezone] = useState<string>('UTC');
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -38,11 +40,12 @@ export default function SettingsView() {
       setLat(settings.office_lat.toString());
       setLng(settings.office_lng.toString());
       setRadius(settings.radius_meters.toString());
+      setTimezone(settings.timezone || 'UTC');
     }
   }, [settings]);
 
   const updateMutation = useMutation({
-    mutationFn: async (newSettings: { office_lat: number, office_lng: number, radius_meters: number }) => {
+    mutationFn: async (newSettings: { office_lat: number, office_lng: number, radius_meters: number, timezone: string }) => {
       const res = await axios.put('/api/settings', newSettings, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -73,10 +76,16 @@ export default function SettingsView() {
       return;
     }
 
+    if (!timezone.trim()) {
+      setErrorMsg('Please enter a valid timezone.');
+      return;
+    }
+
     updateMutation.mutate({
       office_lat: parsedLat,
       office_lng: parsedLng,
-      radius_meters: parsedRadius
+      radius_meters: parsedRadius,
+      timezone: timezone.trim()
     });
   };
 
@@ -169,6 +178,25 @@ export default function SettingsView() {
               />
               <span className="text-sm text-gray-500 dark:text-gray-400">
                 Employees must be within this distance to clock in/out.
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Company Timezone (IANA Format)
+            </label>
+            <div className="flex items-center gap-4">
+              <input
+                type="text"
+                required
+                value={timezone}
+                onChange={(e) => setTimezone(e.target.value)}
+                className="w-full md:w-1/2 px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                placeholder="e.g., Africa/Cairo, UTC, America/New_York"
+              />
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                Used for attendance date calculation.
               </span>
             </div>
           </div>

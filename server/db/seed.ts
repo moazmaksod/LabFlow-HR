@@ -27,8 +27,8 @@ export const seedDb = async (): Promise<void> => {
     if (settingsRow.count === 0) {
       console.log('Settings table is empty. Seeding default settings...');
       const insertSettings = db.prepare(`
-        INSERT INTO settings (id, office_lat, office_lng, radius_meters)
-        VALUES (1, 37.7749, -122.4194, 50)
+        INSERT INTO settings (id, office_lat, office_lng, radius_meters, timezone)
+        VALUES (1, 37.7749, -122.4194, 50, 'UTC')
       `);
       insertSettings.run();
     }

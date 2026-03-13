@@ -114,6 +114,7 @@ CREATE TABLE IF NOT EXISTS settings (
     office_lat REAL NOT NULL,
     office_lng REAL NOT NULL,
     radius_meters INTEGER NOT NULL DEFAULT 50,
+    timezone TEXT NOT NULL DEFAULT 'UTC',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

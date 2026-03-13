@@ -17,7 +17,7 @@ export const getSettings = (req: Request, res: Response): void => {
 
 export const updateSettings = (req: Request, res: Response): void => {
     try {
-        const { office_lat, office_lng, radius_meters } = req.body;
+        const { office_lat, office_lng, radius_meters, timezone } = req.body;
 
         if (office_lat === undefined || office_lng === undefined || radius_meters === undefined) {
             res.status(400).json({ error: 'Missing required fields' });
@@ -26,11 +26,11 @@ export const updateSettings = (req: Request, res: Response): void => {
 
         const update = db.prepare(`
             UPDATE settings 
-            SET office_lat = ?, office_lng = ?, radius_meters = ?
+            SET office_lat = ?, office_lng = ?, radius_meters = ?, timezone = COALESCE(?, timezone)
             WHERE id = 1
         `);
         
-        update.run(office_lat, office_lng, radius_meters);
+        update.run(office_lat, office_lng, radius_meters, timezone);
         
         const updatedSettings = db.prepare('SELECT * FROM settings WHERE id = 1').get();
         res.json(updatedSettings);

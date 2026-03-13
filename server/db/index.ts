@@ -23,6 +23,12 @@ export function initDb() {
     const profileColumns = db.prepare("PRAGMA table_info(profiles)").all() as any[];
     const attendanceColumns = db.prepare("PRAGMA table_info(attendance)").all() as any[];
     const requestColumns = db.prepare("PRAGMA table_info(requests)").all() as any[];
+    const settingsColumns = db.prepare("PRAGMA table_info(settings)").all() as any[];
+
+    // Settings migrations
+    if (!settingsColumns.some(c => c.name === 'timezone')) {
+      db.exec("ALTER TABLE settings ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC';");
+    }
 
     // Jobs migrations
     if (!jobColumns.some(c => c.name === 'required_hours_per_week')) {

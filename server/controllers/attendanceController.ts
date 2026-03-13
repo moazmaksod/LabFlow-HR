@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import db from '../db/index.js';
+import { getDateStringInTimezone } from '../utils/dateUtils.js';
 
 // Haversine formula to calculate distance between two points in meters
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -53,9 +54,9 @@ export const clockAttendance = (req: Request, res: Response): void => {
             }
         }
 
-        // Extract date from timestamp (YYYY-MM-DD) based on local time
-        const d = new Date(timestamp);
-        const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        // Extract date from timestamp (YYYY-MM-DD) based on company timezone
+        const timezone = settings?.timezone || 'UTC';
+        const date = getDateStringInTimezone(timestamp, timezone);
 
         // Check if there is an active session (not checked out)
         let activeSession;
@@ -339,11 +340,13 @@ export const syncOfflineLogs = (req: Request, res: Response): void => {
         }
 
         const syncTransaction = db.transaction((logsToSync) => {
+            const settingsForTz = db.prepare('SELECT timezone FROM settings WHERE id = 1').get() as any;
+            const timezone = settingsForTz?.timezone || 'UTC';
+
             const results = [];
             for (const log of logsToSync) {
                 const { type, timestamp, lat, lng } = log;
-                const d = new Date(timestamp);
-                const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                const date = getDateStringInTimezone(timestamp, timezone);
                 
                 let existingRecord;
                 if (type === 'check_in') {
@@ -457,14 +460,18 @@ export const getAttendanceStats = (req: Request, res: Response): void => {
             LIMIT 7
         `).all();
 
+        const settingsForTz = db.prepare('SELECT timezone FROM settings WHERE id = 1').get() as any;
+        const timezone = settingsForTz?.timezone || 'UTC';
+        const todayDateStr = getDateStringInTimezone(new Date(), timezone);
+
         const todayStats = db.prepare(`
             SELECT 
                 SUM(CASE WHEN status = 'on_time' THEN 1 ELSE 0 END) as present,
                 SUM(CASE WHEN status = 'late_in' THEN 1 ELSE 0 END) as late,
                 SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) as absent
             FROM attendance
-            WHERE date = date('now', 'localtime')
-        `).get() as any;
+            WHERE date = ?
+        `).get(todayDateStr) as any;
 
         res.json({
             statusDistribution: statusDist,
