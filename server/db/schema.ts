@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     allow_overtime BOOLEAN DEFAULT 0,
     max_overtime_hours REAL DEFAULT 0,
     status TEXT NOT NULL CHECK(status IN ('active', 'inactive', 'suspended')) DEFAULT 'inactive',
+    suspension_reason TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,

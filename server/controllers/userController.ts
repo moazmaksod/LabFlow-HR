@@ -189,7 +189,9 @@ export const getUserById = (req: Request, res: Response): void => {
                 p.age, p.gender, p.profile_picture_url,
                 p.weekly_schedule, p.hourly_rate, p.lunch_break_minutes,
                 p.emergency_contact_name, p.emergency_contact_phone, p.leave_balance,
-                p.job_id, j.title as job_title
+                p.job_id, j.title as job_title,
+                p.status, p.suspension_reason,
+                p.allow_overtime, p.max_overtime_hours
             FROM users u
             LEFT JOIN profiles p ON u.id = p.user_id
             LEFT JOIN jobs j ON p.job_id = j.id
@@ -215,7 +217,8 @@ export const updateUserProfile = (req: Request, res: Response): void => {
             name, age, gender, profile_picture_url,
             weekly_schedule, hourly_rate, lunch_break_minutes,
             emergency_contact_name, emergency_contact_phone, leave_balance,
-            job_id, role
+            job_id, role, status, suspension_reason,
+            allow_overtime, max_overtime_hours
         } = req.body;
 
         const updateTransaction = db.transaction(() => {
@@ -237,7 +240,11 @@ export const updateUserProfile = (req: Request, res: Response): void => {
                         emergency_contact_name = COALESCE(?, emergency_contact_name),
                         emergency_contact_phone = COALESCE(?, emergency_contact_phone),
                         leave_balance = COALESCE(?, leave_balance),
-                        job_id = COALESCE(?, job_id)
+                        job_id = COALESCE(?, job_id),
+                        status = COALESCE(?, status),
+                        suspension_reason = COALESCE(?, suspension_reason),
+                        allow_overtime = COALESCE(?, allow_overtime),
+                        max_overtime_hours = COALESCE(?, max_overtime_hours)
                     WHERE user_id = ?
                 `).run(
                     age || null, 
@@ -250,28 +257,36 @@ export const updateUserProfile = (req: Request, res: Response): void => {
                     emergency_contact_phone || null,
                     leave_balance !== undefined ? leave_balance : null,
                     job_id !== undefined ? job_id : null,
+                    status || null,
+                    status === 'suspended' ? suspension_reason : null,
+                    allow_overtime !== undefined ? (allow_overtime ? 1 : 0) : null,
+                    max_overtime_hours !== undefined ? max_overtime_hours : null,
                     id
                 );
             } else {
                 db.prepare(`
                     INSERT INTO profiles (
-                        user_id, age, gender, profile_picture_url, status,
+                        user_id, age, gender, profile_picture_url, status, suspension_reason,
                         weekly_schedule, hourly_rate, lunch_break_minutes,
-                        emergency_contact_name, emergency_contact_phone, leave_balance, job_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        emergency_contact_name, emergency_contact_phone, leave_balance, job_id,
+                        allow_overtime, max_overtime_hours
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `).run(
                     id, 
                     age || null, 
                     gender || null, 
                     profile_picture_url || null, 
-                    'active',
+                    status || 'active',
+                    status === 'suspended' ? suspension_reason : null,
                     weekly_schedule ? (typeof weekly_schedule === 'string' ? weekly_schedule : JSON.stringify(weekly_schedule)) : null,
                     hourly_rate || 0,
                     lunch_break_minutes || 0,
                     emergency_contact_name || null,
                     emergency_contact_phone || null,
                     leave_balance || 21,
-                    job_id || null
+                    job_id || null,
+                    allow_overtime ? 1 : 0,
+                    max_overtime_hours || 0
                 );
             }
         });
@@ -284,7 +299,9 @@ export const updateUserProfile = (req: Request, res: Response): void => {
                 p.age, p.gender, p.profile_picture_url,
                 p.weekly_schedule, p.hourly_rate, p.lunch_break_minutes,
                 p.emergency_contact_name, p.emergency_contact_phone, p.leave_balance,
-                p.job_id, j.title as job_title
+                p.job_id, j.title as job_title,
+                p.status, p.suspension_reason,
+                p.allow_overtime, p.max_overtime_hours
             FROM users u
             LEFT JOIN profiles p ON u.id = p.user_id
             LEFT JOIN jobs j ON p.job_id = j.id

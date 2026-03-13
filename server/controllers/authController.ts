@@ -85,10 +85,24 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
         const normalizedEmail = email.toLowerCase();
 
-        // Fetch user
-        const user = db.prepare('SELECT * FROM users WHERE LOWER(email) = ?').get(normalizedEmail) as any;
+        // Fetch user and profile status
+        const user = db.prepare(`
+            SELECT u.*, p.status, p.suspension_reason 
+            FROM users u 
+            LEFT JOIN profiles p ON u.id = p.user_id 
+            WHERE LOWER(u.email) = ?
+        `).get(normalizedEmail) as any;
+        
         if (!user) {
             res.status(401).json({ error: 'Invalid credentials' });
+            return;
+        }
+
+        if (user.status === 'suspended') {
+            res.status(403).json({ 
+                error: 'Account suspended', 
+                suspension_reason: user.suspension_reason || 'No reason provided.' 
+            });
             return;
         }
 

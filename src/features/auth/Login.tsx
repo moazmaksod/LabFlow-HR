@@ -74,7 +74,9 @@ export default function Login() {
           <form onSubmit={handleSubmit} className="space-y-6">
             {loginMutation.isError && (
               <div className="p-3 text-sm text-red-500 bg-red-500/10 border border-red-500/20 rounded-lg text-center">
-                {t('auth.error')}
+                {(loginMutation.error as any)?.response?.data?.error === 'Account suspended' 
+                  ? `Account Suspended: ${(loginMutation.error as any)?.response?.data?.suspension_reason}`
+                  : ((loginMutation.error as any)?.response?.data?.error || t('auth.error'))}
               </div>
             )}
 

@@ -74,24 +74,35 @@ export const getRequests = (req: Request, res: Response): void => {
 export const createAttendanceCorrection = (req: Request, res: Response): void => {
     try {
         const userId = (req as any).user.id;
-        const { attendance_id, new_clock_in, new_clock_out, reason } = req.body;
+        const { attendance_id, new_clock_in, new_clock_out, reason, breaks } = req.body;
 
-        if (!attendance_id || !reason || (!new_clock_in && !new_clock_out)) {
+        if (!attendance_id || !reason || (!new_clock_in && !new_clock_out && !breaks)) {
             res.status(400).json({ error: 'Missing required fields' });
             return;
         }
 
-        const existingPending = db.prepare(`
-            SELECT id FROM requests 
-            WHERE user_id = ? AND attendance_id = ? AND status = 'pending' AND type = 'attendance_correction'
-        `).get(userId, attendance_id);
-        
-        if (existingPending) {
-            res.status(400).json({ error: 'A pending attendance correction request already exists for this record.' });
+        const attendanceRecord = db.prepare('SELECT check_out FROM attendance WHERE id = ? AND user_id = ?').get(attendance_id, userId) as any;
+        if (!attendanceRecord) {
+            res.status(404).json({ error: 'Attendance record not found' });
             return;
         }
 
-        const details = JSON.stringify({ new_clock_in, new_clock_out });
+        if (!attendanceRecord.check_out) {
+            res.status(400).json({ error: 'Cannot correct an active shift. Please check out first.' });
+            return;
+        }
+
+        const existingCorrection = db.prepare(`
+            SELECT id FROM requests 
+            WHERE user_id = ? AND attendance_id = ? AND type = 'attendance_correction'
+        `).get(userId, attendance_id);
+        
+        if (existingCorrection) {
+            res.status(400).json({ error: 'An attendance correction request has already been submitted for this record. Only one correction is allowed per shift.' });
+            return;
+        }
+
+        const details = JSON.stringify({ new_clock_in, new_clock_out, breaks });
         
         const insert = db.prepare(`
             INSERT INTO requests (user_id, attendance_id, type, details, reason, status)
@@ -180,6 +191,20 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                         details.new_clock_out || null, 
                         requestRecord.attendance_id
                     );
+
+                    // Update breaks if provided
+                    if (details.breaks && Array.isArray(details.breaks)) {
+                        for (const b of details.breaks) {
+                            if (b.id) {
+                                db.prepare(`
+                                    UPDATE shift_interruptions 
+                                    SET start_time = COALESCE(?, start_time), 
+                                        end_time = COALESCE(?, end_time)
+                                    WHERE id = ? AND attendance_id = ?
+                                `).run(b.start_time || null, b.end_time || null, b.id, requestRecord.attendance_id);
+                            }
+                        }
+                    }
                 } else if (requestRecord.type === 'early_leave_approval' && requestRecord.attendance_id) {
                     db.prepare("UPDATE attendance SET status = 'on_time' WHERE id = ? AND status = 'early_out'").run(requestRecord.attendance_id);
                 } else if (requestRecord.type === 'manual_clock' && (requestRecord.requested_check_in || requestRecord.requested_check_out)) {

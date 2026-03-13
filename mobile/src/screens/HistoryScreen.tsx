@@ -89,19 +89,34 @@ export default function HistoryScreen() {
       return;
     }
 
-    try {
-      await api.post('/requests/attendance-correction', {
-        attendance_id: selectedLog.id,
-        new_clock_in: newCheckIn.toISOString(),
-        new_clock_out: newCheckOut.toISOString(),
-        reason
-      });
-      Alert.alert('Success', 'Attendance correction request submitted.');
-      setModalVisible(false);
-      setReason('');
-    } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.error || 'Failed to submit request');
-    }
+    Alert.alert(
+      'Confirm Correction',
+      'Are you sure you want to submit this attendance correction? You can only submit one correction request per shift.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Submit',
+          onPress: async () => {
+            try {
+              await api.post('/requests/attendance-correction', {
+                attendance_id: selectedLog.id,
+                new_clock_in: newCheckIn.toISOString(),
+                new_clock_out: newCheckOut.toISOString(),
+                reason
+              });
+              Alert.alert('Success', 'Attendance correction request submitted.');
+              setModalVisible(false);
+              setReason('');
+            } catch (error: any) {
+              Alert.alert('Error', error.response?.data?.error || 'Failed to submit request');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const renderItem = ({ item }: { item: AttendanceLog }) => {

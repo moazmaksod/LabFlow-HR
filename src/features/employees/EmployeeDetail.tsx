@@ -93,6 +93,10 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
   });
 
   const handleSave = () => {
+    if (formData.status === 'suspended' && !formData.suspension_reason?.trim()) {
+      alert('Suspension reason is required when status is suspended.');
+      return;
+    }
     setIsSaving(true);
     updateMutation.mutate(formData, {
       onSettled: () => setIsSaving(false)
@@ -237,7 +241,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                 onChange={(e) => setFormData({...formData, job_id: e.target.value ? Number(e.target.value) : null})}
                 className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-2 focus:ring-primary/20 outline-none"
               >
-                <option value="">Unassigned</option>
+                {(!employee.job_id || formData.job_id === null) && <option value="">Unassigned</option>}
                 {jobs?.map((job: any) => (
                   <option key={job.id} value={job.id}>{job.title}</option>
                 ))}
@@ -251,10 +255,39 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                 className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-2 focus:ring-primary/20 outline-none"
               >
                 <option value="employee">Employee</option>
-                <option value="manager">Manager</option>
                 <option value="pending">Pending</option>
               </select>
             </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                <Shield className="w-3 h-3" /> Status
+              </label>
+              <select 
+                value={formData.status || 'inactive'} 
+                onChange={(e) => setFormData({...formData, status: e.target.value})}
+                className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+              >
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="suspended">Suspended</option>
+                {employee.status === 'pending' && <option value="pending">Pending</option>}
+              </select>
+            </div>
+            {formData.status === 'suspended' && (
+              <div className="space-y-1.5 col-span-2">
+                <label className="text-xs font-medium text-destructive flex items-center gap-1">
+                  <Shield className="w-3 h-3" /> Suspension Reason (Required)
+                </label>
+                <input 
+                  type="text" 
+                  value={formData.suspension_reason || ''} 
+                  onChange={(e) => setFormData({...formData, suspension_reason: e.target.value})}
+                  placeholder="Enter reason for suspension..."
+                  className="w-full px-3 py-2 bg-destructive/10 border border-destructive/30 rounded-md text-sm focus:ring-2 focus:ring-destructive/20 outline-none"
+                  required
+                />
+              </div>
+            )}
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
                 <DollarSign className="w-3 h-3" /> Hourly Rate

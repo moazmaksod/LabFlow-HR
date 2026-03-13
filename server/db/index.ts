@@ -75,6 +75,9 @@ export function initDb() {
     if (!profileColumns.some(c => c.name === 'max_overtime_hours')) {
       db.exec("ALTER TABLE profiles ADD COLUMN max_overtime_hours REAL DEFAULT 0;");
     }
+    if (!profileColumns.some(c => c.name === 'suspension_reason')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN suspension_reason TEXT;");
+    }
 
     // Attendance migrations
     const attendanceSql = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='attendance'").get() as any;
