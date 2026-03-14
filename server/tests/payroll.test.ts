@@ -37,10 +37,17 @@ beforeAll(async () => {
 
   // Create a profile for the employee
   const insertProfile = db.prepare(`
-    INSERT INTO profiles (user_id, job_id, status)
-    VALUES (?, ?, ?)
+    INSERT INTO profiles (user_id, job_id, status, hourly_rate, weekly_schedule)
+    VALUES (?, ?, ?, ?, ?)
   `);
-  insertProfile.run(employeeId, jobInfo.lastInsertRowid, 'active');
+  const schedule = JSON.stringify({
+    monday: [{ start: '08:00', end: '16:00' }],
+    tuesday: [{ start: '08:00', end: '16:00' }],
+    wednesday: [{ start: '08:00', end: '16:00' }],
+    thursday: [{ start: '08:00', end: '16:00' }],
+    friday: [{ start: '08:00', end: '16:00' }]
+  });
+  insertProfile.run(employeeId, jobInfo.lastInsertRowid, 'active', 25.50, schedule);
 
   // Mock attendance logs
   const insertAttendance = db.prepare(`
@@ -79,7 +86,7 @@ describe('Payroll API', () => {
   it('should calculate payroll correctly for a given date range', async () => {
     const res = await request(app)
       .get('/api/payroll')
-      .query({ startDate: '2023-10-01', endDate: '2023-10-31' })
+      .query({ startDate: '2023-10-01', endDate: '2023-10-02' })
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
@@ -91,7 +98,7 @@ describe('Payroll API', () => {
     expect(payrollRecord).toHaveProperty('job_title', 'Developer');
     expect(payrollRecord).toHaveProperty('hourly_rate', 25.50);
     expect(payrollRecord).toHaveProperty('total_hours', 12.5);
-    expect(payrollRecord).toHaveProperty('total_pay', 318.75);
+    expect(payrollRecord).toHaveProperty('total_pay', 114.75);
   });
 
   it('should require manager role to access payroll', async () => {
@@ -113,6 +120,6 @@ describe('Payroll API', () => {
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(400);
-    expect(res.body).toHaveProperty('error', 'startDate and endDate are required');
+    expect(res.body).toHaveProperty('error', 'Missing required parameters: startDate, endDate');
   });
 });

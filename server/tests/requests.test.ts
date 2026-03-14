@@ -84,7 +84,7 @@ describe('Requests API', () => {
     const res = await request(app)
       .put(`/api/requests/${requestId}/status`)
       .set('Authorization', `Bearer ${managerToken}`)
-      .send({ status: 'approved' });
+      .send({ status: 'approved', manager_note: 'Approved' });
     
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('approved');
@@ -94,7 +94,7 @@ describe('Requests API', () => {
     const res = await request(app)
       .put(`/api/requests/${requestId}/status`)
       .set('Authorization', `Bearer ${managerToken}`)
-      .send({ status: 'rejected' });
+      .send({ status: 'rejected', manager_note: 'Rejected' });
     
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error', 'Request is already processed');
@@ -102,7 +102,7 @@ describe('Requests API', () => {
 
   it('should allow employee to submit attendance correction request', async () => {
     // Create attendance record
-    const attInsert = db.prepare(`INSERT INTO attendance (user_id, check_in, date) VALUES (?, ?, ?)`).run(employeeId, new Date().toISOString(), new Date().toISOString().split('T')[0]);
+    const attInsert = db.prepare(`INSERT INTO attendance (user_id, check_in, check_out, date) VALUES (?, ?, ?, ?)`).run(employeeId, new Date().toISOString(), new Date().toISOString(), new Date().toISOString().split('T')[0]);
     const attendanceId = attInsert.lastInsertRowid;
 
     const res = await request(app)
@@ -122,7 +122,7 @@ describe('Requests API', () => {
     const approveRes = await request(app)
       .put(`/api/requests/${res.body.id}/status`)
       .set('Authorization', `Bearer ${managerToken}`)
-      .send({ status: 'approved' });
+      .send({ status: 'approved', manager_note: 'Approved' });
     
     expect(approveRes.status).toBe(200);
     expect(approveRes.body.status).toBe('approved');

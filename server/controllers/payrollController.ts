@@ -73,6 +73,20 @@ const calculateUserPayroll = (user: any, start_date: string, end_date: string) =
         }
     });
 
+    // Add missing days that weren't in logs but had expected shifts
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dateStr = d.toISOString().split('T')[0];
+        if (!logs.find(l => l.date === dateStr)) {
+            const dayName = days[d.getDay()];
+            const dayShifts = schedule[dayName] || [];
+            dayShifts.forEach((shift: any) => {
+                const [startH, startM] = shift.start.split(':').map(Number);
+                const [endH, endM] = shift.end.split(':').map(Number);
+                totalMissingUnpaidMinutes += (endH * 60 + endM) - (startH * 60 + startM);
+            });
+        }
+    }
+
     const grossBasePay = (totalExpectedMinutes / 60) * hourlyRate;
     const totalDeductions = (totalMissingUnpaidMinutes / 60) * hourlyRate;
     const overtimeBonus = (totalApprovedOvertimeMinutes / 60) * (hourlyRate * 1.5);

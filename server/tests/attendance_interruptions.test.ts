@@ -55,14 +55,15 @@ describe('Attendance Interruptions API', () => {
                 type: 'check_in',
                 timestamp,
                 lat: 0,
-                lng: 0
+                lng: 0,
+                deviceId: 'test-device'
             });
 
         // 2. Step away
         const response = await request(app)
             .post('/attendance/step-away')
             .set('Authorization', `Bearer ${employeeToken}`)
-            .send({ timestamp });
+            .send({ timestamp, deviceId: 'test-device' });
 
         expect(response.status).toBe(201);
         expect(response.body.status).toBe('pending_manager');
@@ -86,7 +87,7 @@ describe('Attendance Interruptions API', () => {
         const response = await request(app)
             .post('/attendance/resume-work')
             .set('Authorization', `Bearer ${employeeToken}`)
-            .send({ timestamp });
+            .send({ timestamp, deviceId: 'test-device' });
 
         expect(response.status).toBe(200);
         expect(response.body.message).toBe('Resumed work successfully');
@@ -113,7 +114,7 @@ describe('Attendance Interruptions API', () => {
         const response = await request(app)
             .post('/attendance/step-away')
             .set('Authorization', `Bearer ${employeeToken}`)
-            .send({ timestamp });
+            .send({ timestamp, deviceId: 'test-device' });
 
         expect(response.status).toBe(201);
         expect(response.body.status).toBe('auto_approved');
