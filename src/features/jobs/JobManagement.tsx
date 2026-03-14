@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/axios';
 import { Plus, Briefcase, Trash2, Edit2, AlertCircle, X } from 'lucide-react';
+import axios from 'axios';
 
 interface Shift {
   start: string;
@@ -84,8 +85,13 @@ export default function JobManagement() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
     },
-    onError: (error: any) => {
-      const message = error.response?.data?.error || 'Failed to delete job role';
+    onError: (error: unknown) => {
+      let message = 'Failed to delete job role';
+      if (axios.isAxiosError(error)) {
+        message = error.response?.data?.error || message;
+      } else {
+        message = (error as Error).message || message;
+      }
       alert(message);
     }
   });

@@ -66,8 +66,12 @@ export default function SettingsView() {
       setSuccessMsg('Settings updated successfully!');
       setTimeout(() => setSuccessMsg(''), 3000);
     },
-    onError: (error: any) => {
-      setErrorMsg(error.response?.data?.error || 'Failed to update settings');
+    onError: (error: unknown) => {
+      if (axios.isAxiosError(error)) {
+        setErrorMsg(error.response?.data?.error || 'Failed to update settings');
+      } else {
+        setErrorMsg((error as Error).message || 'Failed to update settings');
+      }
       setTimeout(() => setErrorMsg(''), 3000);
     }
   });
