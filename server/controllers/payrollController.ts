@@ -60,12 +60,12 @@ const calculateUserPayroll = (user: any, start_date: string, end_date: string) =
         }
 
         workedMinutes = Math.max(0, workedMinutes);
-        totalActualWorkedMinutes += workedMinutes;
         totalApprovedOvertimeMinutes += log.approved_overtime_minutes || 0;
 
         if (log.status === 'absent') {
             totalMissingMinutes += expectedForDay;
         } else {
+            totalActualWorkedMinutes += workedMinutes;
             totalMissingMinutes += Math.max(0, expectedForDay - workedMinutes);
             totalPaidPermissionMinutes += log.paid_permission_minutes || 0;
         }
@@ -85,11 +85,14 @@ const calculateUserPayroll = (user: any, start_date: string, end_date: string) =
         }
     }
 
-    const deductibleMinutes = Math.max(0, totalMissingMinutes - totalPaidPermissionMinutes);
+    const unpaidMinutes = Math.max(0, totalMissingMinutes - totalPaidPermissionMinutes);
+    const netWorkedMinutes = Math.max(0, totalActualWorkedMinutes - unpaidMinutes);
+    const finalNetSalary = (netWorkedMinutes / 60) * hourlyRate;
+    
     const grossBasePay = (totalActualWorkedMinutes / 60) * hourlyRate;
-    const totalDeductions = (deductibleMinutes / 60) * hourlyRate;
+    const totalDeductions = (unpaidMinutes / 60) * hourlyRate;
     const overtimeBonus = (totalApprovedOvertimeMinutes / 60) * (hourlyRate * 1.5);
-    const finalNetSalary = grossBasePay - totalDeductions + overtimeBonus;
+    const netSalaryWithOvertime = finalNetSalary + overtimeBonus;
 
     return {
         user: { id: user.id, name: user.name, job_title: user.job_title, hourly_rate: hourlyRate },
@@ -97,14 +100,14 @@ const calculateUserPayroll = (user: any, start_date: string, end_date: string) =
             expected_hours: Number((totalExpectedMinutes / 60).toFixed(2)),
             actual_worked_hours: Number((totalActualWorkedMinutes / 60).toFixed(2)),
             paid_permission_hours: Number((totalPaidPermissionMinutes / 60).toFixed(2)),
-            missing_unpaid_minutes: Math.round(deductibleMinutes),
+            missing_unpaid_minutes: Math.round(unpaidMinutes),
             approved_overtime_minutes: totalApprovedOvertimeMinutes
         },
         financial_metrics: {
             gross_base_pay: Number(grossBasePay.toFixed(2)),
             total_deductions: Number(totalDeductions.toFixed(2)),
             overtime_bonus: Number(overtimeBonus.toFixed(2)),
-            final_net_salary: Number(finalNetSalary.toFixed(2))
+            final_net_salary: Number(netSalaryWithOvertime.toFixed(2))
         }
     };
 };
