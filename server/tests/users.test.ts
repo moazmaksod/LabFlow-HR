@@ -8,13 +8,21 @@ import fs from 'fs';
 
 let employeeToken: string;
 let employeeId: number | bigint;
+let managerToken: string;
+let managerId: number | bigint;
 
 beforeAll(async () => {
   initDb();
   
-  // Create employee
   const salt = await bcrypt.genSalt(10);
   const hash = await bcrypt.hash('password123', salt);
+
+  // Create manager
+  const mgrInsert = db.prepare(`INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)`).run('Manager User', 'manager_user@test.com', hash, 'manager');
+  managerId = mgrInsert.lastInsertRowid;
+  managerToken = jwt.sign({ id: managerId, role: 'manager' }, process.env.JWT_SECRET || 'fallback_secret', { expiresIn: '1h' });
+
+  // Create employee
   const empInsert = db.prepare(`INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)`).run('Employee User', 'employee_user@test.com', hash, 'employee');
   employeeId = empInsert.lastInsertRowid;
   employeeToken = jwt.sign({ id: employeeId, role: 'employee' }, process.env.JWT_SECRET || 'fallback_secret', { expiresIn: '1h' });
@@ -70,5 +78,50 @@ describe('User Profile API', () => {
     
     expect(res.status).toBe(200);
     expect(res.body.profile_picture_url).toBe(avatarUrl);
+  });
+});
+
+describe('User Management API (Manager)', () => {
+  it('should return 403 when an employee tries to fetch users', async () => {
+    const res = await request(app)
+      .get('/api/users')
+      .set('Authorization', `Bearer ${employeeToken}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body).toHaveProperty('error', 'Forbidden: Insufficient permissions');
+  });
+
+  it('should allow manager to fetch all users (excluding managers)', async () => {
+    // Add a pending user to ensure we fetch more than just the employee
+    const salt = await bcrypt.genSalt(10);
+    const hash = await bcrypt.hash('password123', salt);
+    db.prepare(`INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)`).run('Pending User', 'pending_user@test.com', hash, 'pending');
+
+    const res = await request(app)
+      .get('/api/users')
+      .set('Authorization', `Bearer ${managerToken}`);
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+
+    // Should contain the employee and pending user, but not the manager
+    expect(res.body.length).toBeGreaterThanOrEqual(2);
+
+    // Ensure no managers are in the results
+    const managerUsers = res.body.filter((u: any) => u.role === 'manager');
+    expect(managerUsers.length).toBe(0);
+
+    // Verify properties of returned objects
+    const firstUser = res.body[0];
+    expect(firstUser).toHaveProperty('id');
+    expect(firstUser).toHaveProperty('name');
+    expect(firstUser).toHaveProperty('email');
+    expect(firstUser).toHaveProperty('role');
+    expect(firstUser).toHaveProperty('created_at');
+    // these are returned from LEFT JOIN, could be null
+    expect(firstUser).toHaveProperty('status');
+    expect(firstUser).toHaveProperty('job_id');
+    expect(firstUser).toHaveProperty('job_title');
+    expect(firstUser).toHaveProperty('current_status');
   });
 });

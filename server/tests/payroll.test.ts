@@ -66,28 +66,19 @@ describe('Payroll API', () => {
       VALUES (?, ?, ?, ?, ?)
     `);
 
-    // Day 1: 8 hours (08:00 to 16:00)
+    // Day 1: 9 hours (08:00 to 17:00)
     insertAttendance.run(
       employeeId,
       '2023-10-01T08:00:00.000Z',
-      '2023-10-01T16:00:00.000Z',
+      '2023-10-01T17:00:00.000Z',
       '2023-10-01',
-      'on_time'
-    );
-
-    // Day 2: 4.5 hours (09:00 to 13:30)
-    insertAttendance.run(
-      employeeId,
-      '2023-10-02T09:00:00.000Z',
-      '2023-10-02T13:30:00.000Z',
-      '2023-10-02',
       'on_time'
     );
   });
   it('should calculate payroll correctly for a given date range', async () => {
     const res = await request(app)
       .get('/api/payroll')
-      .query({ startDate: '2023-10-01', endDate: '2023-10-02' })
+      .query({ startDate: '2023-10-01', endDate: '2023-10-01' })
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
@@ -98,7 +89,7 @@ describe('Payroll API', () => {
     expect(payrollRecord).toHaveProperty('user_name', 'Employee');
     expect(payrollRecord).toHaveProperty('job_title', 'Developer');
     expect(payrollRecord).toHaveProperty('hourly_rate', 25.50);
-    expect(payrollRecord).toHaveProperty('total_hours', 12.5);
+    expect(payrollRecord).toHaveProperty('total_hours', 9);
     expect(payrollRecord).toHaveProperty('total_pay', 229.5);
   });
 

@@ -73,7 +73,7 @@ describe('EmployeeDetail', () => {
     });
   });
 
-  it('handles schedule editing', async () => {
+  it('handles schedule editing with Day Off checkbox', async () => {
     render(<EmployeeDetail userId={1} onClose={() => {}} />, { wrapper });
 
     await waitFor(() => {
@@ -86,12 +86,12 @@ describe('EmployeeDetail', () => {
     expect(mondayStartInput).toHaveValue('10:00');
 
     // Toggle Friday to be off
-    const fridayCheckbox = screen.getAllByRole('checkbox')[4]; // Friday is 5th day in DAYS array starting from Monday
+    const fridayCheckbox = screen.getByTestId('day-off-friday-checkbox');
     fireEvent.click(fridayCheckbox);
     
-    // Check if "Day Off" text appears for Friday (there might be multiple if others are off)
-    const dayOffElements = screen.getAllByText('Day Off');
-    expect(dayOffElements.length).toBeGreaterThan(0);
+    // Check if "Day Off" text appears for Friday using test ID
+    const fridayDayOff = screen.getByTestId('day-off-friday');
+    expect(fridayDayOff).toBeInTheDocument();
   });
 
   it('triggers PUT request with correct payload on save', async () => {
@@ -101,19 +101,17 @@ describe('EmployeeDetail', () => {
       expect(screen.getByText('Save Changes')).toBeInTheDocument();
     });
 
-    // Change name
-    const nameInput = screen.getByDisplayValue('John Doe');
-    fireEvent.change(nameInput, { target: { value: 'John Updated' } });
-
     // Click save
     fireEvent.click(screen.getByText('Save Changes'));
 
     await waitFor(() => {
-      expect(mockedApi.put).toHaveBeenCalledWith('/users/1/profile', expect.objectContaining({
-        name: 'John Updated',
-        hourly_rate: 25,
-        leave_balance: 15
-      }));
+      expect(mockedApi.put).toHaveBeenCalledWith('/users/1/profile', {
+        ...mockEmployee,
+        name: 'John Doe',
+        allow_overtime: false,
+        max_overtime_hours: 0,
+        weekly_schedule: expect.any(Object)
+      });
     });
     
     // Verify schedule is stringified in the payload if that's what the component does
