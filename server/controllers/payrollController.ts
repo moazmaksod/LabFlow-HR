@@ -22,6 +22,26 @@ const calculateUserPayroll = (user: any, start_date: string, end_date: string) =
     const end = new Date(end_date as string);
     const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
+    // Fetch all breaks in one query to avoid N+1 query performance issue
+    const logIds = logs.map(l => l.id);
+    const breaksMap = new Map<number, any[]>();
+
+    if (logIds.length > 0) {
+        const placeholders = logIds.map(() => '?').join(',');
+        const allBreaks = db.prepare(`
+            SELECT attendance_id, start_time, end_time
+            FROM shift_interruptions
+            WHERE attendance_id IN (${placeholders})
+        `).all(...logIds) as any[];
+
+        allBreaks.forEach(b => {
+            if (!breaksMap.has(b.attendance_id)) {
+                breaksMap.set(b.attendance_id, []);
+            }
+            breaksMap.get(b.attendance_id)!.push(b);
+        });
+    }
+
     // Calculate expected minutes for the whole period
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const dayName = days[d.getDay()];
@@ -51,7 +71,7 @@ const calculateUserPayroll = (user: any, start_date: string, end_date: string) =
             const checkOut = new Date(log.check_out);
             workedMinutes = (checkOut.getTime() - checkIn.getTime()) / (1000 * 60);
             
-            const breaks = db.prepare('SELECT start_time, end_time FROM shift_interruptions WHERE attendance_id = ?').all(log.id) as any[];
+            const breaks = breaksMap.get(log.id) || [];
             breaks.forEach(b => {
                 if (b.start_time && b.end_time) {
                     workedMinutes -= (new Date(b.end_time).getTime() - new Date(b.start_time).getTime()) / (1000 * 60);
