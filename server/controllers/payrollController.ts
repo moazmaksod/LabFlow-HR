@@ -72,9 +72,10 @@ const calculateUserPayroll = (user: any, start_date: string, end_date: string) =
     });
 
     // Add missing days that weren't in logs but had expected shifts
+    const logDates = new Set(logs.map(l => l.date));
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const dateStr = d.toISOString().split('T')[0];
-        if (!logs.find(l => l.date === dateStr)) {
+        if (!logDates.has(dateStr)) {
             const dayName = days[d.getDay()];
             const dayShifts = schedule[dayName] || [];
             dayShifts.forEach((shift: any) => {
