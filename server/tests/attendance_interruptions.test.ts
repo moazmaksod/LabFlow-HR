@@ -9,7 +9,7 @@ const app = express();
 app.use(express.json());
 app.use('/attendance', attendanceRoutes);
 
-const JWT_SECRET = process.env.JWT_SECRET || 'test_secret';
+const JWT_SECRET = process.env.JWT_SECRET as string;
 
 describe('Attendance Interruptions API', () => {
     let employeeToken: string;

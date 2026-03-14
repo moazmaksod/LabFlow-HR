@@ -38,6 +38,7 @@ beforeAll(async () => {
   // Create a job
   const jobInsert = db.prepare(`INSERT INTO jobs (title, hourly_rate, required_hours) VALUES (?, ?, ?)`).run('Test Engineer', 20.0, 40.0);
   jobId = jobInsert.lastInsertRowid;
+  employeeToken = jwt.sign({ id: employeeId, role: 'employee' }, process.env.JWT_SECRET as string, { expiresIn: '1h' });
 });
 
 afterAll(() => {
