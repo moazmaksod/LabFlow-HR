@@ -16,7 +16,15 @@ export const seedDb = async (): Promise<void> => {
         VALUES (?, ?, ?, ?)
       `);
       
-      insert.run('System Admin', 'admin@labflow.com', passwordHash, 'manager');
+      const info = insert.run('System Admin', 'admin@labflow.com', passwordHash, 'manager');
+      const userId = info.lastInsertRowid;
+      
+      // Create profile for the admin
+      db.prepare(`
+        INSERT INTO profiles (user_id, status)
+        VALUES (?, 'active')
+      `).run(userId);
+
       console.log('Default manager account created: admin@labflow.com / password123');
     } else {
       console.log('Database already seeded. Skipping seed process.');

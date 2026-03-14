@@ -18,6 +18,49 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
     return R * c;
 };
 
+const getClosestShift = (schedule: any, timestamp: string, type: 'start' | 'end', referenceDate?: string) => {
+    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const punchTime = new Date(timestamp);
+    const refDate = referenceDate ? new Date(referenceDate) : punchTime;
+    
+    let minDiff = Infinity;
+    let closestShift = null;
+    let closestScheduledTime = null;
+
+    // Check yesterday, today, and tomorrow to be safe for night shifts
+    [-1, 0, 1].forEach(offset => {
+        const date = new Date(refDate);
+        date.setDate(date.getDate() + offset);
+        const dayName = days[date.getDay()];
+        const daySchedule = schedule[dayName];
+
+        if (Array.isArray(daySchedule)) {
+            daySchedule.forEach(shift => {
+                const [h, m] = shift[type].split(':').map(Number);
+                const scheduledTime = new Date(date);
+                scheduledTime.setHours(h, m, 0, 0);
+
+                // For 'end' time, if it's before 'start' time on the same day, it means it crosses midnight
+                if (type === 'end') {
+                    const [startH, startM] = shift.start.split(':').map(Number);
+                    if (h < startH || (h === startH && m < startM)) {
+                        scheduledTime.setDate(scheduledTime.getDate() + 1);
+                    }
+                }
+
+                const diff = Math.abs(punchTime.getTime() - scheduledTime.getTime());
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closestShift = shift;
+                    closestScheduledTime = scheduledTime;
+                }
+            });
+        }
+    });
+
+    return { shift: closestShift, scheduledTime: closestScheduledTime };
+};
+
 export const clockAttendance = (req: Request, res: Response): void => {
     try {
         const userId = (req as any).user.id;
@@ -103,48 +146,10 @@ export const clockAttendance = (req: Request, res: Response): void => {
             if (userProfile && userProfile.weekly_schedule) {
                 try {
                     const schedule = JSON.parse(userProfile.weekly_schedule);
-                    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-                    const todayName = days[new Date(timestamp).getDay()];
-                    const todaySchedule = schedule[todayName];
+                    const { shift: closestShift, scheduledTime } = getClosestShift(schedule, timestamp, 'start');
 
-                    if (Array.isArray(todaySchedule) && todaySchedule.length > 0) {
+                    if (closestShift && scheduledTime) {
                         const clockInTime = new Date(timestamp);
-                        
-                        // Find closest shift
-                        let closestShift = todaySchedule[0];
-                        let minDiff = Infinity;
-                        
-                        todaySchedule.forEach(shift => {
-                            const [schedHours, schedMinutes] = shift.start.split(':').map(Number);
-                            const scheduledTime = new Date(timestamp);
-                            scheduledTime.setHours(schedHours, schedMinutes, 0, 0);
-                            
-                            const diff = Math.abs(clockInTime.getTime() - scheduledTime.getTime());
-                            if (diff < minDiff) {
-                                minDiff = diff;
-                                closestShift = shift;
-                            }
-                        });
-
-                        const [schedHours, schedMinutes] = closestShift.start.split(':').map(Number);
-                        const scheduledTime = new Date(timestamp);
-                        scheduledTime.setHours(schedHours, schedMinutes, 0, 0);
-
-                        const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
-                        const gracePeriod = userProfile.grace_period || 15;
-
-                        if (diffMinutes > gracePeriod) {
-                            status = 'late_in';
-                        } else {
-                            status = 'on_time';
-                        }
-                    } else if (todaySchedule && !todaySchedule.isOff && todaySchedule.start) {
-                        // Legacy support
-                        const [schedHours, schedMinutes] = todaySchedule.start.split(':').map(Number);
-                        const clockInTime = new Date(timestamp);
-                        const scheduledTime = new Date(timestamp);
-                        scheduledTime.setHours(schedHours, schedMinutes, 0, 0);
-
                         const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
                         const gracePeriod = userProfile.grace_period || 15;
 
@@ -172,31 +177,10 @@ export const clockAttendance = (req: Request, res: Response): void => {
             if (userProfile && userProfile.weekly_schedule) {
                 try {
                     const schedule = JSON.parse(userProfile.weekly_schedule);
-                    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-                    const todayName = days[new Date(timestamp).getDay()];
-                    const todaySchedule = schedule[todayName];
+                    const { shift: closestShift, scheduledTime } = getClosestShift(schedule, timestamp, 'start');
 
-                    if (Array.isArray(todaySchedule) && todaySchedule.length > 0) {
+                    if (closestShift && scheduledTime) {
                         const clockInTime = new Date(timestamp);
-                        let closestShift = todaySchedule[0];
-                        let minDiff = Infinity;
-                        
-                        todaySchedule.forEach(shift => {
-                            const [schedHours, schedMinutes] = shift.start.split(':').map(Number);
-                            const scheduledTime = new Date(timestamp);
-                            scheduledTime.setHours(schedHours, schedMinutes, 0, 0);
-                            
-                            const diff = Math.abs(clockInTime.getTime() - scheduledTime.getTime());
-                            if (diff < minDiff) {
-                                minDiff = diff;
-                                closestShift = shift;
-                            }
-                        });
-
-                        const [schedHours, schedMinutes] = closestShift.start.split(':').map(Number);
-                        const scheduledTime = new Date(timestamp);
-                        scheduledTime.setHours(schedHours, schedMinutes, 0, 0);
-
                         const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
                         const gracePeriod = userProfile.grace_period || 15;
 
@@ -250,45 +234,10 @@ export const clockAttendance = (req: Request, res: Response): void => {
             if (userProfile && userProfile.weekly_schedule) {
                 try {
                     const schedule = JSON.parse(userProfile.weekly_schedule);
-                    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-                    const todayName = days[new Date(activeSession.check_in).getDay()];
-                    const todaySchedule = schedule[todayName];
+                    const { shift: closestShift, scheduledTime } = getClosestShift(schedule, timestamp, 'end', activeSession.check_in);
 
-                    if (Array.isArray(todaySchedule) && todaySchedule.length > 0) {
+                    if (closestShift && scheduledTime) {
                         const clockOutTime = new Date(timestamp);
-                        
-                        // Find closest shift based on end time
-                        let closestShift = todaySchedule[0];
-                        let minDiff = Infinity;
-                        
-                        todaySchedule.forEach(shift => {
-                            const [schedHours, schedMinutes] = shift.end.split(':').map(Number);
-                            const scheduledTime = new Date(activeSession.check_in);
-                            scheduledTime.setHours(schedHours, schedMinutes, 0, 0);
-                            
-                            // Handle midnight crossing for shift end
-                            const [startHours, startMinutes] = shift.start.split(':').map(Number);
-                            if (schedHours < startHours || (schedHours === startHours && schedMinutes < startMinutes)) {
-                                scheduledTime.setDate(scheduledTime.getDate() + 1);
-                            }
-                            
-                            const diff = Math.abs(clockOutTime.getTime() - scheduledTime.getTime());
-                            if (diff < minDiff) {
-                                minDiff = diff;
-                                closestShift = shift;
-                            }
-                        });
-
-                        const [schedHours, schedMinutes] = closestShift.end.split(':').map(Number);
-                        const scheduledTime = new Date(activeSession.check_in);
-                        scheduledTime.setHours(schedHours, schedMinutes, 0, 0);
-                        
-                        // Handle midnight crossing for shift end
-                        const [startHours, startMinutes] = closestShift.start.split(':').map(Number);
-                        if (schedHours < startHours || (schedHours === startHours && schedMinutes < startMinutes)) {
-                            scheduledTime.setDate(scheduledTime.getDate() + 1);
-                        }
-
                         const diffMinutes = (clockOutTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
                         const gracePeriod = userProfile.grace_period || 15;
 

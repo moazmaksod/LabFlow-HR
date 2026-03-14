@@ -56,7 +56,15 @@ export default function LoginScreen({ navigation }: any) {
       // Save user and token securely in Zustand
       login(response.data.user, response.data.token);
     } catch (error: any) {
-      Alert.alert('Login Failed', error.response?.data?.error || 'Invalid credentials');
+      const errorData = error.response?.data;
+      if (errorData?.error === 'Account suspended') {
+        Alert.alert(
+          'Account Suspended',
+          `Reason: ${errorData.suspension_reason || 'No reason provided.'}`
+        );
+      } else {
+        Alert.alert('Login Failed', errorData?.error || 'Invalid credentials');
+      }
     } finally {
       setLoading(false);
     }
