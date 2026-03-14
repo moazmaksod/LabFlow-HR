@@ -6,7 +6,7 @@ import { schema } from './schema.js';
 const dbPath = process.env.DB_PATH === ':memory:' 
   ? ':memory:' 
   : path.resolve(process.cwd(), process.env.DB_PATH || 'labflow.db');
-const db = new Database(dbPath, { verbose: console.log });
+const db = new Database(dbPath, process.env.NODE_ENV === 'development' ? { verbose: console.log } : undefined);
 
 // Strictly enforce Foreign Keys
 db.pragma('foreign_keys = ON');
