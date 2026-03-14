@@ -17,7 +17,7 @@ beforeAll(async () => {
   const hash = await bcrypt.hash('password123', salt);
   const empInsert = db.prepare(`INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)`).run('Employee User', 'employee_user@test.com', hash, 'employee');
   employeeId = empInsert.lastInsertRowid;
-  employeeToken = jwt.sign({ id: employeeId, role: 'employee' }, process.env.JWT_SECRET || 'fallback_secret', { expiresIn: '1h' });
+  employeeToken = jwt.sign({ id: employeeId, role: 'employee' }, process.env.JWT_SECRET as string, { expiresIn: '1h' });
 });
 
 afterAll(() => {

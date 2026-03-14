@@ -22,7 +22,7 @@ beforeAll(async () => {
   const empInsert = db.prepare(`INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)`).run('Employee', 'employee_att@test.com', hash, 'employee');
   employeeId = empInsert.lastInsertRowid;
   db.prepare(`INSERT INTO profiles (user_id, status) VALUES (?, ?)`).run(employeeId, 'active');
-  employeeToken = jwt.sign({ id: employeeId, role: 'employee' }, process.env.JWT_SECRET || 'fallback_secret', { expiresIn: '1h' });
+  employeeToken = jwt.sign({ id: employeeId, role: 'employee' }, process.env.JWT_SECRET as string, { expiresIn: '1h' });
 });
 
 afterAll(() => {
@@ -105,7 +105,7 @@ describe('Attendance API', () => {
     const empInsert2 = db.prepare(`INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)`).run('Employee 2', 'employee_att2@test.com', hash, 'employee');
     const employeeId2 = empInsert2.lastInsertRowid;
     db.prepare(`INSERT INTO profiles (user_id, status) VALUES (?, ?)`).run(employeeId2, 'active');
-    const employeeToken2 = jwt.sign({ id: employeeId2, role: 'employee' }, process.env.JWT_SECRET || 'fallback_secret', { expiresIn: '1h' });
+    const employeeToken2 = jwt.sign({ id: employeeId2, role: 'employee' }, process.env.JWT_SECRET as string, { expiresIn: '1h' });
     
     // Clock in first (inside)
     await request(app)

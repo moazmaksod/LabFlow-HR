@@ -29,7 +29,7 @@ describe('Payroll API', () => {
       VALUES (?, ?, ?, ?)
     `);
     const adminInfo = insertAdmin.run('Admin', 'admin@test.com', passwordHash, 'manager');
-    adminToken = jwt.sign({ id: adminInfo.lastInsertRowid, role: 'manager' }, process.env.JWT_SECRET || 'test_secret');
+    adminToken = jwt.sign({ id: adminInfo.lastInsertRowid, role: 'manager' }, process.env.JWT_SECRET as string);
 
     // Create an employee user
     const insertEmployee = db.prepare(`
@@ -95,7 +95,7 @@ describe('Payroll API', () => {
 
   it('should require manager role to access payroll', async () => {
     // Create employee token
-    const employeeToken = jwt.sign({ id: employeeId, role: 'employee' }, process.env.JWT_SECRET || 'test_secret');
+    const employeeToken = jwt.sign({ id: employeeId, role: 'employee' }, process.env.JWT_SECRET as string);
 
     const res = await request(app)
       .get('/api/payroll')
