@@ -474,9 +474,9 @@ export const getAttendanceStats = (req: Request, res: Response): void => {
 
         const todayStats = db.prepare(`
             SELECT 
-                SUM(CASE WHEN status IN ('on_time', 'early_out') THEN 1 ELSE 0 END) as present,
+                SUM(CASE WHEN status = 'on_time' THEN 1 ELSE 0 END) as present,
                 SUM(CASE WHEN status = 'late_in' THEN 1 ELSE 0 END) as late,
-                SUM(CASE WHEN status IN ('absent', 'half_day') THEN 1 ELSE 0 END) as absent
+                SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) as absent
             FROM attendance
             WHERE date = ?
         `).get(todayDateStr) as any;

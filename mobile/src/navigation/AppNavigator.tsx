@@ -10,7 +10,6 @@ import LoginScreen from '../screens/auth/LoginScreen';
 import RegisterScreen from '../screens/auth/RegisterScreen';
 import PendingApprovalScreen from '../screens/PendingApprovalScreen';
 import DashboardScreen from '../screens/DashboardScreen';
-import ManagerDashboardScreen from '../screens/ManagerDashboardScreen';
 import HistoryScreen from '../screens/HistoryScreen';
 import RequestsScreen from '../screens/RequestsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
@@ -19,8 +18,6 @@ const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 function MainTabs() {
-  const { user } = useAuthStore();
-  
   return (
     <Tab.Navigator 
       screenOptions={{ 
@@ -36,7 +33,7 @@ function MainTabs() {
     >
       <Tab.Screen 
         name="Dashboard" 
-        component={user?.role === 'manager' ? ManagerDashboardScreen : DashboardScreen} 
+        component={DashboardScreen} 
         options={{
           tabBarLabel: 'Home',
           tabBarIcon: ({ color, size }) => <LayoutDashboard color={color} size={size} />,
