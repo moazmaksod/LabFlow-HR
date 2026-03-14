@@ -135,7 +135,7 @@ describe('User Management API (Manager)', () => {
     // Add a pending user to ensure we fetch more than just the employee
     const salt = await bcrypt.genSalt(10);
     const hash = await bcrypt.hash('password123', salt);
-    db.prepare(`INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)`).run('Pending User', 'pending_user@test.com', hash, 'pending');
+    db.prepare(`INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)`).run('Pending User', 'pending_user2@test.com', hash, 'pending');
 
     const res = await request(app)
       .get('/api/users')
