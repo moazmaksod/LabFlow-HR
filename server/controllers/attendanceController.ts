@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import db from '../db/index.js';
 import { getDateStringInTimezone } from '../utils/dateUtils.js';
+import { AuthRequest } from '../middlewares/authMiddleware.js';
 
 // Haversine formula to calculate distance between two points in meters
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -61,9 +62,9 @@ export const getClosestShift = (schedule: any, timestamp: string, type: 'start' 
     return { shift: closestShift, scheduledTime: closestScheduledTime };
 };
 
-export const clockAttendance = (req: Request, res: Response): void => {
+export const clockAttendance = (req: AuthRequest, res: Response): void => {
     try {
-        const userId = (req as any).user.id;
+        const userId = req.user!.id;
         const { type, lat, lng, deviceId } = req.body;
         const timestamp = new Date().toISOString(); // Server is the single source of truth
 
@@ -297,9 +298,9 @@ export const clockAttendance = (req: Request, res: Response): void => {
     }
 };
 
-export const syncOfflineLogs = (req: Request, res: Response): void => {
+export const syncOfflineLogs = (req: AuthRequest, res: Response): void => {
     try {
-        const userId = (req as any).user.id;
+        const userId = req.user!.id;
         const { logs } = req.body;
 
         if (!Array.isArray(logs) || logs.length === 0) {
@@ -364,9 +365,9 @@ export const syncOfflineLogs = (req: Request, res: Response): void => {
     }
 };
 
-export const getMyLogs = (req: Request, res: Response): void => {
+export const getMyLogs = (req: AuthRequest, res: Response): void => {
     try {
-        const userId = (req as any).user.id;
+        const userId = req.user!.id;
         const logs = db.prepare(`
             SELECT * FROM attendance 
             WHERE user_id = ? 
@@ -463,9 +464,9 @@ export const getAttendanceStats = (req: Request, res: Response): void => {
     }
 };
 
-export const stepAway = (req: Request, res: Response): void => {
+export const stepAway = (req: AuthRequest, res: Response): void => {
     try {
-        const userId = (req as any).user.id;
+        const userId = req.user!.id;
         const { deviceId } = req.body;
         const timestamp = new Date().toISOString(); // Server is the single source of truth
 
@@ -535,9 +536,9 @@ export const stepAway = (req: Request, res: Response): void => {
     }
 };
 
-export const resumeWork = (req: Request, res: Response): void => {
+export const resumeWork = (req: AuthRequest, res: Response): void => {
     try {
-        const userId = (req as any).user.id;
+        const userId = req.user!.id;
         const { deviceId } = req.body;
         const timestamp = new Date().toISOString(); // Server is the single source of truth
 

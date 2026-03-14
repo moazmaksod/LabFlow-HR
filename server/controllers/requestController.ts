@@ -1,10 +1,11 @@
 import { Request, Response } from 'express';
 import db from '../db/index.js';
 import { getClosestShift } from './attendanceController.js';
+import { AuthRequest } from '../middlewares/authMiddleware.js';
 
-export const createRequest = (req: Request, res: Response): void => {
+export const createRequest = (req: AuthRequest, res: Response): void => {
     try {
-        const userId = (req as any).user.id;
+        const userId = req.user!.id;
         const { reason, requested_check_in, requested_check_out, attendance_id, type } = req.body;
 
         if (!reason) {
@@ -41,9 +42,9 @@ export const createRequest = (req: Request, res: Response): void => {
     }
 };
 
-export const getRequests = (req: Request, res: Response): void => {
+export const getRequests = (req: AuthRequest, res: Response): void => {
     try {
-        const user = (req as any).user;
+        const user = req.user!;
         let requests;
 
         if (user.role === 'manager') {
@@ -72,9 +73,9 @@ export const getRequests = (req: Request, res: Response): void => {
     }
 };
 
-export const createAttendanceCorrection = (req: Request, res: Response): void => {
+export const createAttendanceCorrection = (req: AuthRequest, res: Response): void => {
     try {
-        const userId = (req as any).user.id;
+        const userId = req.user!.id;
         const { attendance_id, new_clock_in, new_clock_out, reason, breaks } = req.body;
 
         if (!attendance_id || !reason || (!new_clock_in && !new_clock_out && !breaks)) {

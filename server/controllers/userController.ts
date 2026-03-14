@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import db from '../db/index.js';
+import { AuthRequest } from '../middlewares/authMiddleware.js';
 
 export const getUsers = (req: Request, res: Response): void => {
     try {
@@ -72,9 +73,9 @@ export const updateUserRole = (req: Request, res: Response): void => {
     }
 };
 
-export const getProfile = (req: Request, res: Response): void => {
+export const getProfile = (req: AuthRequest, res: Response): void => {
     try {
-        const userId = (req as any).user.id;
+        const userId = req.user!.id;
         const user = db.prepare(`
             SELECT 
                 u.id, u.name, u.email, u.role,
@@ -98,9 +99,9 @@ export const getProfile = (req: Request, res: Response): void => {
     }
 };
 
-export const updateProfile = (req: Request, res: Response): void => {
+export const updateProfile = (req: AuthRequest, res: Response): void => {
     try {
-        const userId = (req as any).user.id;
+        const userId = req.user!.id;
         const { 
             name, age, gender, profile_picture_url,
             weekly_schedule, hourly_rate, lunch_break_minutes,
