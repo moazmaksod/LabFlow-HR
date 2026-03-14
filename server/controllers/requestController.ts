@@ -123,7 +123,7 @@ export const createAttendanceCorrection = (req: Request, res: Response): void =>
 export const updateRequestStatus = (req: Request, res: Response): void => {
     try {
         const { id } = req.params;
-        const { status, manager_note, approved_minutes } = req.body;
+        const { status, manager_note, approved_minutes, is_paid_permission } = req.body;
 
         if (!['approved', 'rejected'].includes(status)) {
             res.status(400).json({ error: 'Invalid status' });
@@ -147,8 +147,13 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
         }
 
         const transaction = db.transaction(() => {
-            // Update the request status and manager note
-            db.prepare('UPDATE requests SET status = ?, manager_note = ? WHERE id = ?').run(status, manager_note || null, id);
+            // Update the request status, manager note and is_paid_permission
+            db.prepare('UPDATE requests SET status = ?, manager_note = ?, is_paid_permission = ? WHERE id = ?').run(
+                status, 
+                manager_note || null, 
+                is_paid_permission ? 1 : 0,
+                id
+            );
 
             // If it's a permission_to_leave request, update shift_interruptions
             if (requestRecord.type === 'permission_to_leave' && requestRecord.reference_id) {
@@ -158,6 +163,11 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
 
             // If approved, handle specific request types
             if (status === 'approved') {
+                // Sync is_paid_permission to attendance if applicable
+                if (requestRecord.attendance_id && is_paid_permission) {
+                    db.prepare('UPDATE attendance SET is_paid_permission = 1 WHERE id = ?').run(requestRecord.attendance_id);
+                }
+
                 if (requestRecord.type === 'overtime_approval' && requestRecord.attendance_id) {
                     // Update approved overtime minutes
                     const minutesToApprove = approved_minutes !== undefined ? approved_minutes : 

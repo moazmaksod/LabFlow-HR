@@ -30,6 +30,7 @@ export default function RequestsScreen() {
   const [managerNote, setManagerNote] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
   const [actionType, setActionType] = useState<'approved' | 'rejected' | null>(null);
+  const [isPaidPermission, setIsPaidPermission] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const isManager = user?.role === 'manager' || user?.role === 'admin';
@@ -61,6 +62,7 @@ export default function RequestsScreen() {
     setSelectedRequest(request);
     setActionType(type);
     setManagerNote('');
+    setIsPaidPermission(false);
     setModalVisible(true);
   };
 
@@ -76,7 +78,8 @@ export default function RequestsScreen() {
     try {
       await api.put(`/requests/${selectedRequest.id}/status`, {
         status: actionType,
-        manager_note: managerNote
+        manager_note: managerNote,
+        is_paid_permission: isPaidPermission
       });
       Alert.alert('Success', `Request has been ${actionType}.`);
       setModalVisible(false);
@@ -241,6 +244,23 @@ export default function RequestsScreen() {
                 <Text style={styles.summaryLabel}>Reason:</Text>
                 <Text style={styles.summaryValue}>{selectedRequest?.reason}</Text>
               </View>
+
+              {actionType === 'approved' && (selectedRequest?.type === 'early_leave_approval' || selectedRequest?.type === 'attendance_correction') && (
+                <View style={styles.paidPermissionContainer}>
+                  <TouchableOpacity 
+                    style={styles.checkboxRow} 
+                    onPress={() => setIsPaidPermission(!isPaidPermission)}
+                  >
+                    <View style={[styles.checkbox, isPaidPermission && styles.checkboxChecked]}>
+                      {isPaidPermission && <CheckCircle size={14} color="#fff" />}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.checkboxLabel}>Mark as Paid Permission</Text>
+                      <Text style={styles.checkboxSubtext}>Missing hours will not be deducted.</Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+              )}
 
               <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>Manager Note <Text style={{ color: '#ef4444' }}>*</Text></Text>
@@ -523,6 +543,40 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  paidPermissionContainer: {
+    backgroundColor: '#f0f9ff',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+    marginBottom: 20,
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#0ea5e9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: '#0ea5e9',
+  },
+  checkboxLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0369a1',
+  },
+  checkboxSubtext: {
+    fontSize: 11,
+    color: '#0ea5e9',
   },
   emptyContainer: {
     alignItems: 'center',

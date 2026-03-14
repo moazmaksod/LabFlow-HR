@@ -146,6 +146,14 @@ export function initDb() {
     if (!requestColumns.some(c => c.name === 'manager_note')) {
       db.exec("ALTER TABLE requests ADD COLUMN manager_note TEXT;");
     }
+    if (!requestColumns.some(c => c.name === 'is_paid_permission')) {
+      db.exec("ALTER TABLE requests ADD COLUMN is_paid_permission BOOLEAN DEFAULT 0;");
+    }
+
+    const finalAttendanceColumns = db.prepare("PRAGMA table_info(attendance)").all() as any[];
+    if (!finalAttendanceColumns.some(c => c.name === 'is_paid_permission')) {
+      db.exec("ALTER TABLE attendance ADD COLUMN is_paid_permission BOOLEAN DEFAULT 0;");
+    }
 
     console.log('Database schema initialized successfully.');
   } catch (error) {
