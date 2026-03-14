@@ -10,9 +10,6 @@ let employeeId: number | bigint;
 beforeAll(async () => {
   initDb();
   
-  // Debug routes
-  console.log(app._router.stack.filter(r => r.route || r.name === 'router').map(r => r.regexp));
-  
   // Seed settings for geofence (San Francisco)
   db.prepare(`INSERT INTO settings (id, office_lat, office_lng, radius_meters) VALUES (1, 37.7749, -122.4194, 50)`).run();
 
