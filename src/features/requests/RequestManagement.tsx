@@ -21,6 +21,7 @@ export default function RequestManagement() {
   const [filterStatus, setFilterStatus] = useState('pending');
   const [selectedRequest, setSelectedRequest] = useState<RequestLog | null>(null);
   const [managerNote, setManagerNote] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const [approvedMinutes, setApprovedMinutes] = useState<number>(0);
 
   const { data: requests, isLoading } = useQuery<RequestLog[]>({
@@ -59,6 +60,7 @@ export default function RequestManagement() {
   const openModal = (req: RequestLog) => {
     setSelectedRequest(req);
     setManagerNote(req.manager_note || '');
+    setError(null);
     if (req.type === 'overtime_approval' && req.details) {
       try {
         const details = JSON.parse(req.details);
@@ -74,11 +76,16 @@ export default function RequestManagement() {
   const closeModal = () => {
     setSelectedRequest(null);
     setManagerNote('');
+    setError(null);
     setApprovedMinutes(0);
   };
 
   const handleApprove = () => {
     if (!selectedRequest) return;
+    if (!managerNote.trim()) {
+      setError("A manager note is mandatory to approve or reject this request.");
+      return;
+    }
     updateStatusMutation.mutate({ 
       id: selectedRequest.id, 
       status: 'approved',
@@ -89,6 +96,10 @@ export default function RequestManagement() {
 
   const handleReject = () => {
     if (!selectedRequest) return;
+    if (!managerNote.trim()) {
+      setError("A manager note is mandatory to approve or reject this request.");
+      return;
+    }
     updateStatusMutation.mutate({ 
       id: selectedRequest.id, 
       status: 'rejected',
@@ -275,14 +286,20 @@ export default function RequestManagement() {
               )}
 
               <div className="space-y-2 pt-2">
-                <label className="text-sm font-medium">Manager Note (Optional)</label>
+                <label className="text-sm font-medium">Manager Note <span className="text-destructive">*</span></label>
                 <textarea 
                   value={managerNote}
-                  onChange={(e) => setManagerNote(e.target.value)}
+                  onChange={(e) => {
+                    setManagerNote(e.target.value);
+                    if (e.target.value.trim()) setError(null);
+                  }}
                   disabled={selectedRequest.status !== 'pending'}
                   placeholder="Add a note for the employee..."
-                  className="w-full px-3 py-2 bg-background border border-border rounded-lg min-h-[80px] focus:ring-2 focus:ring-primary/20 outline-none resize-none disabled:opacity-50"
+                  className={`w-full px-3 py-2 bg-background border rounded-lg min-h-[80px] focus:ring-2 focus:ring-primary/20 outline-none resize-none disabled:opacity-50 ${
+                    error ? 'border-destructive' : 'border-border'
+                  }`}
                 />
+                {error && <p className="text-xs text-destructive font-medium">{error}</p>}
               </div>
             </div>
 

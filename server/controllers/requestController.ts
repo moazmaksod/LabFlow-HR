@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import db from '../db/index.js';
+import { getClosestShift } from './attendanceController.js';
 
 export const createRequest = (req: Request, res: Response): void => {
     try {
@@ -140,8 +141,8 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
             return;
         }
 
-        if (status === 'rejected' && (!manager_note || manager_note.trim() === '')) {
-            res.status(400).json({ error: 'A manager note is required when rejecting a request.' });
+        if (!manager_note || manager_note.trim() === '') {
+            res.status(400).json({ error: 'A manager note is mandatory to approve or reject this request.' });
             return;
         }
 
@@ -183,12 +184,45 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                     const updateQuery = `
                         UPDATE attendance 
                         SET check_in = COALESCE(?, check_in), 
-                            check_out = COALESCE(?, check_out)
+                            check_out = COALESCE(?, check_out),
+                            status = ?
                         WHERE id = ?
                     `;
+
+                    // Recalculate status based on new check_in
+                    let newStatus = 'on_time';
+                    const finalCheckIn = details.new_clock_in || (originalAttendance ? originalAttendance.check_in : null);
+                    
+                    if (finalCheckIn) {
+                        const userProfile = db.prepare(`
+                            SELECT p.weekly_schedule, j.grace_period
+                            FROM profiles p
+                            LEFT JOIN jobs j ON p.job_id = j.id
+                            WHERE p.user_id = ?
+                        `).get(requestRecord.user_id) as any;
+
+                        if (userProfile && userProfile.weekly_schedule) {
+                            try {
+                                const schedule = JSON.parse(userProfile.weekly_schedule);
+                                const { shift: closestShift, scheduledTime } = getClosestShift(schedule, finalCheckIn, 'start');
+                                if (closestShift && scheduledTime) {
+                                    const clockInTime = new Date(finalCheckIn);
+                                    const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
+                                    const gracePeriod = userProfile.grace_period || 15;
+                                    if (diffMinutes > gracePeriod) {
+                                        newStatus = 'late_in';
+                                    }
+                                }
+                            } catch (e) {
+                                console.error('Error recalculating status during correction approval:', e);
+                            }
+                        }
+                    }
+
                     db.prepare(updateQuery).run(
                         details.new_clock_in || null, 
                         details.new_clock_out || null, 
+                        newStatus,
                         requestRecord.attendance_id
                     );
 
@@ -221,16 +255,48 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                             db.prepare('UPDATE requests SET details = ? WHERE id = ?').run(JSON.stringify(updatedDetails), id);
                         }
 
+                        // Recalculate status based on new check_in
+                        let newStatus = 'on_time';
+                        const finalCheckIn = requestRecord.requested_check_in || (originalAttendance ? originalAttendance.check_in : null);
+                        
+                        if (finalCheckIn) {
+                            const userProfile = db.prepare(`
+                                SELECT p.weekly_schedule, j.grace_period
+                                FROM profiles p
+                                LEFT JOIN jobs j ON p.job_id = j.id
+                                WHERE p.user_id = ?
+                            `).get(requestRecord.user_id) as any;
+
+                            if (userProfile && userProfile.weekly_schedule) {
+                                try {
+                                    const schedule = JSON.parse(userProfile.weekly_schedule);
+                                    const { shift: closestShift, scheduledTime } = getClosestShift(schedule, finalCheckIn, 'start');
+                                    if (closestShift && scheduledTime) {
+                                        const clockInTime = new Date(finalCheckIn);
+                                        const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
+                                        const gracePeriod = userProfile.grace_period || 15;
+                                        if (diffMinutes > gracePeriod) {
+                                            newStatus = 'late_in';
+                                        }
+                                    }
+                                } catch (e) {
+                                    console.error('Error recalculating status during manual clock approval:', e);
+                                }
+                            }
+                        }
+
                         // Update existing attendance
                         const updateQuery = `
                             UPDATE attendance 
                             SET check_in = COALESCE(?, check_in), 
-                                check_out = COALESCE(?, check_out)
+                                check_out = COALESCE(?, check_out),
+                                status = ?
                             WHERE id = ?
                         `;
                         db.prepare(updateQuery).run(
                             requestRecord.requested_check_in, 
                             requestRecord.requested_check_out, 
+                            newStatus,
                             requestRecord.attendance_id
                         );
                     } else {
@@ -239,14 +305,43 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                         const timeString = requestRecord.requested_check_in || requestRecord.requested_check_out;
                         const date = new Date(timeString).toISOString().split('T')[0];
                         
+                        // Recalculate status based on check_in
+                        let newStatus = 'on_time';
+                        if (requestRecord.requested_check_in) {
+                            const userProfile = db.prepare(`
+                                SELECT p.weekly_schedule, j.grace_period
+                                FROM profiles p
+                                LEFT JOIN jobs j ON p.job_id = j.id
+                                WHERE p.user_id = ?
+                            `).get(requestRecord.user_id) as any;
+
+                            if (userProfile && userProfile.weekly_schedule) {
+                                try {
+                                    const schedule = JSON.parse(userProfile.weekly_schedule);
+                                    const { shift: closestShift, scheduledTime } = getClosestShift(schedule, requestRecord.requested_check_in, 'start');
+                                    if (closestShift && scheduledTime) {
+                                        const clockInTime = new Date(requestRecord.requested_check_in);
+                                        const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
+                                        const gracePeriod = userProfile.grace_period || 15;
+                                        if (diffMinutes > gracePeriod) {
+                                            newStatus = 'late_in';
+                                        }
+                                    }
+                                } catch (e) {
+                                    console.error('Error calculating status for new manual clock:', e);
+                                }
+                            }
+                        }
+
                         db.prepare(`
                             INSERT INTO attendance (user_id, check_in, check_out, date, status)
-                            VALUES (?, ?, ?, ?, 'on_time')
+                            VALUES (?, ?, ?, ?, ?)
                         `).run(
                             requestRecord.user_id, 
                             requestRecord.requested_check_in, 
                             requestRecord.requested_check_out, 
-                            date
+                            date,
+                            newStatus
                         );
                     }
                 }

@@ -18,7 +18,7 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
     return R * c;
 };
 
-const getClosestShift = (schedule: any, timestamp: string, type: 'start' | 'end', referenceDate?: string) => {
+export const getClosestShift = (schedule: any, timestamp: string, type: 'start' | 'end', referenceDate?: string) => {
     const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const punchTime = new Date(timestamp);
     const refDate = referenceDate ? new Date(referenceDate) : punchTime;

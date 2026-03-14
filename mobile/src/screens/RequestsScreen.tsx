@@ -1,8 +1,9 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity, Modal, TextInput, Alert, ScrollView } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Clock, Calendar, CheckCircle, XCircle, AlertCircle, MessageSquare } from 'lucide-react-native';
+import { Clock, Calendar, CheckCircle, XCircle, AlertCircle, MessageSquare, X } from 'lucide-react-native';
 import api from '../lib/axios';
+import { useAuthStore } from '../store/useAuthStore';
 
 interface RequestItem {
   id: number;
@@ -19,9 +20,19 @@ interface RequestItem {
 }
 
 export default function RequestsScreen() {
+  const { user } = useAuthStore();
   const [requests, setRequests] = useState<RequestItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Manager Action State
+  const [selectedRequest, setSelectedRequest] = useState<RequestItem | null>(null);
+  const [managerNote, setManagerNote] = useState('');
+  const [modalVisible, setModalVisible] = useState(false);
+  const [actionType, setActionType] = useState<'approved' | 'rejected' | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const isManager = user?.role === 'manager' || user?.role === 'admin';
 
   const fetchRequests = async () => {
     try {
@@ -44,6 +55,37 @@ export default function RequestsScreen() {
   const onRefresh = () => {
     setRefreshing(true);
     fetchRequests();
+  };
+
+  const handleAction = (request: RequestItem, type: 'approved' | 'rejected') => {
+    setSelectedRequest(request);
+    setActionType(type);
+    setManagerNote('');
+    setModalVisible(true);
+  };
+
+  const submitAction = async () => {
+    if (!selectedRequest || !actionType) return;
+    
+    if (!managerNote.trim()) {
+      Alert.alert('Required Field', 'A manager note is mandatory to approve or reject this request.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await api.put(`/requests/${selectedRequest.id}/status`, {
+        status: actionType,
+        manager_note: managerNote
+      });
+      Alert.alert('Success', `Request has been ${actionType}.`);
+      setModalVisible(false);
+      fetchRequests();
+    } catch (error: any) {
+      Alert.alert('Error', error.response?.data?.error || 'Failed to update request status');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const formatRequestType = (type: string) => {
@@ -122,6 +164,25 @@ export default function RequestsScreen() {
           )}
         </View>
         
+        {isManager && item.status === 'pending' && (
+          <View style={styles.actionRow}>
+            <TouchableOpacity 
+              style={[styles.actionButton, styles.rejectButton]} 
+              onPress={() => handleAction(item, 'rejected')}
+            >
+              <XCircle size={16} color="#ef4444" />
+              <Text style={styles.rejectButtonText}>Reject</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.actionButton, styles.approveButton]} 
+              onPress={() => handleAction(item, 'approved')}
+            >
+              <CheckCircle size={16} color="#10b981" />
+              <Text style={styles.approveButtonText}>Approve</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         <View style={styles.cardFooter}>
           <Text style={styles.footerText}>Requested on {formatDate(item.created_at)}</Text>
         </View>
@@ -159,6 +220,61 @@ export default function RequestsScreen() {
           </View>
         }
       />
+
+      <Modal visible={modalVisible} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {actionType === 'approved' ? 'Approve' : 'Reject'} Request
+              </Text>
+              <TouchableOpacity onPress={() => setModalVisible(false)}>
+                <X size={24} color="#18181b" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView>
+              <View style={styles.requestSummary}>
+                <Text style={styles.summaryLabel}>Type:</Text>
+                <Text style={styles.summaryValue}>{selectedRequest ? formatRequestType(selectedRequest.type) : ''}</Text>
+                
+                <Text style={styles.summaryLabel}>Reason:</Text>
+                <Text style={styles.summaryValue}>{selectedRequest?.reason}</Text>
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Manager Note <Text style={{ color: '#ef4444' }}>*</Text></Text>
+                <TextInput
+                  style={styles.textInput}
+                  multiline
+                  numberOfLines={4}
+                  value={managerNote}
+                  onChangeText={setManagerNote}
+                  placeholder="Enter reason for approval/rejection..."
+                  placeholderTextColor="#a1a1aa"
+                />
+              </View>
+
+              <TouchableOpacity 
+                style={[
+                  styles.submitButton, 
+                  actionType === 'approved' ? styles.submitApprove : styles.submitReject
+                ]}
+                onPress={submitAction}
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.submitButtonText}>
+                    Confirm {actionType === 'approved' ? 'Approval' : 'Rejection'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -295,6 +411,118 @@ const styles = StyleSheet.create({
   footerText: {
     fontSize: 12,
     color: '#9ca3af',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    padding: 12,
+    paddingTop: 0,
+    gap: 12,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+  },
+  approveButton: {
+    borderColor: '#10b981',
+    backgroundColor: '#f0fdf4',
+  },
+  rejectButton: {
+    borderColor: '#ef4444',
+    backgroundColor: '#fef2f2',
+  },
+  approveButtonText: {
+    color: '#10b981',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  rejectButtonText: {
+    color: '#ef4444',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#18181b',
+  },
+  requestSummary: {
+    backgroundColor: '#f4f4f5',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  summaryLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#71717a',
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  summaryValue: {
+    fontSize: 14,
+    color: '#18181b',
+    fontWeight: '500',
+    marginBottom: 12,
+  },
+  inputContainer: {
+    marginBottom: 24,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  textInput: {
+    borderWidth: 1,
+    borderColor: '#e4e4e7',
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 16,
+    color: '#18181b',
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  submitButton: {
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  submitApprove: {
+    backgroundColor: '#10b981',
+  },
+  submitReject: {
+    backgroundColor: '#ef4444',
+  },
+  submitButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   emptyContainer: {
     alignItems: 'center',
