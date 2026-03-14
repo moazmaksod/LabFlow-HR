@@ -76,7 +76,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
 export const login = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { email, password } = req.body;
+        const { email, password, deviceId } = req.body;
 
         if (!email || !password) {
             res.status(400).json({ error: 'Missing required fields: email, password' });
@@ -87,7 +87,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
         // Fetch user and profile status
         const user = db.prepare(`
-            SELECT u.*, p.status, p.suspension_reason 
+            SELECT u.*, p.status, p.suspension_reason, p.device_id 
             FROM users u 
             LEFT JOIN profiles p ON u.id = p.user_id 
             WHERE LOWER(u.email) = ?
@@ -111,6 +111,24 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         if (!isMatch) {
             res.status(401).json({ error: 'Invalid credentials' });
             return;
+        }
+
+        // Device Binding Security Check (at Login)
+        // Managers and Employees must be bound to their device
+        if (deviceId) {
+            if (!user.device_id) {
+                // First time login, bind device
+                // Check if this device is already registered to someone else
+                const existingDevice = db.prepare('SELECT user_id FROM profiles WHERE device_id = ?').get(deviceId) as any;
+                if (existingDevice && existingDevice.user_id !== user.id) {
+                    res.status(403).json({ error: 'Security Alert: This device is already registered to another user. One device per user is allowed.' });
+                    return;
+                }
+                db.prepare('UPDATE profiles SET device_id = ? WHERE user_id = ?').run(deviceId, user.id);
+            } else if (user.device_id !== deviceId) {
+                res.status(403).json({ error: 'Security Alert: You are trying to login from an unauthorized device. Please use your registered phone or contact the manager.' });
+                return;
+            }
         }
 
         // Generate JWT

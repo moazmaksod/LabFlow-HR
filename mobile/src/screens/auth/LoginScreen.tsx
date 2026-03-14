@@ -5,6 +5,7 @@ import * as SecureStore from 'expo-secure-store';
 import { Fingerprint } from 'lucide-react-native';
 import api from '../../lib/axios';
 import { useAuthStore } from '../../store/useAuthStore';
+import { getUniqueDeviceId } from '../../utils/device';
 
 const BIOMETRIC_CREDENTIALS_KEY = 'biometric_credentials';
 
@@ -39,7 +40,12 @@ export default function LoginScreen({ navigation }: any) {
 
     setLoading(true);
     try {
-      const response = await api.post('/auth/login', { email: loginEmail, password: loginPassword });
+      const deviceId = await getUniqueDeviceId();
+      const response = await api.post('/auth/login', { 
+        email: loginEmail, 
+        password: loginPassword,
+        deviceId 
+      });
       
       // Save credentials for future biometric login
       await SecureStore.setItemAsync(

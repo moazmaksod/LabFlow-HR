@@ -29,18 +29,36 @@ export const clockAttendance = (req: Request, res: Response): void => {
             return;
         }
 
-        // Device Binding Security Check
-        const profile = db.prepare('SELECT device_id FROM profiles WHERE user_id = ?').get(userId) as any;
-        if (!profile.device_id) {
+        // Fetch user profile and status
+        const userProfile = db.prepare(`
+            SELECT p.status, p.device_id, p.weekly_schedule, j.grace_period, p.allow_overtime, p.max_overtime_hours
+            FROM profiles p
+            LEFT JOIN jobs j ON p.job_id = j.id
+            WHERE p.user_id = ?
+        `).get(userId) as any;
+
+        if (!userProfile) {
+            res.status(404).json({ error: 'User profile not found' });
+            return;
+        }
+
+        // 1. Inactive Status Check
+        if (userProfile.status === 'inactive') {
+            res.status(403).json({ error: 'Action Blocked: Your account status is "Inactive". You can login but cannot clock in or out. Please contact HR.' });
+            return;
+        }
+
+        // 2. Device Binding Security Check
+        if (!userProfile.device_id) {
             // First time clocking in, bind device
             // Check if this device is already registered to someone else
             const existingDevice = db.prepare('SELECT user_id FROM profiles WHERE device_id = ?').get(deviceId) as any;
-            if (existingDevice) {
+            if (existingDevice && existingDevice.user_id !== userId) {
                 res.status(403).json({ error: 'Security Alert: This device is already registered to another employee. One device per employee is allowed.' });
                 return;
             }
             db.prepare('UPDATE profiles SET device_id = ? WHERE user_id = ?').run(deviceId, userId);
-        } else if (profile.device_id !== deviceId) {
+        } else if (userProfile.device_id !== deviceId) {
             res.status(403).json({ error: 'Security Alert: You are trying to clock in from an unauthorized device. Please use your registered phone or contact the manager.' });
             return;
         }
@@ -474,9 +492,9 @@ export const getAttendanceStats = (req: Request, res: Response): void => {
 
         const todayStats = db.prepare(`
             SELECT 
-                SUM(CASE WHEN status IN ('on_time', 'early_out') THEN 1 ELSE 0 END) as present,
+                SUM(CASE WHEN status = 'on_time' THEN 1 ELSE 0 END) as present,
                 SUM(CASE WHEN status = 'late_in' THEN 1 ELSE 0 END) as late,
-                SUM(CASE WHEN status IN ('absent', 'half_day') THEN 1 ELSE 0 END) as absent
+                SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) as absent
             FROM attendance
             WHERE date = ?
         `).get(todayDateStr) as any;

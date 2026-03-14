@@ -6,6 +6,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 import api from '../../lib/axios';
 import { LogIn, Globe, Moon, Sun } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
+import { getWebDeviceId } from '../../lib/deviceId';
 
 export default function Login() {
   const { t } = useTranslation();
@@ -21,7 +22,8 @@ export default function Login() {
 
   const loginMutation = useMutation({
     mutationFn: async () => {
-      const response = await api.post('/auth/login', { email, password });
+      const deviceId = getWebDeviceId();
+      const response = await api.post('/auth/login', { email, password, deviceId });
       return response.data;
     },
     onSuccess: (data) => {
