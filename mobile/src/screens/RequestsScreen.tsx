@@ -17,6 +17,7 @@ interface RequestItem {
   original_check_out?: string;
   requested_check_in?: string;
   requested_check_out?: string;
+  details?: string;
 }
 
 export default function RequestsScreen() {
@@ -31,6 +32,8 @@ export default function RequestsScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [actionType, setActionType] = useState<'approved' | 'rejected' | null>(null);
   const [isPaidPermission, setIsPaidPermission] = useState(false);
+  const [paidPermissionMinutes, setPaidPermissionMinutes] = useState('0');
+  const [maxPaidMinutes, setMaxPaidMinutes] = useState(0);
   const [submitting, setSubmitting] = useState(false);
 
   const isManager = user?.role === 'manager' || user?.role === 'admin';
@@ -62,7 +65,18 @@ export default function RequestsScreen() {
     setSelectedRequest(request);
     setActionType(type);
     setManagerNote('');
-    setIsPaidPermission(false);
+    
+    let missing = 0;
+    if (request.type === 'early_leave_approval' || request.type === 'attendance_correction') {
+      try {
+        const details = JSON.parse(request.details || '{}');
+        missing = details.missing_minutes || details.early_leave_minutes || 0;
+      } catch (e) {}
+    }
+    setMaxPaidMinutes(missing);
+    setPaidPermissionMinutes(missing.toString());
+    setIsPaidPermission(missing > 0);
+    
     setModalVisible(true);
   };
 
@@ -79,7 +93,8 @@ export default function RequestsScreen() {
       await api.put(`/requests/${selectedRequest.id}/status`, {
         status: actionType,
         manager_note: managerNote,
-        is_paid_permission: isPaidPermission
+        is_paid_permission: isPaidPermission,
+        paid_permission_minutes: isPaidPermission ? parseInt(paidPermissionMinutes) || 0 : 0
       });
       Alert.alert('Success', `Request has been ${actionType}.`);
       setModalVisible(false);
@@ -256,9 +271,28 @@ export default function RequestsScreen() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.checkboxLabel}>Mark as Paid Permission</Text>
-                      <Text style={styles.checkboxSubtext}>Missing hours will not be deducted.</Text>
+                      <Text style={styles.checkboxSubtext}>Specify how many minutes are paid.</Text>
                     </View>
                   </TouchableOpacity>
+
+                  {isPaidPermission && (
+                    <View style={styles.paidInputContainer}>
+                      <Text style={styles.paidInputLabel}>Approved Paid Minutes (Max: {maxPaidMinutes})</Text>
+                      <TextInput
+                        style={styles.paidInput}
+                        keyboardType="numeric"
+                        value={paidPermissionMinutes}
+                        onChangeText={(text) => {
+                          const val = parseInt(text) || 0;
+                          if (val <= maxPaidMinutes) {
+                            setPaidPermissionMinutes(text);
+                          } else {
+                            setPaidPermissionMinutes(maxPaidMinutes.toString());
+                          }
+                        }}
+                      />
+                    </View>
+                  )}
                 </View>
               )}
 
@@ -577,6 +611,27 @@ const styles = StyleSheet.create({
   checkboxSubtext: {
     fontSize: 11,
     color: '#0ea5e9',
+  },
+  paidInputContainer: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#bae6fd',
+  },
+  paidInputLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0369a1',
+    marginBottom: 4,
+  },
+  paidInput: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+    borderRadius: 8,
+    padding: 8,
+    fontSize: 14,
+    color: '#18181b',
   },
   emptyContainer: {
     alignItems: 'center',

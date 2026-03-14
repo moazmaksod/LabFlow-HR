@@ -24,6 +24,8 @@ export default function RequestManagement() {
   const [error, setError] = useState<string | null>(null);
   const [approvedMinutes, setApprovedMinutes] = useState<number>(0);
   const [isPaidPermission, setIsPaidPermission] = useState(false);
+  const [paidPermissionMinutes, setPaidPermissionMinutes] = useState<number>(0);
+  const [maxPaidMinutes, setMaxPaidMinutes] = useState<number>(0);
 
   const { data: requests, isLoading } = useQuery<RequestLog[]>({
     queryKey: ['requests'],
@@ -34,8 +36,8 @@ export default function RequestManagement() {
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, status, manager_note, approved_minutes, is_paid_permission }: { id: number, status: string, manager_note?: string, approved_minutes?: number, is_paid_permission?: boolean }) => {
-      const res = await api.put(`/requests/${id}/status`, { status, manager_note, approved_minutes, is_paid_permission });
+    mutationFn: async ({ id, status, manager_note, approved_minutes, is_paid_permission, paid_permission_minutes }: { id: number, status: string, manager_note?: string, approved_minutes?: number, is_paid_permission?: boolean, paid_permission_minutes?: number }) => {
+      const res = await api.put(`/requests/${id}/status`, { status, manager_note, approved_minutes, is_paid_permission, paid_permission_minutes });
       return res.data;
     },
     onSuccess: () => {
@@ -62,13 +64,27 @@ export default function RequestManagement() {
     setSelectedRequest(req);
     setManagerNote(req.manager_note || '');
     setIsPaidPermission(false);
+    setPaidPermissionMinutes(0);
+    setMaxPaidMinutes(0);
     setError(null);
+    
     if (req.type === 'overtime_approval' && req.details) {
       try {
         const details = JSON.parse(req.details);
         setApprovedMinutes(details.requested_overtime_minutes || details.raw_overtime_minutes || 0);
       } catch (e) {
         setApprovedMinutes(0);
+      }
+    } else if (req.type === 'early_leave_approval' || req.type === 'attendance_correction') {
+      try {
+        const details = JSON.parse(req.details || '{}');
+        const missing = details.missing_minutes || details.early_leave_minutes || 0;
+        setMaxPaidMinutes(missing);
+        setPaidPermissionMinutes(missing);
+        setIsPaidPermission(missing > 0);
+      } catch (e) {
+        setMaxPaidMinutes(0);
+        setPaidPermissionMinutes(0);
       }
     } else {
       setApprovedMinutes(0);
@@ -93,7 +109,8 @@ export default function RequestManagement() {
       status: 'approved',
       manager_note: managerNote,
       approved_minutes: selectedRequest.type === 'overtime_approval' ? approvedMinutes : undefined,
-      is_paid_permission: isPaidPermission
+      is_paid_permission: isPaidPermission,
+      paid_permission_minutes: isPaidPermission ? paidPermissionMinutes : 0
     });
   };
 
@@ -289,19 +306,41 @@ export default function RequestManagement() {
               )}
 
               {(selectedRequest.type === 'early_leave_approval' || selectedRequest.type === 'attendance_correction') && (
-                <div className="flex items-center gap-3 p-3 bg-primary/5 rounded-lg border border-primary/10">
-                  <input 
-                    type="checkbox" 
-                    id="paid-permission"
-                    checked={isPaidPermission}
-                    onChange={(e) => setIsPaidPermission(e.target.checked)}
-                    disabled={selectedRequest.status !== 'pending'}
-                    className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
-                  />
-                  <div>
-                    <label htmlFor="paid-permission" className="text-sm font-semibold block">Mark as Paid Permission</label>
-                    <p className="text-xs text-muted-foreground">If enabled, missing hours will not be deducted from the salary.</p>
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 p-3 bg-primary/5 rounded-lg border border-primary/10">
+                    <input 
+                      type="checkbox" 
+                      id="paid-permission"
+                      checked={isPaidPermission}
+                      onChange={(e) => setIsPaidPermission(e.target.checked)}
+                      disabled={selectedRequest.status !== 'pending'}
+                      className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
+                    />
+                    <div>
+                      <label htmlFor="paid-permission" className="text-sm font-semibold block">Mark as Paid Permission</label>
+                      <p className="text-xs text-muted-foreground">If enabled, you can specify how many minutes are paid.</p>
+                    </div>
                   </div>
+
+                  {isPaidPermission && (
+                    <div className="space-y-2 pl-7">
+                      <label className="text-sm font-medium">Approved Paid Minutes</label>
+                      <input 
+                        type="number" 
+                        value={paidPermissionMinutes}
+                        max={maxPaidMinutes}
+                        onChange={(e) => {
+                          const val = Math.min(maxPaidMinutes, Math.max(0, Number(e.target.value)));
+                          setPaidPermissionMinutes(val);
+                        }}
+                        disabled={selectedRequest.status !== 'pending'}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none disabled:opacity-50"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Max allowed: {maxPaidMinutes} minutes.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 

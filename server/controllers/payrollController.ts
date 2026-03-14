@@ -138,11 +138,9 @@ export const getPayrollSummary = (req: Request, res: Response): void => {
                 totalMissingUnpaidMinutes += expectedForDay;
             } else {
                 const missing = Math.max(0, expectedForDay - workedMinutes);
-                if (log.is_paid_permission) {
-                    totalPaidPermissionMinutes += missing;
-                } else {
-                    totalMissingUnpaidMinutes += missing;
-                }
+                const paidMinutes = Math.min(missing, log.paid_permission_minutes || 0);
+                totalPaidPermissionMinutes += paidMinutes;
+                totalMissingUnpaidMinutes += Math.max(0, missing - paidMinutes);
             }
         });
 

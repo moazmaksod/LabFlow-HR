@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS attendance (
     location_lng REAL,
     approved_overtime_minutes INTEGER DEFAULT 0,
     is_paid_permission BOOLEAN DEFAULT 0,
+    paid_permission_minutes INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -81,6 +82,7 @@ CREATE TABLE IF NOT EXISTS requests (
     details TEXT,
     manager_note TEXT,
     is_paid_permission BOOLEAN DEFAULT 0,
+    paid_permission_minutes INTEGER DEFAULT 0,
     status TEXT NOT NULL CHECK(status IN ('pending', 'approved', 'rejected')) DEFAULT 'pending',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,

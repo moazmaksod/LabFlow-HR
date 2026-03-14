@@ -103,7 +103,45 @@ export const createAttendanceCorrection = (req: Request, res: Response): void =>
             return;
         }
 
-        const details = JSON.stringify({ new_clock_in, new_clock_out, breaks });
+        const userProfile = db.prepare(`
+            SELECT p.weekly_schedule, j.grace_period
+            FROM profiles p
+            LEFT JOIN jobs j ON p.job_id = j.id
+            WHERE p.user_id = ?
+        `).get(userId) as any;
+
+        let missingMinutes = 0;
+        if (userProfile && userProfile.weekly_schedule) {
+            try {
+                const schedule = JSON.parse(userProfile.weekly_schedule);
+                const checkIn = new_clock_in || attendanceRecord.check_in;
+                const checkOut = new_clock_out || attendanceRecord.check_out;
+
+                if (checkIn) {
+                    const { shift: startShift, scheduledTime: startScheduled } = getClosestShift(schedule, checkIn, 'start');
+                    if (startShift && startScheduled) {
+                        const diff = (new Date(checkIn).getTime() - startScheduled.getTime()) / (1000 * 60);
+                        if (diff > (userProfile.grace_period || 15)) {
+                            missingMinutes += Math.floor(diff);
+                        }
+                    }
+                }
+
+                if (checkOut) {
+                    const { shift: endShift, scheduledTime: endScheduled } = getClosestShift(schedule, checkOut, 'end', checkIn);
+                    if (endShift && endScheduled) {
+                        const diff = (endScheduled.getTime() - new Date(checkOut).getTime()) / (1000 * 60);
+                        if (diff > (userProfile.grace_period || 15)) {
+                            missingMinutes += Math.floor(diff);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Error calculating missing minutes for correction:', e);
+            }
+        }
+
+        const details = JSON.stringify({ new_clock_in, new_clock_out, breaks, missing_minutes: missingMinutes });
         
         const insert = db.prepare(`
             INSERT INTO requests (user_id, attendance_id, type, details, reason, status)
@@ -123,7 +161,7 @@ export const createAttendanceCorrection = (req: Request, res: Response): void =>
 export const updateRequestStatus = (req: Request, res: Response): void => {
     try {
         const { id } = req.params;
-        const { status, manager_note, approved_minutes, is_paid_permission } = req.body;
+        const { status, manager_note, approved_minutes, is_paid_permission, paid_permission_minutes } = req.body;
 
         if (!['approved', 'rejected'].includes(status)) {
             res.status(400).json({ error: 'Invalid status' });
@@ -148,10 +186,11 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
 
         const transaction = db.transaction(() => {
             // Update the request status, manager note and is_paid_permission
-            db.prepare('UPDATE requests SET status = ?, manager_note = ?, is_paid_permission = ? WHERE id = ?').run(
+            db.prepare('UPDATE requests SET status = ?, manager_note = ?, is_paid_permission = ?, paid_permission_minutes = ? WHERE id = ?').run(
                 status, 
                 manager_note || null, 
                 is_paid_permission ? 1 : 0,
+                paid_permission_minutes || 0,
                 id
             );
 
@@ -163,9 +202,13 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
 
             // If approved, handle specific request types
             if (status === 'approved') {
-                // Sync is_paid_permission to attendance if applicable
-                if (requestRecord.attendance_id && is_paid_permission) {
-                    db.prepare('UPDATE attendance SET is_paid_permission = 1 WHERE id = ?').run(requestRecord.attendance_id);
+                // Sync is_paid_permission and paid_permission_minutes to attendance if applicable
+                if (requestRecord.attendance_id) {
+                    db.prepare('UPDATE attendance SET is_paid_permission = ?, paid_permission_minutes = ? WHERE id = ?').run(
+                        is_paid_permission ? 1 : 0,
+                        paid_permission_minutes || 0,
+                        requestRecord.attendance_id
+                    );
                 }
 
                 if (requestRecord.type === 'overtime_approval' && requestRecord.attendance_id) {

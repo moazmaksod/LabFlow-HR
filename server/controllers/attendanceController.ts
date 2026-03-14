@@ -280,7 +280,7 @@ export const clockAttendance = (req: Request, res: Response): void => {
                                 activeSession.id,
                                 activeSession.id, 
                                 `System detected early leave by ${earlyMinutes} minutes.`,
-                                JSON.stringify({ early_leave_minutes: earlyMinutes })
+                                JSON.stringify({ early_leave_minutes: earlyMinutes, missing_minutes: earlyMinutes })
                             );
                         }
                     }
