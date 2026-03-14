@@ -281,14 +281,15 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
 
                     // Update breaks if provided
                     if (details.breaks && Array.isArray(details.breaks)) {
+                        const updateBreakStmt = db.prepare(`
+                            UPDATE shift_interruptions
+                            SET start_time = COALESCE(?, start_time),
+                                end_time = COALESCE(?, end_time)
+                            WHERE id = ? AND attendance_id = ?
+                        `);
                         for (const b of details.breaks) {
                             if (b.id) {
-                                db.prepare(`
-                                    UPDATE shift_interruptions 
-                                    SET start_time = COALESCE(?, start_time), 
-                                        end_time = COALESCE(?, end_time)
-                                    WHERE id = ? AND attendance_id = ?
-                                `).run(b.start_time || null, b.end_time || null, b.id, requestRecord.attendance_id);
+                                updateBreakStmt.run(b.start_time || null, b.end_time || null, b.id, requestRecord.attendance_id);
                             }
                         }
                     }
