@@ -18,7 +18,7 @@ interface WeeklySchedule {
   [key: string]: Shift[];
 }
 
-const DAYS = ['saturday', 'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
 export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps) {
   const queryClient = useQueryClient();
@@ -366,6 +366,22 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
               <div key={day} className={`flex flex-col p-3 text-sm ${formData.weekly_schedule[day].length === 0 ? 'bg-muted/30' : 'bg-background'} border-b border-border last:border-0`}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-3 w-32">
+                    <input 
+                      type="checkbox"
+                      checked={formData.weekly_schedule[day].length === 0}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setFormData((prev: any) => ({
+                            ...prev,
+                            weekly_schedule: { ...prev.weekly_schedule, [day]: [] }
+                          }));
+                        } else if (formData.weekly_schedule[day].length === 0) {
+                          addShift(day);
+                        }
+                      }}
+                      data-testid={day === 'friday' ? 'day-off-friday-checkbox' : undefined}
+                      className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
+                    />
                     <span className="capitalize font-medium">{day}</span>
                   </div>
                   <button 
@@ -403,7 +419,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                     ))}
                   </div>
                 ) : (
-                  <span className="text-xs text-muted-foreground italic pl-4">Day Off</span>
+                  <span data-testid={day === 'friday' ? 'day-off-friday' : undefined} className="text-xs text-muted-foreground italic pl-4">Day Off</span>
                 )}
               </div>
             ))}

@@ -30,6 +30,7 @@ const mockUsers = [
     job_id: 1,
     job_title: 'Software Engineer',
     is_clocked_in: 1,
+    current_status: 'working',
   },
   {
     id: 2,
@@ -40,6 +41,7 @@ const mockUsers = [
     job_id: null,
     job_title: null,
     is_clocked_in: 0,
+    current_status: 'off',
   }
 ];
 
@@ -84,7 +86,7 @@ describe('EmployeeList', () => {
 
     await waitFor(() => {
       // Check if detail view header is present
-      expect(screen.getByText('Personal Information')).toBeInTheDocument();
+      expect(screen.getByText('Personal Information (Read-Only)')).toBeInTheDocument();
       expect(screen.getByDisplayValue('John Doe')).toBeInTheDocument();
     });
   });
