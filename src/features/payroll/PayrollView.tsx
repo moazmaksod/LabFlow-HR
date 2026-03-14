@@ -31,7 +31,7 @@ export default function PayrollView() {
   });
 
   const handleExportCSV = () => {
-    if (!payrollData || payrollData.length === 0) return;
+    if (!Array.isArray(payrollData) || payrollData.length === 0) return;
 
     const headers = ['Employee Name', 'Job Title', 'Hourly Rate ($)', 'Total Hours', 'Total Pay ($)'];
     const csvRows = [headers.join(',')];
@@ -57,7 +57,9 @@ export default function PayrollView() {
     document.body.removeChild(link);
   };
 
-  const totalPayroll = payrollData?.reduce((sum, record) => sum + record.total_pay, 0) || 0;
+  const totalPayroll = Array.isArray(payrollData) 
+    ? payrollData.reduce((sum, record) => sum + record.total_pay, 0) 
+    : 0;
 
   return (
     <div className="space-y-6">
@@ -66,7 +68,7 @@ export default function PayrollView() {
         
         <button 
           onClick={handleExportCSV}
-          disabled={!payrollData || payrollData.length === 0}
+          disabled={!Array.isArray(payrollData) || payrollData.length === 0}
           className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg font-medium shadow-sm hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Download className="w-4 h-4" />
@@ -111,7 +113,7 @@ export default function PayrollView() {
       <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
         {isLoading ? (
           <div className="p-8 text-center text-muted-foreground">Calculating payroll...</div>
-        ) : payrollData?.length === 0 ? (
+        ) : !Array.isArray(payrollData) || payrollData.length === 0 ? (
           <div className="p-8 text-center text-muted-foreground">No attendance records found for this period.</div>
         ) : (
           <div className="overflow-x-auto">
@@ -126,7 +128,7 @@ export default function PayrollView() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {payrollData?.map((row) => (
+                {payrollData.map((row) => (
                   <tr key={row.user_id} className="hover:bg-muted/50 transition-colors">
                     <td className="px-6 py-4 font-medium">{row.user_name}</td>
                     <td className="px-6 py-4 text-muted-foreground">{row.job_title}</td>
