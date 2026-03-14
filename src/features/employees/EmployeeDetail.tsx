@@ -248,17 +248,6 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
               </select>
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Role Type</label>
-              <select 
-                value={formData.role} 
-                onChange={(e) => setFormData({...formData, role: e.target.value})}
-                className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-              >
-                <option value="employee">Employee</option>
-                <option value="pending">Pending</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
                 <Shield className="w-3 h-3" /> Status
               </label>

@@ -218,14 +218,22 @@ export const updateUserProfile = (req: Request, res: Response): void => {
             name, age, gender, profile_picture_url,
             weekly_schedule, hourly_rate, lunch_break_minutes,
             emergency_contact_name, emergency_contact_phone, leave_balance,
-            job_id, role, status, suspension_reason,
+            job_id, status, suspension_reason,
             allow_overtime, max_overtime_hours
         } = req.body;
 
         const updateTransaction = db.transaction(() => {
-            if (name || role) {
+            const userToUpdate = db.prepare('SELECT role FROM users WHERE id = ?').get(id) as { role: string } | undefined;
+            
+            // Enforce 'employee' role for non-managers when updating via this HR interface
+            let roleToSet = userToUpdate?.role;
+            if (roleToSet && roleToSet !== 'manager') {
+                roleToSet = 'employee';
+            }
+
+            if (name || roleToSet) {
                 db.prepare('UPDATE users SET name = COALESCE(?, name), role = COALESCE(?, role) WHERE id = ?')
-                  .run(name || null, role || null, id);
+                  .run(name || null, roleToSet || null, id);
             }
 
             const profileExists = db.prepare('SELECT id FROM profiles WHERE user_id = ?').get(id);
