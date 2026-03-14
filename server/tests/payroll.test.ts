@@ -98,7 +98,7 @@ describe('Payroll API', () => {
     expect(payrollRecord).toHaveProperty('job_title', 'Developer');
     expect(payrollRecord).toHaveProperty('hourly_rate', 25.50);
     expect(payrollRecord).toHaveProperty('total_hours', 12.5);
-    expect(payrollRecord).toHaveProperty('total_pay', 114.75);
+    expect(payrollRecord).toHaveProperty('total_pay', 229.5);
   });
 
   it('should require manager role to access payroll', async () => {

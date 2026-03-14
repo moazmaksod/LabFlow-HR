@@ -15,7 +15,7 @@ const calculateUserPayroll = (user: any, start_date: string, end_date: string) =
     let totalExpectedMinutes = 0;
     let totalActualWorkedMinutes = 0;
     let totalPaidPermissionMinutes = 0;
-    let totalMissingUnpaidMinutes = 0;
+    let totalMissingMinutes = 0;
     let totalApprovedOvertimeMinutes = 0;
 
     const start = new Date(start_date as string);
@@ -64,12 +64,10 @@ const calculateUserPayroll = (user: any, start_date: string, end_date: string) =
         totalApprovedOvertimeMinutes += log.approved_overtime_minutes || 0;
 
         if (log.status === 'absent') {
-            totalMissingUnpaidMinutes += expectedForDay;
+            totalMissingMinutes += expectedForDay;
         } else {
-            const missing = Math.max(0, expectedForDay - workedMinutes);
-            const paidMinutes = Math.min(missing, log.paid_permission_minutes || 0);
-            totalPaidPermissionMinutes += paidMinutes;
-            totalMissingUnpaidMinutes += Math.max(0, missing - paidMinutes);
+            totalMissingMinutes += Math.max(0, expectedForDay - workedMinutes);
+            totalPaidPermissionMinutes += log.paid_permission_minutes || 0;
         }
     });
 
@@ -82,13 +80,14 @@ const calculateUserPayroll = (user: any, start_date: string, end_date: string) =
             dayShifts.forEach((shift: any) => {
                 const [startH, startM] = shift.start.split(':').map(Number);
                 const [endH, endM] = shift.end.split(':').map(Number);
-                totalMissingUnpaidMinutes += (endH * 60 + endM) - (startH * 60 + startM);
+                totalMissingMinutes += (endH * 60 + endM) - (startH * 60 + startM);
             });
         }
     }
 
-    const grossBasePay = (totalExpectedMinutes / 60) * hourlyRate;
-    const totalDeductions = (totalMissingUnpaidMinutes / 60) * hourlyRate;
+    const deductibleMinutes = Math.max(0, totalMissingMinutes - totalPaidPermissionMinutes);
+    const grossBasePay = (totalActualWorkedMinutes / 60) * hourlyRate;
+    const totalDeductions = (deductibleMinutes / 60) * hourlyRate;
     const overtimeBonus = (totalApprovedOvertimeMinutes / 60) * (hourlyRate * 1.5);
     const finalNetSalary = grossBasePay - totalDeductions + overtimeBonus;
 
@@ -98,7 +97,7 @@ const calculateUserPayroll = (user: any, start_date: string, end_date: string) =
             expected_hours: Number((totalExpectedMinutes / 60).toFixed(2)),
             actual_worked_hours: Number((totalActualWorkedMinutes / 60).toFixed(2)),
             paid_permission_hours: Number((totalPaidPermissionMinutes / 60).toFixed(2)),
-            missing_unpaid_minutes: Math.round(totalMissingUnpaidMinutes),
+            missing_unpaid_minutes: Math.round(deductibleMinutes),
             approved_overtime_minutes: totalApprovedOvertimeMinutes
         },
         financial_metrics: {
@@ -158,7 +157,7 @@ export const getAllPayroll = (req: Request, res: Response): void => {
             FROM users u
             JOIN profiles p ON u.id = p.user_id
             LEFT JOIN jobs j ON p.job_id = j.id
-            WHERE u.role != 'admin'
+            WHERE u.role = 'employee'
         `).all() as any[];
 
         const results = users.map(user => {
