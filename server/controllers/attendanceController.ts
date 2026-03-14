@@ -315,6 +315,18 @@ export const syncOfflineLogs = (req: Request, res: Response): void => {
 
             const results = [];
             const currentServerTime = Date.now();
+
+            const getCheckInStmt = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ?');
+            const getActiveSessionStmt = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND check_out IS NULL ORDER BY check_in DESC LIMIT 1');
+            const insertCheckInStmt = db.prepare(`
+                INSERT INTO attendance (user_id, check_in, date, location_lat, location_lng, status)
+                VALUES (?, ?, ?, ?, ?, 'on_time')
+            `);
+            const updateCheckOutStmt = db.prepare(`
+                UPDATE attendance
+                SET check_out = ?, location_lat = ?, location_lng = ?
+                WHERE id = ?
+            `);
             
             for (const log of logsToSync) {
                 const { type, delay_in_milliseconds, lat, lng } = log;
@@ -327,28 +339,21 @@ export const syncOfflineLogs = (req: Request, res: Response): void => {
                 
                 let existingRecord;
                 if (type === 'check_in') {
-                    existingRecord = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ?').get(userId, date) as any;
+                    existingRecord = getCheckInStmt.get(userId, date) as any;
                 } else {
-                    existingRecord = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND check_out IS NULL ORDER BY check_in DESC LIMIT 1').get(userId) as any;
+                    existingRecord = getActiveSessionStmt.get(userId) as any;
                 }
 
                 if (type === 'check_in') {
                     if (!existingRecord) {
-                        const info = db.prepare(`
-                            INSERT INTO attendance (user_id, check_in, date, location_lat, location_lng, status)
-                            VALUES (?, ?, ?, ?, ?, 'on_time')
-                        `).run(userId, timestamp, date, lat, lng);
+                        insertCheckInStmt.run(userId, timestamp, date, lat, lng);
                         results.push({ logId: log.id, status: 'success', action: 'inserted' });
                     } else {
                         results.push({ logId: log.id, status: 'skipped', reason: 'already checked in' });
                     }
                 } else if (type === 'check_out') {
                     if (existingRecord && !existingRecord.check_out) {
-                        db.prepare(`
-                            UPDATE attendance 
-                            SET check_out = ?, location_lat = ?, location_lng = ?
-                            WHERE id = ?
-                        `).run(timestamp, lat, lng, existingRecord.id);
+                        updateCheckOutStmt.run(timestamp, lat, lng, existingRecord.id);
                         results.push({ logId: log.id, status: 'success', action: 'updated' });
                     } else {
                         results.push({ logId: log.id, status: 'skipped', reason: 'no check-in or already checked out' });
