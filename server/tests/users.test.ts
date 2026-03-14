@@ -26,6 +26,14 @@ beforeAll(async () => {
   const empInsert = db.prepare(`INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)`).run('Employee User', 'employee_user@test.com', hash, 'employee');
   employeeId = empInsert.lastInsertRowid;
   employeeToken = jwt.sign({ id: employeeId, role: 'employee' }, process.env.JWT_SECRET || 'fallback_secret', { expiresIn: '1h' });
+
+  // Create manager
+  const managerInsert = db.prepare(`INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)`).run('Manager User', 'manager_user@test.com', hash, 'manager');
+  managerId = managerInsert.lastInsertRowid;
+  managerToken = jwt.sign({ id: managerId, role: 'manager' }, process.env.JWT_SECRET || 'fallback_secret', { expiresIn: '1h' });
+
+  // Create profile for employee with a device_id
+  db.prepare(`INSERT INTO profiles (user_id, status, device_id) VALUES (?, ?, ?)`).run(employeeId, 'active', 'test-device-id-123');
 });
 
 afterAll(() => {
@@ -78,6 +86,33 @@ describe('User Profile API', () => {
     
     expect(res.status).toBe(200);
     expect(res.body.profile_picture_url).toBe(avatarUrl);
+  });
+
+  describe('resetDevice', () => {
+    it('should deny employee from resetting a device', async () => {
+      const res = await request(app)
+        .put(`/api/users/${employeeId}/reset-device`)
+        .set('Authorization', `Bearer ${employeeToken}`);
+
+      expect(res.status).toBe(403);
+    });
+
+    it('should allow manager to reset a device', async () => {
+      // Verify device_id is present initially
+      let profile = db.prepare('SELECT device_id FROM profiles WHERE user_id = ?').get(employeeId) as any;
+      expect(profile.device_id).toBe('test-device-id-123');
+
+      const res = await request(app)
+        .put(`/api/users/${employeeId}/reset-device`)
+        .set('Authorization', `Bearer ${managerToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.message).toBe('Device binding reset successfully');
+
+      // Verify device_id is now NULL
+      profile = db.prepare('SELECT device_id FROM profiles WHERE user_id = ?').get(employeeId) as any;
+      expect(profile.device_id).toBeNull();
+    });
   });
 });
 
