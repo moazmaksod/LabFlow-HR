@@ -1,42 +1,45 @@
-import { getClosestShift } from '../controllers/attendanceController.js';
+import { getLogicalShiftDetails } from '../utils/shiftUtils.js';
 
-describe('getClosestShift', () => {
-    const timestamp = '2023-10-25T08:00:00Z'; // This is a Wednesday
+describe('getLogicalShiftDetails', () => {
+    const timestamp = '2023-10-25T08:00:00Z'; // This is a Wednesday, 8 AM UTC
+    const timezone = 'UTC';
 
     it('should return nulls when schedule is null', () => {
-        const result = getClosestShift(null, timestamp, 'start');
-        expect(result).toEqual({ shift: null, scheduledTime: null });
+        const result = getLogicalShiftDetails(null, timestamp, timezone, 'check_in');
+        expect(result.shift).toBeNull();
+        expect(result.scheduledTime).toBeNull();
     });
 
     it('should return nulls when schedule is undefined', () => {
-        const result = getClosestShift(undefined, timestamp, 'start');
-        expect(result).toEqual({ shift: null, scheduledTime: null });
+        const result = getLogicalShiftDetails(undefined, timestamp, timezone, 'check_in');
+        expect(result.shift).toBeNull();
+        expect(result.scheduledTime).toBeNull();
     });
 
     it('should return nulls when schedule is an empty object', () => {
-        const result = getClosestShift({}, timestamp, 'start');
-        expect(result).toEqual({ shift: null, scheduledTime: null });
+        const result = getLogicalShiftDetails({}, timestamp, timezone, 'check_in');
+        expect(result.shift).toBeNull();
+        expect(result.scheduledTime).toBeNull();
     });
 
-    it('should find the closest start shift on the same day', () => {
+    it('should find the shift when punching in early', () => {
         const schedule = {
             wednesday: [
                 { start: '09:00', end: '17:00' }
             ]
         };
-        // 2023-10-25 is Wednesday.
-        const result = getClosestShift(schedule, timestamp, 'start');
+        const result = getLogicalShiftDetails(schedule, timestamp, timezone, 'check_in');
         expect(result.shift).toEqual({ start: '09:00', end: '17:00' });
         expect(result.scheduledTime?.getHours()).toBe(9);
     });
 
-    it('should find the closest end shift', () => {
+    it('should find the active shift when punching out', () => {
         const schedule = {
             wednesday: [
                 { start: '09:00', end: '17:00' }
             ]
         };
-        const result = getClosestShift(schedule, '2023-10-25T17:30:00Z', 'end');
+        const result = getLogicalShiftDetails(schedule, '2023-10-25T17:30:00Z', timezone, 'check_out');
         expect(result.shift).toEqual({ start: '09:00', end: '17:00' });
         expect(result.scheduledTime?.getHours()).toBe(17);
     });
@@ -47,13 +50,13 @@ describe('getClosestShift', () => {
                 { start: '22:00', end: '06:00' } // crosses midnight to Thursday
             ]
         };
-        const punchTime = '2023-10-26T06:15:00Z'; // Thursday early morning
-        // The reference date is Thursday. The function checks Wed, Thu, Fri.
-        // On Wed, it sees start 22:00, end 06:00. End time is before start time, so it adds 1 day.
-        // It should match the 06:00 on Thursday from Wednesday's schedule.
-        const result = getClosestShift(schedule, punchTime, 'end');
+        const punchTime = '2023-10-26T06:15:00Z'; // Thursday early morning (6:15 AM)
+        const checkInTime = '2023-10-25T21:50:00Z'; // Wednesday 9:50 PM
+
+        const result = getLogicalShiftDetails(schedule, punchTime, timezone, 'check_out', checkInTime);
         expect(result.shift).toEqual({ start: '22:00', end: '06:00' });
         expect(result.scheduledTime?.getDate()).toBe(26); // Thursday
         expect(result.scheduledTime?.getHours()).toBe(6);
+        expect(result.logicalDate).toBe('2023-10-25');
     });
 });

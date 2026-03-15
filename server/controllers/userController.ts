@@ -1,21 +1,63 @@
 import { Request, Response } from 'express';
 import db from '../db/index.js';
 
+import { getLogicalShiftDetails } from '../utils/shiftUtils.js';
+
 export const getUsers = (req: Request, res: Response): void => {
     try {
+        const settingsForTz = db.prepare('SELECT timezone FROM settings WHERE id = 1').get() as any;
+        const timezone = settingsForTz?.timezone || 'UTC';
+        const currentServerTime = new Date().toISOString();
+
         // Get users with their profile and job info, excluding managers
         const users = db.prepare(`
             SELECT 
                 u.id, u.name, u.email, u.role, u.created_at,
-                p.status, p.job_id,
+                p.status, p.job_id, p.weekly_schedule,
                 j.title as job_title,
-                (SELECT current_status FROM attendance a WHERE a.user_id = u.id AND a.check_out IS NULL ORDER BY a.check_in DESC LIMIT 1) as current_status
+                (SELECT current_status FROM attendance a WHERE a.user_id = u.id AND a.check_out IS NULL ORDER BY a.check_in DESC LIMIT 1) as raw_current_status,
+                (SELECT date FROM attendance a WHERE a.user_id = u.id AND a.check_out IS NULL ORDER BY a.check_in DESC LIMIT 1) as current_attendance_date
             FROM users u
             LEFT JOIN profiles p ON u.id = p.user_id
             LEFT JOIN jobs j ON p.job_id = j.id
             WHERE u.role != 'manager'
             ORDER BY u.created_at DESC
-        `).all();
+        `).all() as any[];
+
+        // Refine current_status strictly based on the schedule
+        users.forEach(user => {
+            let schedule = null;
+            if (user.weekly_schedule) {
+                try {
+                    schedule = JSON.parse(user.weekly_schedule);
+                } catch (e) {
+                    console.error('Error parsing weekly schedule:', e);
+                }
+            }
+
+            // Remove weekly_schedule from payload as it's large and unnecessary here
+            delete user.weekly_schedule;
+
+            if (user.raw_current_status) {
+                // We only consider the status valid if the logic date matches the current shift date
+                const shiftDetails = getLogicalShiftDetails(schedule, currentServerTime, timezone, 'check_in');
+
+                // If the user's open attendance record date matches the current logical shift date,
+                // or if there is no scheduled shift at all but they are working, we show their status.
+                // Otherwise, the open shift is stale.
+                if (user.current_attendance_date === shiftDetails.logicalDate || !shiftDetails.shift) {
+                    user.current_status = user.raw_current_status;
+                } else {
+                    user.current_status = null;
+                }
+            } else {
+                user.current_status = null;
+            }
+
+            delete user.raw_current_status;
+            delete user.current_attendance_date;
+        });
+
         res.json(users);
     } catch (error) {
         console.error('Error fetching users:', error);

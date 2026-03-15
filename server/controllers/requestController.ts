@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import db from '../db/index.js';
-import { getClosestShift } from './attendanceController.js';
+import { getLogicalShiftDetails } from '../utils/shiftUtils.js';
 
 export const createRequest = (req: Request, res: Response): void => {
     try {
@@ -110,6 +110,9 @@ export const createAttendanceCorrection = (req: Request, res: Response): void =>
             WHERE p.user_id = ?
         `).get(userId) as any;
 
+        const settingsForTz = db.prepare('SELECT timezone FROM settings WHERE id = 1').get() as any;
+        const timezone = settingsForTz?.timezone || 'UTC';
+
         let missingMinutes = 0;
         if (userProfile && userProfile.weekly_schedule) {
             try {
@@ -118,7 +121,7 @@ export const createAttendanceCorrection = (req: Request, res: Response): void =>
                 const checkOut = new_clock_out || attendanceRecord.check_out;
 
                 if (checkIn) {
-                    const { shift: startShift, scheduledTime: startScheduled } = getClosestShift(schedule, checkIn, 'start');
+                    const { shift: startShift, scheduledTime: startScheduled } = getLogicalShiftDetails(schedule, checkIn, timezone, 'check_in');
                     if (startShift && startScheduled) {
                         const diff = (new Date(checkIn).getTime() - startScheduled.getTime()) / (1000 * 60);
                         if (diff > (userProfile.grace_period || 15)) {
@@ -128,7 +131,7 @@ export const createAttendanceCorrection = (req: Request, res: Response): void =>
                 }
 
                 if (checkOut) {
-                    const { shift: endShift, scheduledTime: endScheduled } = getClosestShift(schedule, checkOut, 'end', checkIn);
+                    const { shift: endShift, scheduledTime: endScheduled } = getLogicalShiftDetails(schedule, checkOut, timezone, 'check_out', checkIn);
                     if (endShift && endScheduled) {
                         const diff = (endScheduled.getTime() - new Date(checkOut).getTime()) / (1000 * 60);
                         if (diff > (userProfile.grace_period || 15)) {
@@ -254,10 +257,13 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                             WHERE p.user_id = ?
                         `).get(requestRecord.user_id) as any;
 
+                        const settingsForTz = db.prepare('SELECT timezone FROM settings WHERE id = 1').get() as any;
+                        const timezone = settingsForTz?.timezone || 'UTC';
+
                         if (userProfile && userProfile.weekly_schedule) {
                             try {
                                 const schedule = JSON.parse(userProfile.weekly_schedule);
-                                const { shift: closestShift, scheduledTime } = getClosestShift(schedule, finalCheckIn, 'start');
+                                const { shift: closestShift, scheduledTime } = getLogicalShiftDetails(schedule, finalCheckIn, timezone, 'check_in');
                                 if (closestShift && scheduledTime) {
                                     const clockInTime = new Date(finalCheckIn);
                                     const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
@@ -321,10 +327,13 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                                 WHERE p.user_id = ?
                             `).get(requestRecord.user_id) as any;
 
+                            const settingsForTz = db.prepare('SELECT timezone FROM settings WHERE id = 1').get() as any;
+                            const timezone = settingsForTz?.timezone || 'UTC';
+
                             if (userProfile && userProfile.weekly_schedule) {
                                 try {
                                     const schedule = JSON.parse(userProfile.weekly_schedule);
-                                    const { shift: closestShift, scheduledTime } = getClosestShift(schedule, finalCheckIn, 'start');
+                                    const { shift: closestShift, scheduledTime } = getLogicalShiftDetails(schedule, finalCheckIn, timezone, 'check_in');
                                     if (closestShift && scheduledTime) {
                                         const clockInTime = new Date(finalCheckIn);
                                         const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
@@ -369,10 +378,13 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                                 WHERE p.user_id = ?
                             `).get(requestRecord.user_id) as any;
 
+                            const settingsForTz = db.prepare('SELECT timezone FROM settings WHERE id = 1').get() as any;
+                            const timezone = settingsForTz?.timezone || 'UTC';
+
                             if (userProfile && userProfile.weekly_schedule) {
                                 try {
                                     const schedule = JSON.parse(userProfile.weekly_schedule);
-                                    const { shift: closestShift, scheduledTime } = getClosestShift(schedule, requestRecord.requested_check_in, 'start');
+                                    const { shift: closestShift, scheduledTime } = getLogicalShiftDetails(schedule, requestRecord.requested_check_in, timezone, 'check_in');
                                     if (closestShift && scheduledTime) {
                                         const clockInTime = new Date(requestRecord.requested_check_in);
                                         const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
