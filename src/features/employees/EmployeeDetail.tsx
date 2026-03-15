@@ -172,7 +172,12 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
             <p className="text-sm text-muted-foreground mt-1">{formData.email}</p>
           </div>
         </div>
-        <button onClick={onClose} className="p-2 hover:bg-muted rounded-full transition-colors">
+        <button
+          onClick={onClose}
+          className="p-2 hover:bg-muted rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50"
+          aria-label="Close details"
+          title="Close details"
+        >
           <X className="w-5 h-5" />
         </button>
       </div>
@@ -411,7 +416,9 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                         />
                         <button 
                           onClick={() => removeShift(day, index)}
-                          className="p-1 text-muted-foreground hover:text-destructive transition-colors ml-2"
+                          className="p-1 text-muted-foreground hover:text-destructive transition-colors ml-2 focus:outline-none focus:ring-2 focus:ring-destructive/50 rounded"
+                          aria-label={`Remove shift for ${day}`}
+                          title="Remove shift"
                         >
                           <X className="w-4 h-4" />
                         </button>

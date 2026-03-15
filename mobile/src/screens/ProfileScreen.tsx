@@ -128,7 +128,12 @@ export default function ProfileScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={pickImage} style={styles.avatarContainer}>
+        <TouchableOpacity
+          onPress={pickImage}
+          style={styles.avatarContainer}
+          accessibilityLabel="Change profile picture"
+          accessibilityRole="button"
+        >
           {avatar ? (
             <Image 
               source={{ uri: avatar.startsWith('http') ? avatar : `${BASE_URL}${avatar}` }} 

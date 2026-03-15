@@ -6,7 +6,9 @@ import { schema } from './schema.js';
 const dbPath = process.env.DB_PATH === ':memory:' 
   ? ':memory:' 
   : path.resolve(process.cwd(), process.env.DB_PATH || 'labflow.db');
-const db = new Database(dbPath, { verbose: console.log });
+
+const isTestEnv = process.env.NODE_ENV === 'test';
+const db = new Database(dbPath, { verbose: isTestEnv ? undefined : console.log });
 
 // Strictly enforce Foreign Keys
 db.pragma('foreign_keys = ON');
@@ -15,7 +17,9 @@ db.pragma('journal_mode = WAL');
 
 export function initDb() {
   try {
-    console.log('Initializing database schema...');
+    if (!isTestEnv) {
+      console.log('Initializing database schema...');
+    }
     db.exec(schema);
     
     // Migration: Add new columns to jobs and profiles
@@ -82,7 +86,9 @@ export function initDb() {
     // Attendance migrations
     const attendanceSql = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='attendance'").get() as any;
     if (attendanceSql && attendanceSql.sql.includes("'present'")) {
-      console.log('Migrating attendance table to new status constraints...');
+      if (!isTestEnv) {
+        console.log('Migrating attendance table to new status constraints...');
+      }
       db.exec(`
         PRAGMA foreign_keys=off;
         BEGIN TRANSACTION;
@@ -122,7 +128,9 @@ export function initDb() {
         COMMIT;
         PRAGMA foreign_keys=on;
       `);
-      console.log('Attendance table migrated successfully.');
+      if (!isTestEnv) {
+        console.log('Attendance table migrated successfully.');
+      }
     }
 
     const newAttendanceColumns = db.prepare("PRAGMA table_info(attendance)").all() as any[];
@@ -161,7 +169,9 @@ export function initDb() {
       db.exec("ALTER TABLE attendance ADD COLUMN paid_permission_minutes INTEGER DEFAULT 0;");
     }
 
-    console.log('Database schema initialized successfully.');
+    if (!isTestEnv) {
+      console.log('Database schema initialized successfully.');
+    }
   } catch (error) {
     console.error('Failed to initialize database schema:', error);
     throw error;

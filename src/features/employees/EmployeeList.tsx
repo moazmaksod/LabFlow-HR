@@ -90,7 +90,11 @@ export default function EmployeeList() {
               className="w-full pl-9 pr-4 py-2 bg-background border border-border rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
             />
           </div>
-          <button className="p-2 border border-border rounded-lg hover:bg-muted transition-colors">
+          <button
+            className="p-2 border border-border rounded-lg hover:bg-muted transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50"
+            aria-label="Filter employees"
+            title="Filter employees"
+          >
             <Filter className="w-4 h-4" />
           </button>
         </div>
@@ -214,7 +218,11 @@ export default function EmployeeList() {
                           )}
                         </div>
                       ) : (
-                        <button className="p-1 hover:bg-muted rounded transition-colors opacity-0 group-hover:opacity-100">
+                        <button
+                          className="p-1 hover:bg-muted rounded transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                          aria-label="More options"
+                          title="More options"
+                        >
                           <MoreVertical className="w-4 h-4 text-muted-foreground" />
                         </button>
                       )}

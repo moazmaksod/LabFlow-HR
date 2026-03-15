@@ -9,7 +9,7 @@ const app = express();
 app.use(express.json());
 app.use('/attendance', attendanceRoutes);
 
-const JWT_SECRET = process.env.JWT_SECRET || 'test_secret';
+const JWT_SECRET = process.env.JWT_SECRET as string;
 
 describe('Attendance Interruptions API', () => {
     let employeeToken: string;
@@ -33,13 +33,26 @@ describe('Attendance Interruptions API', () => {
         );
         employeeId = userInsert.lastInsertRowid as number;
 
+        // Ensure job exists
+        db.prepare(`INSERT INTO jobs (id, title, hourly_rate, required_hours, grace_period) VALUES (1, 'Test', 20, 8, 15)`).run();
+
+        const weekly_schedule = JSON.stringify({
+            monday: [{ start: "00:00", end: "23:59" }],
+            tuesday: [{ start: "00:00", end: "23:59" }],
+            wednesday: [{ start: "00:00", end: "23:59" }],
+            thursday: [{ start: "00:00", end: "23:59" }],
+            friday: [{ start: "00:00", end: "23:59" }],
+            saturday: [{ start: "00:00", end: "23:59" }],
+            sunday: [{ start: "00:00", end: "23:59" }]
+        });
+
         // Create profile with 0 break balance
-        db.prepare('INSERT INTO profiles (user_id, lunch_break_minutes, status) VALUES (?, ?, ?)').run(
-            employeeId, 0, 'active'
+        db.prepare('INSERT INTO profiles (user_id, job_id, lunch_break_minutes, status, weekly_schedule) VALUES (?, ?, ?, ?, ?)').run(
+            employeeId, 1, 0, 'active', weekly_schedule
         );
 
         // Create settings
-        db.prepare('INSERT INTO settings (id, office_lat, office_lng, radius_meters) VALUES (1, 0, 0, 1000000)').run();
+        db.prepare(`INSERT INTO settings (id, office_lat, office_lng, radius_meters, timezone) VALUES (1, 0, 0, 1000000, 'UTC')`).run();
 
         employeeToken = jwt.sign({ id: employeeId, role: 'employee' }, JWT_SECRET);
     });

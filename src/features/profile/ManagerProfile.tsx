@@ -13,6 +13,12 @@ export default function ManagerProfile() {
   const [phone, setPhone] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
+  interface ProfileUpdateData {
+    name: string;
+    profile_picture_url: string;
+    emergency_contact_phone: string;
+  }
+
   const { data: profile, isLoading } = useQuery({
     queryKey: ['manager-profile'],
     queryFn: async () => {
@@ -30,7 +36,7 @@ export default function ManagerProfile() {
   }, [profile]);
 
   const updateMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: ProfileUpdateData) => {
       const res = await api.put('/users/profile', data);
       return res.data;
     },

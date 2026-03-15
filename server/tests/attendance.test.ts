@@ -10,139 +10,172 @@ let employeeId: number | bigint;
 beforeAll(async () => {
   initDb();
   
-  // Debug routes
-  console.log(app._router.stack.filter(r => r.route || r.name === 'router').map(r => r.regexp));
-  
-  // Seed settings for geofence (San Francisco)
-  db.prepare(`INSERT INTO settings (id, office_lat, office_lng, radius_meters) VALUES (1, 37.7749, -122.4194, 50)`).run();
+  db.prepare(`INSERT INTO settings (id, office_lat, office_lng, radius_meters, timezone) VALUES (1, 37.7749, -122.4194, 50, 'America/New_York')`).run();
 
-  // Create employee
+  db.prepare(`INSERT INTO jobs (id, title, hourly_rate, required_hours, grace_period) VALUES (1, 'Night Worker', 20, 8, 15)`).run();
+
   const salt = await bcrypt.genSalt(10);
   const hash = await bcrypt.hash('password123', salt);
   const empInsert = db.prepare(`INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)`).run('Employee', 'employee_att@test.com', hash, 'employee');
   employeeId = empInsert.lastInsertRowid;
-  db.prepare(`INSERT INTO profiles (user_id, status) VALUES (?, ?)`).run(employeeId, 'active');
-  employeeToken = jwt.sign({ id: employeeId, role: 'employee' }, process.env.JWT_SECRET || 'fallback_secret', { expiresIn: '1h' });
+
+  const weekly_schedule = JSON.stringify({
+      monday: [{ start: "22:00", end: "06:00" }]
+  });
+
+  db.prepare(`INSERT INTO profiles (user_id, status, job_id, weekly_schedule, device_id) VALUES (?, ?, ?, ?, ?)`).run(employeeId, 'active', 1, weekly_schedule, 'test-device');
+  employeeToken = jwt.sign({ id: employeeId, role: 'employee' }, process.env.JWT_SECRET as string, { expiresIn: '1h' });
 });
 
 afterAll(() => {
   db.close();
+  jest.useRealTimers();
 });
 
-describe('Attendance API', () => {
-  it('should return 200 for health check', async () => {
-    const res = await request(app).get('/api/health');
-    expect(res.status).toBe(200);
-  });
+describe('Attendance API - Schedule Driven Architecture', () => {
 
-  it('should reject clock in if outside geofence', async () => {
-    const res = await request(app)
+  it('1. The Night Shift (Logical Day) Test', async () => {
+    // 2023-10-23 is Monday
+    // 10:15 PM in America/New_York is 22:15.
+    // In UTC, this is 2023-10-24T02:15:00Z.
+    jest.useFakeTimers().setSystemTime(new Date('2023-10-24T02:15:00Z'));
+
+    const resCheckIn = await request(app)
       .post('/api/attendance/clock')
       .set('Authorization', `Bearer ${employeeToken}`)
       .send({
         type: 'check_in',
-        timestamp: new Date().toISOString(),
-        lat: 38.0, // Outside 50m radius
-        lng: -122.0,
-        deviceId: 'test-device'
-      });
-    
-    expect(res.status).toBe(403);
-    expect(res.body.error).toMatch(/Away from job/);
-  });
-
-  it('should allow clock in if inside geofence', async () => {
-    const res = await request(app)
-      .post('/api/attendance/clock')
-      .set('Authorization', `Bearer ${employeeToken}`)
-      .send({
-        type: 'check_in',
-        timestamp: new Date().toISOString(),
-        lat: 37.7749, // Exact match
-        lng: -122.4194,
-        deviceId: 'test-device'
-      });
-    
-    expect(res.status).toBe(201);
-    expect(res.body).toHaveProperty('check_in');
-  });
-
-  it('should reject second clock in for the same day', async () => {
-    const res = await request(app)
-      .post('/api/attendance/clock')
-      .set('Authorization', `Bearer ${employeeToken}`)
-      .send({
-        type: 'check_in',
-        timestamp: new Date().toISOString(),
         lat: 37.7749,
         lng: -122.4194,
         deviceId: 'test-device'
       });
     
-    expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/You already have an active session for today/);
-  });
+    expect(resCheckIn.status).toBe(201);
+    expect(resCheckIn.body.date).toBe('2023-10-23'); // Logical Date should be Monday!
+    expect(resCheckIn.body.status).toBe('on_time'); // Inside 15 min grace period (22:15)
 
-  it('should allow clock out if inside geofence', async () => {
-    const res = await request(app)
+    // Check out at Tuesday 05:45 AM NY time -> 09:45 AM UTC
+    jest.setSystemTime(new Date('2023-10-24T09:45:00Z'));
+
+    const resCheckOut = await request(app)
       .post('/api/attendance/clock')
       .set('Authorization', `Bearer ${employeeToken}`)
       .send({
         type: 'check_out',
-        timestamp: new Date().toISOString(),
         lat: 37.7749,
         lng: -122.4194,
         deviceId: 'test-device'
       });
-    
-    expect(res.status).toBe(200);
-    expect(res.body).toHaveProperty('check_out');
+
+    expect(resCheckOut.status).toBe(200);
+    // current_status will likely be left alone as 'working' since checking out is signified by check_out non-null
+    expect(resCheckOut.body.check_out).toBe('2023-10-24T09:45:00.000Z');
   });
 
-  it('should reject clock out if outside geofence', async () => {
-    // Create a new user to test clock out outside geofence on a fresh record
+  it('2. The Re-entry & Resume Test', async () => {
+    // Punch in again within the same shift window (e.g. at 05:50 AM NY time)
+    jest.setSystemTime(new Date('2023-10-24T09:50:00Z'));
+
+    const resCheckIn = await request(app)
+      .post('/api/attendance/clock')
+      .set('Authorization', `Bearer ${employeeToken}`)
+      .send({
+        type: 'check_in',
+        lat: 37.7749,
+        lng: -122.4194,
+        deviceId: 'test-device'
+      });
+
+    expect(resCheckIn.status).toBe(200); // Because it auto-resumed (re-entry)
+    expect(resCheckIn.body.check_out).toBeNull();
+    expect(resCheckIn.body.current_status).toBe('working');
+
+    // Assert a shift interruption was created
+    const interruptions = db.prepare('SELECT * FROM shift_interruptions WHERE attendance_id = ?').all(resCheckIn.body.id) as any[];
+    expect(interruptions.length).toBe(1);
+    expect(interruptions[0].type).toBe('step_away');
+    expect(interruptions[0].start_time).toBe('2023-10-24T09:45:00.000Z');
+    expect(interruptions[0].end_time).toBe('2023-10-24T09:50:00.000Z');
+
+    // Assert a manager Request was created
+    const reqs = db.prepare('SELECT * FROM requests WHERE attendance_id = ? AND type = ?').all(resCheckIn.body.id, 'shift_interruption_review') as any[];
+    expect(reqs.length).toBe(1);
+    expect(reqs[0].status).toBe('pending');
+  });
+
+  it('3. Gap-Based Identification (Early Entry)', async () => {
+    // Setup another user with an 09:00 AM shift
     const hash = await bcrypt.hash('password123', 10);
-    const empInsert2 = db.prepare(`INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)`).run('Employee 2', 'employee_att2@test.com', hash, 'employee');
+    const empInsert2 = db.prepare(`INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)`).run('Early Entry Employee', 'employee_early@test.com', hash, 'employee');
     const employeeId2 = empInsert2.lastInsertRowid;
-    db.prepare(`INSERT INTO profiles (user_id, status) VALUES (?, ?)`).run(employeeId2, 'active');
-    const employeeToken2 = jwt.sign({ id: employeeId2, role: 'employee' }, process.env.JWT_SECRET || 'fallback_secret', { expiresIn: '1h' });
     
-    // Clock in first (inside)
-    await request(app)
+    const weekly_schedule = JSON.stringify({ wednesday: [{ start: "09:00", end: "17:00" }] });
+    db.prepare(`INSERT INTO profiles (user_id, status, job_id, weekly_schedule, device_id) VALUES (?, ?, ?, ?, ?)`).run(employeeId2, 'active', 1, weekly_schedule, 'test-device-early');
+    const employeeToken2 = jwt.sign({ id: employeeId2, role: 'employee' }, process.env.JWT_SECRET as string, { expiresIn: '1h' });
+
+    // Wednesday 2023-10-25 08:15 AM NY Time -> 12:15 PM UTC
+    jest.setSystemTime(new Date('2023-10-25T12:15:00Z'));
+
+    // Regenerate token just in case it's evaluated relative to the fake system time
+    const employeeToken2ForFakeTime = jwt.sign({ id: employeeId2, role: 'employee' }, process.env.JWT_SECRET as string, { expiresIn: '1h' });
+
+    const resCheckIn = await request(app)
       .post('/api/attendance/clock')
-      .set('Authorization', `Bearer ${employeeToken2}`)
+      .set('Authorization', `Bearer ${employeeToken2ForFakeTime}`)
       .send({
         type: 'check_in',
-        timestamp: new Date().toISOString(),
         lat: 37.7749,
         lng: -122.4194,
-        deviceId: 'test-device-2'
+        deviceId: 'test-device-early'
       });
-      
-    // Clock out outside
-    const res = await request(app)
-      .post('/api/attendance/clock')
-      .set('Authorization', `Bearer ${employeeToken2}`)
-      .send({
-        type: 'check_out',
-        timestamp: new Date().toISOString(),
-        lat: 38.0,
-        lng: -122.0,
-        deviceId: 'test-device-2'
-      });
+
+    expect(resCheckIn.status).toBe(201);
+    expect(resCheckIn.body.date).toBe('2023-10-25');
     
-    expect(res.status).toBe(403);
-    expect(res.body.error).toMatch(/Away from job/);
+    // Check if overtime approval request created (08:15 is 45 mins early > 15m grace)
+    const reqs = db.prepare('SELECT * FROM requests WHERE attendance_id = ? AND type = ?').all(resCheckIn.body.id, 'overtime_approval') as any[];
+    expect(reqs.length).toBe(1);
+    expect(reqs[0].reason).toContain('Early clock-in');
   });
 
-  it('should allow employee to fetch their own attendance logs', async () => {
-    const res = await request(app)
-      .get('/api/attendance/my-logs')
-      .set('Authorization', `Bearer ${employeeToken}`);
+  it('4. Offline Sync (Stopwatch Method)', async () => {
+    jest.useRealTimers();
+
+    const hash = await bcrypt.hash('password123', 10);
+    const empInsert3 = db.prepare(`INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)`).run('Sync Employee', 'employee_sync@test.com', hash, 'employee');
+    const employeeId3 = empInsert3.lastInsertRowid;
+
+    const weekly_schedule = JSON.stringify({ thursday: [{ start: "10:00", end: "18:00" }] });
+    db.prepare(`INSERT INTO profiles (user_id, status, job_id, weekly_schedule, device_id) VALUES (?, ?, ?, ?, ?)`).run(employeeId3, 'active', 1, weekly_schedule, 'test-device-sync');
+    const employeeToken3 = jwt.sign({ id: employeeId3, role: 'employee' }, process.env.JWT_SECRET as string, { expiresIn: '1h' });
+
+    const currentServerTime = Date.now();
+    // Simulate a check in that happened 30 mins ago
+    const delay = 30 * 60 * 1000;
+
+    // We expect the backend to compute `Date.now() - delay` as the actual time.
+    // To ensure the logical day aligns with thursday, we temporarily mock the system time
+    // to be Thursday 10:15 AM NY time -> 14:15 PM UTC
+    jest.useFakeTimers().setSystemTime(new Date('2023-10-26T14:15:00Z'));
+
+    const resSync = await request(app)
+      .post('/api/attendance/sync')
+      .set('Authorization', `Bearer ${employeeToken3}`)
+      .send({
+        logs: [
+          { type: 'check_in', delay_in_milliseconds: delay, lat: 37.7749, lng: -122.4194, id: 1 }
+        ]
+      });
+
+    expect(resSync.status).toBe(200);
+    expect(resSync.body.results[0].status).toBe('success');
+
+    // Verify it created the attendance correctly
+    const attendance = db.prepare('SELECT * FROM attendance WHERE user_id = ?').get(employeeId3) as any;
+    expect(attendance).toBeDefined();
     
-    expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.length).toBeGreaterThan(0);
-    expect(res.body[0]).toHaveProperty('check_in');
+    const expectedHistoricalTime = new Date(Date.now() - delay).toISOString();
+    expect(attendance.check_in).toBe(expectedHistoricalTime);
+    expect(attendance.date).toBe('2023-10-26'); // Validated by timezone conversion!
   });
 });

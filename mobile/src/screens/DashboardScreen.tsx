@@ -292,7 +292,12 @@ export default function DashboardScreen() {
           <Text style={styles.title}>Dashboard</Text>
           <Text style={styles.subtitle}>Welcome back, {user?.name}</Text>
         </View>
-        <TouchableOpacity onPress={logout} style={styles.iconButton}>
+        <TouchableOpacity
+          onPress={logout}
+          style={styles.iconButton}
+          accessibilityLabel="Logout"
+          accessibilityRole="button"
+        >
           <LogOut color="#ef4444" size={24} />
         </TouchableOpacity>
       </View>
@@ -375,6 +380,9 @@ export default function DashboardScreen() {
           style={[styles.syncButton, unsyncedCount === 0 && styles.syncButtonDisabled]} 
           onPress={handleSync}
           disabled={syncing || unsyncedCount === 0}
+          accessibilityLabel="Sync offline logs"
+          accessibilityRole="button"
+          accessibilityState={{ disabled: syncing || unsyncedCount === 0 }}
         >
           {syncing ? <ActivityIndicator color="#18181b" /> : <RefreshCw color="#18181b" size={20} />}
         </TouchableOpacity>
