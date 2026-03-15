@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import db from '../db/index.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
 import { getLogicalShiftDetails } from '../utils/shiftUtils.js';
+import { getDateStringInTimezone } from '../utils/dateUtils.js';
+import { getOrCreateDraftPayroll } from './payrollController.js';
 
 export const createRequest = (req: AuthRequest, res: Response): void => {
     try {
@@ -269,9 +271,12 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                                     const clockInTime = new Date(finalCheckIn);
                                     const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
                                     const gracePeriod = userProfile.grace_period || 15;
+
                                     if (diffMinutes > gracePeriod) {
                                         newStatus = 'late_in';
                                     }
+                                } else {
+                                    newStatus = 'unscheduled';
                                 }
                             } catch (e) {
                                 console.error('Error recalculating status during correction approval:', e);
@@ -339,9 +344,12 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                                         const clockInTime = new Date(finalCheckIn);
                                         const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
                                         const gracePeriod = userProfile.grace_period || 15;
+
                                         if (diffMinutes > gracePeriod) {
                                             newStatus = 'late_in';
                                         }
+                                    } else {
+                                        newStatus = 'unscheduled';
                                     }
                                 } catch (e) {
                                     console.error('Error recalculating status during manual clock approval:', e);
@@ -390,9 +398,12 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                                         const clockInTime = new Date(requestRecord.requested_check_in);
                                         const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
                                         const gracePeriod = userProfile.grace_period || 15;
+
                                         if (diffMinutes > gracePeriod) {
                                             newStatus = 'late_in';
                                         }
+                                    } else {
+                                        newStatus = 'unscheduled';
                                     }
                                 } catch (e) {
                                     console.error('Error calculating status for new manual clock:', e);
@@ -411,6 +422,40 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                             newStatus
                         );
                     }
+                }
+            }
+
+            // --- Payroll Ledger Integration ---
+            const userProfile = db.prepare('SELECT hourly_rate FROM profiles WHERE user_id = ?').get(requestRecord.user_id) as any;
+            const hourlyRate = userProfile?.hourly_rate || 0;
+            const dateStr = new Date().toISOString().split('T')[0]; // Use current date for the payroll period
+            const payrollId = getOrCreateDraftPayroll(requestRecord.user_id, dateStr);
+
+            if (requestRecord.type === 'overtime_approval') {
+                const requestedMinutes = requestRecord.details ? JSON.parse(requestRecord.details).requested_overtime_minutes : 0;
+                const minutes = status === 'approved' ? (approved_minutes !== undefined ? approved_minutes : requestedMinutes) : requestedMinutes;
+                const hours = minutes / 60;
+                const amount = status === 'approved' ? hours * (hourlyRate * 1.5) : 0; // Overtime is 1.5x
+
+                db.prepare(`
+                    INSERT INTO payroll_transactions (payroll_id, reference_id, type, hours, amount, status, manager_notes)
+                    VALUES (?, ?, 'overtime', ?, ?, ?, ?)
+                `).run(payrollId, id, hours, amount, status === 'approved' ? 'applied' : 'rejected', manager_note);
+            } else if (requestRecord.type === 'permission_to_leave') {
+                const minutes = paid_permission_minutes || 0;
+                const hours = minutes / 60;
+                
+                if (status === 'approved' && !is_paid_permission && hours > 0) {
+                    const amount = hours * hourlyRate;
+                    db.prepare(`
+                        INSERT INTO payroll_transactions (payroll_id, reference_id, type, hours, amount, status, manager_notes)
+                        VALUES (?, ?, 'step_away_unpaid', ?, ?, 'applied', ?)
+                    `).run(payrollId, id, hours, amount, manager_note);
+                } else if (status === 'rejected') {
+                    db.prepare(`
+                        INSERT INTO payroll_transactions (payroll_id, reference_id, type, hours, amount, status, manager_notes)
+                        VALUES (?, ?, 'step_away_unpaid', ?, 0, 'rejected', ?)
+                    `).run(payrollId, id, hours, manager_note);
                 }
             }
         });

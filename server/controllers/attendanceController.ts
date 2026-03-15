@@ -133,17 +133,26 @@ export const clockAttendance = (req: AuthRequest, res: Response): void => {
             let isUnscheduled = false;
             let otMinutes = 0;
 
-            if (!matchedShift) {
+            // Pure Schedule-Driven Logic:
+            // 1. If no matchedShift or scheduledTime, it's unscheduled (no shifts in schedule).
+            // 2. Otherwise, bind to the nearest upcoming shift.
+            // 3. If clock-in > (scheduledTime + gracePeriod) -> late_in.
+            // 4. If clock-in < (scheduledTime - gracePeriod) -> Early Entry (triggers overtime_approval).
+            // 5. Otherwise -> on_time.
+            
+            const clockInTime = new Date(timestamp);
+            const gracePeriod = userProfile.grace_period || 15;
+
+            if (!matchedShift || !scheduledTime) {
                 status = 'unscheduled';
                 isUnscheduled = true;
-            } else if (scheduledTime) {
-                const clockInTime = new Date(timestamp);
+            } else {
                 const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
-                const gracePeriod = userProfile.grace_period || 15;
-
+                
                 if (diffMinutes > gracePeriod) {
                     status = 'late_in';
                 } else if (diffMinutes < -gracePeriod) {
+                    // Early Entry: status remains 'on_time' but otMinutes > 0 triggers request
                     otMinutes = Math.floor(Math.abs(diffMinutes));
                 }
             }

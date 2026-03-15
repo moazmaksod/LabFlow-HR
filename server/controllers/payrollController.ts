@@ -203,3 +203,153 @@ export const getAllPayroll = (req: Request, res: Response): void => {
         res.status(500).json({ error: 'Internal server error' });
     }
 };
+
+// Helper to get or create a draft payroll for a user for a specific month
+export function getOrCreateDraftPayroll(userId: number, dateStr: string): number {
+    const date = new Date(dateStr);
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    
+    // Start and end of month
+    const startDate = new Date(year, month, 1).toISOString().split('T')[0];
+    const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
+
+    // Check if draft payroll exists
+    const existing = db.prepare(`
+        SELECT id FROM payrolls 
+        WHERE user_id = ? AND start_date = ? AND end_date = ? AND status = 'draft'
+    `).get(userId, startDate, endDate) as any;
+
+    if (existing) {
+        return existing.id;
+    }
+
+    const result = db.prepare(`
+        INSERT INTO payrolls (user_id, start_date, end_date, base_salary, status)
+        VALUES (?, ?, ?, 0, 'draft')
+    `).run(userId, startDate, endDate);
+
+    return result.lastInsertRowid as number;
+}
+
+export const generateDraftPayroll = (req: Request, res: Response) => {
+    try {
+        const { month, year } = req.query;
+        
+        if (!month || !year) {
+            return res.status(400).json({ error: 'Month and year are required' });
+        }
+
+        const startDate = new Date(Number(year), Number(month) - 1, 1).toISOString().split('T')[0];
+        const endDate = new Date(Number(year), Number(month), 0).toISOString().split('T')[0];
+
+        // Fetch all users
+        const users = db.prepare("SELECT id FROM users WHERE role = 'employee' OR role = 'manager'").all() as any[];
+
+        const generatedPayrolls = [];
+
+        for (const user of users) {
+            const payrollId = getOrCreateDraftPayroll(user.id, startDate);
+            
+            // Calculate base salary based on profile/job
+            const profile = db.prepare(`
+                SELECT p.hourly_rate, j.required_hours_per_week 
+                FROM profiles p 
+                LEFT JOIN jobs j ON p.job_id = j.id 
+                WHERE p.user_id = ?
+            `).get(user.id) as any;
+
+            let baseSalary = 0;
+            if (profile && profile.hourly_rate && profile.required_hours_per_week) {
+                // Approximate monthly salary: weekly hours * 4 weeks * hourly rate
+                baseSalary = profile.required_hours_per_week * 4 * profile.hourly_rate;
+            }
+
+            // Aggregate transactions
+            const transactions = db.prepare(`
+                SELECT type, amount, status 
+                FROM payroll_transactions 
+                WHERE payroll_id = ? AND status = 'applied'
+            `).all(payrollId) as any[];
+
+            let totalAdditions = 0;
+            let totalDeductions = 0;
+
+            for (const tx of transactions) {
+                if (tx.type === 'overtime' || tx.type === 'bonus') {
+                    totalAdditions += tx.amount;
+                } else if (tx.type === 'late_deduction' || tx.type === 'step_away_unpaid' || tx.type === 'deduction') {
+                    totalDeductions += tx.amount;
+                }
+            }
+
+            const netSalary = baseSalary + totalAdditions - totalDeductions;
+
+            // Update payroll
+            db.prepare(`
+                UPDATE payrolls 
+                SET base_salary = ?, total_additions = ?, total_deductions = ?, net_salary = ?
+                WHERE id = ?
+            `).run(baseSalary, totalAdditions, totalDeductions, netSalary, payrollId);
+
+            generatedPayrolls.push({
+                payroll_id: payrollId,
+                user_id: user.id,
+                base_salary: baseSalary,
+                total_additions: totalAdditions,
+                total_deductions: totalDeductions,
+                net_salary: netSalary
+            });
+        }
+
+        res.json({ message: 'Draft payrolls generated successfully', payrolls: generatedPayrolls });
+    } catch (error) {
+        console.error('Error generating draft payroll:', error);
+        res.status(500).json({ error: 'Failed to generate draft payroll' });
+    }
+};
+
+export const getPayrolls = (req: Request, res: Response) => {
+    try {
+        const { month, year, user_id } = req.query;
+        
+        let query = `
+            SELECT p.*, u.name as user_name, u.email as user_email 
+            FROM payrolls p
+            JOIN users u ON p.user_id = u.id
+            WHERE 1=1
+        `;
+        const params: any[] = [];
+
+        if (month && year) {
+            const startDate = new Date(Number(year), Number(month) - 1, 1).toISOString().split('T')[0];
+            const endDate = new Date(Number(year), Number(month), 0).toISOString().split('T')[0];
+            query += ` AND p.start_date >= ? AND p.end_date <= ?`;
+            params.push(startDate, endDate);
+        }
+
+        if (user_id) {
+            query += ` AND p.user_id = ?`;
+            params.push(user_id);
+        }
+
+        const payrolls = db.prepare(query).all(...params);
+        res.json(payrolls);
+    } catch (error) {
+        console.error('Error fetching payrolls:', error);
+        res.status(500).json({ error: 'Failed to fetch payrolls' });
+    }
+};
+
+export const getPayrollTransactions = (req: Request, res: Response) => {
+    try {
+        const { payroll_id } = req.params;
+        const transactions = db.prepare(`
+            SELECT * FROM payroll_transactions WHERE payroll_id = ? ORDER BY created_at DESC
+        `).all(payroll_id);
+        res.json(transactions);
+    } catch (error) {
+        console.error('Error fetching payroll transactions:', error);
+        res.status(500).json({ error: 'Failed to fetch payroll transactions' });
+    }
+};

@@ -139,6 +139,7 @@ export default function HistoryScreen() {
             item.status === 'late_in' ? styles.lateInBadge : 
             item.status === 'early_out' ? styles.earlyOutBadge : 
             item.status === 'half_day' ? styles.halfDayBadge : 
+            item.status === 'unscheduled' ? styles.unscheduledBadge :
             styles.absentBadge
           ]}>
             <Text style={[styles.statusText, 
@@ -146,6 +147,7 @@ export default function HistoryScreen() {
               item.status === 'late_in' ? styles.lateInText : 
               item.status === 'early_out' ? styles.earlyOutText : 
               item.status === 'half_day' ? styles.halfDayText : 
+              item.status === 'unscheduled' ? styles.unscheduledText :
               styles.absentText
             ]}>
               {formatStatusLabel(item.status)}
@@ -318,12 +320,14 @@ const styles = StyleSheet.create({
   lateInBadge: { backgroundColor: '#fef08a' },
   earlyOutBadge: { backgroundColor: '#ffedd5' },
   halfDayBadge: { backgroundColor: '#f3e8ff' },
+  unscheduledBadge: { backgroundColor: '#dbeafe' },
   absentBadge: { backgroundColor: '#fee2e2' },
   statusText: { fontSize: 10, fontWeight: 'bold' },
   onTimeText: { color: '#166534' },
   lateInText: { color: '#854d0e' },
   earlyOutText: { color: '#c2410c' },
   halfDayText: { color: '#7e22ce' },
+  unscheduledText: { color: '#1e40af' },
   absentText: { color: '#991b1b' },
   logBody: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#f4f4f5' },
   timeColumn: { flex: 1 },

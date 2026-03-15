@@ -86,6 +86,7 @@ export default function AttendanceLogs() {
               <option value="early_out">Early Out</option>
               <option value="absent">Absent</option>
               <option value="half_day">Half Day</option>
+              <option value="unscheduled">Unscheduled</option>
             </select>
           </div>
         </div>
@@ -140,7 +141,8 @@ export default function AttendanceLogs() {
                         log.status === 'early_out' ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400' :
                         log.status === 'absent' ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400' :
                         log.status === 'half_day' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' :
-                        'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400'
+                        log.status === 'unscheduled' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
+                        'bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-400'
                       }`}>
                         {formatStatusLabel(log.status)}
                       </span>

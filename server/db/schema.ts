@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS attendance (
     check_in DATETIME NOT NULL,
     check_out DATETIME,
     date DATE NOT NULL,
-    status TEXT NOT NULL CHECK(status IN ('on_time', 'late_in', 'early_out', 'absent', 'half_day')) DEFAULT 'on_time',
+    status TEXT NOT NULL CHECK(status IN ('on_time', 'late_in', 'early_out', 'absent', 'half_day', 'unscheduled')) DEFAULT 'on_time',
     current_status TEXT NOT NULL CHECK(current_status IN ('working', 'away')) DEFAULT 'working',
     location_lat REAL,
     location_lng REAL,
@@ -124,6 +124,35 @@ CREATE TABLE IF NOT EXISTS settings (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS payrolls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    base_salary REAL NOT NULL DEFAULT 0,
+    total_additions REAL NOT NULL DEFAULT 0,
+    total_deductions REAL NOT NULL DEFAULT 0,
+    net_salary REAL NOT NULL DEFAULT 0,
+    status TEXT NOT NULL CHECK(status IN ('draft', 'finalized', 'paid')) DEFAULT 'draft',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS payroll_transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    payroll_id INTEGER NOT NULL,
+    reference_id INTEGER, -- Can be attendance_id or request_id
+    type TEXT NOT NULL, -- 'overtime', 'late_deduction', 'step_away_unpaid', 'bonus', 'deduction'
+    hours REAL NOT NULL DEFAULT 0,
+    amount REAL NOT NULL DEFAULT 0,
+    status TEXT NOT NULL CHECK(status IN ('applied', 'rejected')) DEFAULT 'applied',
+    manager_notes TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (payroll_id) REFERENCES payrolls(id) ON DELETE CASCADE
+);
+
 -- Performance Indexes for Foreign Keys
 CREATE INDEX IF NOT EXISTS idx_profiles_user_id ON profiles(user_id);
 CREATE INDEX IF NOT EXISTS idx_profiles_job_id ON profiles(job_id);
@@ -165,4 +194,12 @@ BEGIN UPDATE notifications SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
 CREATE TRIGGER IF NOT EXISTS update_settings_updated_at AFTER UPDATE ON settings
 FOR EACH ROW WHEN NEW.updated_at <= OLD.updated_at
 BEGIN UPDATE settings SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;
+
+CREATE TRIGGER IF NOT EXISTS update_payrolls_updated_at AFTER UPDATE ON payrolls
+FOR EACH ROW WHEN NEW.updated_at <= OLD.updated_at
+BEGIN UPDATE payrolls SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;
+
+CREATE TRIGGER IF NOT EXISTS update_payroll_transactions_updated_at AFTER UPDATE ON payroll_transactions
+FOR EACH ROW WHEN NEW.updated_at <= OLD.updated_at
+BEGIN UPDATE payroll_transactions SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;
 `;

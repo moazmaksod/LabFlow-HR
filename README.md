@@ -24,6 +24,19 @@ A highly secure, offline-capable, and scalable HR and Attendance Tracking System
 - **Dark/Light Mode:** Centralized theme provider for seamless switching.
 - **Skeleton Loaders:** Smooth data fetching experiences without blocking spinners.
 
+## 📊 Attendance Status Dictionary
+
+The system enforces a strict set of attendance statuses to ensure data integrity and consistent reporting.
+
+| Status        | Description                                                                                       | UI Color | Trigger Condition                                                                          |
+| :------------ | :------------------------------------------------------------------------------------------------ | :------- | :----------------------------------------------------------------------------------------- |
+| `on_time`     | Employee clocked in within the acceptable grace period and completed their shift.                 | Green    | Check-in ≤ (Schedule Start + Grace Period) AND Check-out ≥ Schedule End                    |
+| `late_in`     | Employee clocked in after the acceptable grace period.                                            | Yellow   | Check-in > (Schedule Start + Grace Period)                                                 |
+| `early_out`   | Employee clocked out before the scheduled end time (minus grace period).                          | Orange   | Check-out < (Schedule End - Grace Period)                                                  |
+| `half_day`    | Employee worked significantly less than their scheduled hours (e.g., less than 50% of the shift). | Purple   | Total worked hours < (Scheduled Hours / 2)                                                 |
+| `absent`      | Employee did not clock in for their scheduled shift.                                              | Red      | No check-in record exists for a scheduled workday (typically flagged by a daily cron job). |
+| `unscheduled` | Employee clocked in on a day or time not defined in their weekly schedule.                        | Blue     | No matching shift found in the employee's weekly schedule for the clock-in time.           |
+
 ## 🛠️ Tech Stack
 
 - **Web Dashboard:** React 19, Vite, Tailwind CSS, Zustand (State), TanStack Query (Server State), Lucide React (Icons).

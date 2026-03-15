@@ -46,8 +46,8 @@ export const getLogicalShiftDetails = (
         logicalDateStr: string;
     }[] = [];
 
-    // Look at a 3-day window around the local punch time
-    for (let offset = -1; offset <= 1; offset++) {
+    // Look at a 7-day window around the local punch time to find the nearest upcoming shift
+    for (let offset = -1; offset <= 7; offset++) {
         const d = new Date(localPunchTime.getFullYear(), localPunchTime.getMonth(), localPunchTime.getDate() + offset);
         const dayName = days[d.getDay()];
         const logicalDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
