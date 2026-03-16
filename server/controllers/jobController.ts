@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import db from '../db/index.js';
+import { logAudit } from '../services/auditService.js';
+import { AuthRequest } from '../middlewares/authMiddleware.js';
 
 export const getJobs = (req: Request, res: Response): void => {
     try {
@@ -58,6 +60,8 @@ export const createJob = (req: Request, res: Response): void => {
         
         const newJob = db.prepare('SELECT * FROM jobs WHERE id = ?').get(info.lastInsertRowid);
         
+        logAudit('jobs', Number(info.lastInsertRowid), 'CREATE', (req as AuthRequest).user!.id, null, newJob);
+
         res.status(201).json(newJob);
     } catch (error) {
         console.error('Error creating job:', error);
@@ -85,6 +89,9 @@ export const updateJob = (req: Request, res: Response): void => {
         }
 
         const transaction = db.transaction(() => {
+            const oldJob = db.prepare('SELECT * FROM jobs WHERE id = ?').get(id);
+            if (!oldJob) return false;
+
             const update = db.prepare(`
                 UPDATE jobs SET 
                     title = ?, 
@@ -124,6 +131,9 @@ export const updateJob = (req: Request, res: Response): void => {
                 WHERE job_id = ?
             `).run(weekly_schedule || null, id);
 
+            const updatedJob = db.prepare('SELECT * FROM jobs WHERE id = ?').get(id);
+            logAudit('jobs', Number(id), 'UPDATE', (req as AuthRequest).user!.id, oldJob, updatedJob);
+
             return true;
         });
 
@@ -147,6 +157,12 @@ export const deleteJob = (req: Request, res: Response): void => {
     try {
         const { id } = req.params;
 
+        const oldJob = db.prepare('SELECT * FROM jobs WHERE id = ?').get(id);
+        if (!oldJob) {
+            res.status(404).json({ error: 'Job not found' });
+            return;
+        }
+
         // Check if any employees are assigned to this job
         const assignedEmployees = db.prepare('SELECT id FROM profiles WHERE job_id = ?').get(id);
 
@@ -161,6 +177,8 @@ export const deleteJob = (req: Request, res: Response): void => {
             res.status(404).json({ error: 'Job not found' });
             return;
         }
+
+        logAudit('jobs', Number(id), 'DELETE', (req as AuthRequest).user!.id, oldJob, null);
 
         res.json({ message: 'Job deleted successfully' });
     } catch (error) {

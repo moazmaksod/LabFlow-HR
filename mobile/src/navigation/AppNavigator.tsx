@@ -2,7 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { LayoutDashboard, History, User, FileText } from 'lucide-react-native';
+import { LayoutDashboard, History, User, FileText, DollarSign } from 'lucide-react-native';
 import { useAuthStore } from '../store/useAuthStore';
 
 // Screens

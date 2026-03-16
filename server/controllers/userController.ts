@@ -413,7 +413,13 @@ export const updateUserProfile = (req: Request, res: Response): void => {
 export const resetDevice = (req: Request, res: Response): void => {
     try {
         const { id } = req.params;
+        const oldProfile = db.prepare('SELECT * FROM profiles WHERE user_id = ?').get(id);
+        
         db.prepare('UPDATE profiles SET device_id = NULL WHERE user_id = ?').run(id);
+        
+        const updatedProfile = db.prepare('SELECT * FROM profiles WHERE user_id = ?').get(id);
+        logAudit('profiles', (updatedProfile as any).id, 'UPDATE', (req as AuthRequest).user!.id, oldProfile, updatedProfile);
+        
         res.json({ message: 'Device binding reset successfully' });
     } catch (error) {
         console.error('Error resetting device binding:', error);

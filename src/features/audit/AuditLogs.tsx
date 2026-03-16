@@ -18,6 +18,104 @@ interface AuditLog {
     created_at: string;
 }
 
+const DiffViewer: React.FC<{ oldValues: any; newValues: any; action: string }> = ({ oldValues, newValues, action }) => {
+    const parseValues = (val: any) => {
+        if (!val) return {};
+        if (typeof val === 'string') {
+            try {
+                return JSON.parse(val);
+            } catch (e) {
+                return {};
+            }
+        }
+        return val;
+    };
+
+    const oldData = parseValues(oldValues);
+    const newData = parseValues(newValues);
+
+    if (action === 'DELETE') {
+        return (
+            <div className="bg-rose-50/50 border border-rose-100 rounded-lg p-4">
+                <p className="text-xs font-bold text-rose-800 mb-2 uppercase tracking-tight">Deleted Record Data:</p>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-2">
+                    {Object.entries(oldData).map(([key, val]) => (
+                        <div key={key} className="text-[11px]">
+                            <span className="text-muted-foreground font-medium">{key}:</span>{' '}
+                            <span className="text-rose-900">{String(val)}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    }
+
+    if (action === 'CREATE' || action === 'REGISTER') {
+        return (
+            <div className="bg-emerald-50/50 border border-emerald-100 rounded-lg p-4">
+                <p className="text-xs font-bold text-emerald-800 mb-2 uppercase tracking-tight">New Record Data:</p>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-2">
+                    {Object.entries(newData).map(([key, val]) => (
+                        <div key={key} className="text-[11px]">
+                            <span className="text-muted-foreground font-medium">{key}:</span>{' '}
+                            <span className="text-emerald-900">{String(val)}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    }
+
+    if (action === 'LOGIN' || action === 'LOGOUT') {
+        return (
+            <div className="bg-blue-50/50 border border-blue-100 rounded-lg p-4">
+                <p className="text-xs font-medium text-blue-800 italic">
+                    {action === 'LOGIN' ? 'User session initiated.' : 'User session terminated.'}
+                    {newData?.deviceId && <span className="ml-2 not-italic font-mono text-[10px] opacity-70">Device: {newData.deviceId}</span>}
+                </p>
+            </div>
+        );
+    }
+
+    const allKeys = Array.from(new Set([...Object.keys(oldData), ...Object.keys(newData)]));
+    const changes = allKeys.filter(key => {
+        if (['id', 'created_at', 'updated_at', 'password_hash', 'user_id'].includes(key)) return false;
+        const oldVal = oldData[key];
+        const newVal = newData[key];
+        return JSON.stringify(oldVal) !== JSON.stringify(newVal);
+    });
+
+    if (changes.length === 0) {
+        return (
+            <div className="bg-muted/30 rounded-lg p-4 border border-dashed border-border">
+                <p className="text-xs text-muted-foreground italic">Metadata update or no tracked field changes detected.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-2 bg-muted/20 rounded-lg p-4 border border-border">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3">Field Modifications</p>
+            <div className="space-y-3">
+                {changes.map(key => (
+                    <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-2 text-[11px]">
+                        <span className="font-bold text-foreground min-w-[140px] truncate">{key}</span>
+                        <div className="flex items-center gap-2 flex-1">
+                            <div className="px-2 py-1 bg-rose-100/50 text-rose-700 rounded border border-rose-200/50 line-through truncate max-w-[200px]">
+                                {oldData[key] === null || oldData[key] === undefined ? 'null' : String(oldData[key])}
+                            </div>
+                            <ArrowRight className="w-3 h-3 text-muted-foreground shrink-0" />
+                            <div className="px-2 py-1 bg-emerald-100/50 text-emerald-700 rounded border border-emerald-200/50 font-medium truncate max-w-[200px]">
+                                {newData[key] === null || newData[key] === undefined ? 'null' : String(newData[key])}
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
 export const AuditLogs: React.FC = () => {
     const { t } = useTranslation();
     const [entityName, setEntityName] = useState('');
@@ -72,6 +170,7 @@ export const AuditLogs: React.FC = () => {
                             <option value="attendance">Attendance</option>
                             <option value="requests">Requests</option>
                             <option value="payrolls">Payrolls</option>
+                            <option value="jobs">Jobs</option>
                             <option value="settings">Settings</option>
                         </select>
                     </div>
@@ -87,6 +186,9 @@ export const AuditLogs: React.FC = () => {
                             <option value="CREATE">Create</option>
                             <option value="UPDATE">Update</option>
                             <option value="DELETE">Delete</option>
+                            <option value="REGISTER">Register</option>
+                            <option value="LOGIN">Login</option>
+                            <option value="LOGOUT">Logout</option>
                         </select>
                     </div>
                 </div>
@@ -100,8 +202,9 @@ export const AuditLogs: React.FC = () => {
                                 <div className="space-y-1">
                                     <div className="flex items-center gap-2">
                                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                            log.action === 'CREATE' ? 'bg-emerald-100 text-emerald-800' :
+                                            ['CREATE', 'REGISTER'].includes(log.action) ? 'bg-emerald-100 text-emerald-800' :
                                             log.action === 'UPDATE' ? 'bg-blue-100 text-blue-800' :
+                                            ['LOGIN', 'LOGOUT'].includes(log.action) ? 'bg-indigo-100 text-indigo-800' :
                                             'bg-rose-100 text-rose-800'
                                         }`}>
                                             {log.action}
@@ -130,30 +233,7 @@ export const AuditLogs: React.FC = () => {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                <div className="space-y-1.5">
-                                    <div className="flex items-center gap-2 text-[10px] font-bold uppercase text-muted-foreground px-1">
-                                        <Database className="w-3 h-3" />
-                                        Previous State
-                                    </div>
-                                    <div className="bg-muted/50 rounded-lg p-3 border border-border/50 overflow-x-auto">
-                                        <pre className="text-[11px] font-mono text-muted-foreground leading-relaxed">
-                                            {log.old_values ? JSON.stringify(log.old_values, null, 2) : '// No previous data'}
-                                        </pre>
-                                    </div>
-                                </div>
-                                <div className="space-y-1.5">
-                                    <div className="flex items-center gap-2 text-[10px] font-bold uppercase text-primary px-1">
-                                        <ArrowRight className="w-3 h-3" />
-                                        New State
-                                    </div>
-                                    <div className="bg-primary/[0.02] rounded-lg p-3 border border-primary/10 overflow-x-auto">
-                                        <pre className="text-[11px] font-mono text-foreground leading-relaxed">
-                                            {log.new_values ? JSON.stringify(log.new_values, null, 2) : '// No new data'}
-                                        </pre>
-                                    </div>
-                                </div>
-                            </div>
+                            <DiffViewer oldValues={log.old_values} newValues={log.new_values} action={log.action} />
                         </div>
                     ))}
                     {logs?.length === 0 && (

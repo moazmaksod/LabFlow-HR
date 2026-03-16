@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import db from '../db/index.js';
+import { logAudit } from '../services/auditService.js';
+import { AuthRequest } from '../middlewares/authMiddleware.js';
 
 // 🛡️ Sentinel: Enforce secure JWT Secret from environment variables.
 // Do not use hardcoded fallbacks that could be exploited if env vars are missing.
@@ -60,6 +62,9 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         });
 
         const userId = registerTransaction();
+
+        // Log Audit
+        logAudit('users', Number(userId), 'REGISTER', Number(userId), null, { name, email: normalizedEmail, role: 'pending' });
 
         // Generate JWT
         const token = jwt.sign(
@@ -143,6 +148,9 @@ export const login = async (req: Request, res: Response): Promise<void> => {
             { expiresIn: '7d' }
         );
 
+        // Log Audit
+        logAudit('users', user.id, 'LOGIN', user.id, null, { deviceId, email: normalizedEmail });
+
         res.json({
             message: 'Login successful',
             token,
@@ -150,6 +158,20 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         });
     } catch (error) {
         console.error('Login error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const logout = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const userId = req.user!.id;
+        
+        // Log Audit
+        logAudit('users', userId, 'LOGOUT', userId, null, null);
+
+        res.json({ message: 'Logout successful' });
+    } catch (error) {
+        console.error('Logout error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
