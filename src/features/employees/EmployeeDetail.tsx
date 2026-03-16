@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/axios';
 import { X, Save, User, Phone, Mail, Clock, Shield, DollarSign, Calendar, FileText, ChevronRight, Plus } from 'lucide-react';
+import { WeeklyScheduleBuilder } from '../../components/WeeklyScheduleBuilder';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface EmployeeDetailProps {
@@ -100,40 +101,6 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
     setIsSaving(true);
     updateMutation.mutate(formData, {
       onSettled: () => setIsSaving(false)
-    });
-  };
-
-  const addShift = (day: string) => {
-    setFormData((prev: any) => ({
-      ...prev,
-      weekly_schedule: {
-        ...prev.weekly_schedule,
-        [day]: [...prev.weekly_schedule[day], { start: '09:00', end: '17:00' }]
-      }
-    }));
-  };
-
-  const removeShift = (day: string, index: number) => {
-    setFormData((prev: any) => ({
-      ...prev,
-      weekly_schedule: {
-        ...prev.weekly_schedule,
-        [day]: prev.weekly_schedule[day].filter((_: any, i: number) => i !== index)
-      }
-    }));
-  };
-
-  const updateShift = (day: string, index: number, field: keyof Shift, value: string) => {
-    setFormData((prev: any) => {
-      const newShifts = [...prev.weekly_schedule[day]];
-      newShifts[index] = { ...newShifts[index], [field]: value };
-      return {
-        ...prev,
-        weekly_schedule: {
-          ...prev.weekly_schedule,
-          [day]: newShifts
-        }
-      };
     });
   };
 
@@ -366,86 +333,11 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
             </div>
           </div>
           
-          <div className="space-y-3 border border-border rounded-xl overflow-hidden bg-muted/5 shadow-inner">
-            {DAYS.map((day) => (
-              <div key={day} className={`flex flex-col p-4 text-sm ${formData.weekly_schedule[day].length === 0 ? 'bg-muted/20' : 'bg-background'} border-b border-border last:border-0 transition-colors`}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold uppercase text-xs ${formData.weekly_schedule[day].length === 0 ? 'bg-muted text-muted-foreground' : 'bg-primary/10 text-primary'}`}>
-                      {day.substring(0, 3)}
-                    </div>
-                    <div>
-                      <span className="capitalize font-bold text-foreground">{day}</span>
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                        {formData.weekly_schedule[day].length === 0 ? 'Day Off' : `${formData.weekly_schedule[day].length} Shift(s)`}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <label className="flex items-center gap-2 cursor-pointer group">
-                      <input 
-                        type="checkbox"
-                        checked={formData.weekly_schedule[day].length === 0}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setFormData((prev: any) => ({
-                              ...prev,
-                              weekly_schedule: { ...prev.weekly_schedule, [day]: [] }
-                            }));
-                          } else if (formData.weekly_schedule[day].length === 0) {
-                            addShift(day);
-                          }
-                        }}
-                        className="w-4 h-4 rounded border-border text-primary focus:ring-primary transition-all"
-                      />
-                      <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors">Off</span>
-                    </label>
-                    <button 
-                      onClick={() => addShift(day)}
-                      className="px-2 py-1 bg-primary/5 hover:bg-primary/10 text-primary text-[10px] font-bold uppercase rounded transition-all flex items-center gap-1"
-                    >
-                      <Plus className="w-3 h-3" /> Add Shift
-                    </button>
-                  </div>
-                </div>
-                
-                {formData.weekly_schedule[day].length > 0 && (
-                  <div className="space-y-2 pl-12">
-                    {formData.weekly_schedule[day].map((shift: Shift, index: number) => (
-                      <div key={index} className="flex items-center gap-3 animate-in fade-in slide-in-from-left-2 duration-200">
-                        <div className="relative">
-                          <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
-                          <input 
-                            type="time" 
-                            value={shift.start}
-                            onChange={(e) => updateShift(day, index, 'start', e.target.value)}
-                            className="pl-8 pr-3 py-1.5 bg-background border border-border rounded-lg text-xs font-medium outline-none focus:ring-2 focus:ring-primary/20 transition-all"
-                          />
-                        </div>
-                        <span className="text-muted-foreground font-bold text-[10px] uppercase">to</span>
-                        <div className="relative">
-                          <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
-                          <input 
-                            type="time" 
-                            value={shift.end}
-                            onChange={(e) => updateShift(day, index, 'end', e.target.value)}
-                            className="pl-8 pr-3 py-1.5 bg-background border border-border rounded-lg text-xs font-medium outline-none focus:ring-2 focus:ring-primary/20 transition-all"
-                          />
-                        </div>
-                        <button 
-                          onClick={() => removeShift(day, index)}
-                          className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-all rounded-lg"
-                          aria-label={`Remove shift for ${day}`}
-                          title="Remove shift"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+          <div className="h-[600px]">
+            <WeeklyScheduleBuilder 
+              schedule={formData.weekly_schedule}
+              onChange={(newSchedule) => setFormData({ ...formData, weekly_schedule: newSchedule })}
+            />
           </div>
         </section>
 
