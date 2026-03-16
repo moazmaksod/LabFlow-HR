@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import db from '../db/index.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
+import { logAudit } from '../services/auditService.js';
 
 import { getLogicalShiftDetails } from '../utils/shiftUtils.js';
 
@@ -78,12 +79,16 @@ export const updateUserRole = (req: Request, res: Response): void => {
 
         // Start a transaction
         const updateTransaction = db.transaction(() => {
+            const oldUser = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+            const oldProfile = db.prepare('SELECT * FROM profiles WHERE user_id = ?').get(id);
+
             // Update user role
             db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, id);
 
             // If assigning to employee, ensure profile exists and update job_id
+            let profileExists = false;
             if (role === 'employee' || role === 'manager') {
-                const profileExists = db.prepare('SELECT id FROM profiles WHERE user_id = ?').get(id);
+                profileExists = !!db.prepare('SELECT id FROM profiles WHERE user_id = ?').get(id);
                 
                 if (profileExists) {
                     db.prepare('UPDATE profiles SET job_id = ?, status = ? WHERE user_id = ?')
@@ -91,6 +96,18 @@ export const updateUserRole = (req: Request, res: Response): void => {
                 } else {
                     db.prepare('INSERT INTO profiles (user_id, job_id, status) VALUES (?, ?, ?)')
                       .run(id, job_id || null, 'active');
+                }
+            }
+
+            const updatedUserRecord = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+            const updatedProfileRecord = db.prepare('SELECT * FROM profiles WHERE user_id = ?').get(id);
+
+            logAudit('users', Number(id), 'UPDATE', (req as AuthRequest).user!.id, oldUser, updatedUserRecord);
+            if (role === 'employee' || role === 'manager') {
+                if (profileExists) {
+                    logAudit('profiles', (oldProfile as any).id, 'UPDATE', (req as AuthRequest).user!.id, oldProfile, updatedProfileRecord);
+                } else {
+                    logAudit('profiles', (updatedProfileRecord as any).id, 'CREATE', (req as AuthRequest).user!.id, null, updatedProfileRecord);
                 }
             }
         });
@@ -151,6 +168,9 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
         } = req.body;
 
         const updateTransaction = db.transaction(() => {
+            const oldUser = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+            const oldProfile = db.prepare('SELECT * FROM profiles WHERE user_id = ?').get(userId);
+
             if (name) {
                 db.prepare('UPDATE users SET name = ? WHERE id = ?').run(name, userId);
             }
@@ -201,6 +221,16 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
                     emergency_contact_phone || null,
                     leave_balance || 21
                 );
+            }
+
+            const updatedUserRecord = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+            const updatedProfileRecord = db.prepare('SELECT * FROM profiles WHERE user_id = ?').get(userId);
+
+            logAudit('users', userId, 'UPDATE', userId, oldUser, updatedUserRecord);
+            if (profileExists) {
+                logAudit('profiles', (oldProfile as any).id, 'UPDATE', userId, oldProfile, updatedProfileRecord);
+            } else {
+                logAudit('profiles', (updatedProfileRecord as any).id, 'CREATE', userId, null, updatedProfileRecord);
             }
         });
 
@@ -266,6 +296,9 @@ export const updateUserProfile = (req: Request, res: Response): void => {
         } = req.body;
 
         const updateTransaction = db.transaction(() => {
+            const oldUser = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+            const oldProfile = db.prepare('SELECT * FROM profiles WHERE user_id = ?').get(id);
+
             const userToUpdate = db.prepare('SELECT role FROM users WHERE id = ?').get(id) as { role: string } | undefined;
             
             // Enforce 'employee' role for non-managers when updating via this HR interface
@@ -340,6 +373,16 @@ export const updateUserProfile = (req: Request, res: Response): void => {
                     allow_overtime ? 1 : 0,
                     max_overtime_hours || 0
                 );
+            }
+
+            const updatedUserRecord = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+            const updatedProfileRecord = db.prepare('SELECT * FROM profiles WHERE user_id = ?').get(id);
+
+            logAudit('users', Number(id), 'UPDATE', (req as AuthRequest).user!.id, oldUser, updatedUserRecord);
+            if (profileExists) {
+                logAudit('profiles', (oldProfile as any).id, 'UPDATE', (req as AuthRequest).user!.id, oldProfile, updatedProfileRecord);
+            } else {
+                logAudit('profiles', (updatedProfileRecord as any).id, 'CREATE', (req as AuthRequest).user!.id, null, updatedProfileRecord);
             }
         });
 

@@ -126,68 +126,8 @@ export default function DashboardScreen() {
   };
 
   const handleClock = async (type: 'check_in' | 'check_out') => {
-    let alertTitle = `Confirm Clock ${type === 'check_in' ? 'In' : 'Out'}`;
-    let alertMessage = `Are you sure you want to clock ${type === 'check_in' ? 'in' : 'out'} now?`;
-
-    if (userProfile && userProfile.weekly_schedule) {
-      try {
-        const schedule = JSON.parse(userProfile.weekly_schedule);
-        const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-        const currentDay = days[new Date().getDay()];
-        const todayShifts = schedule[currentDay];
-
-        if (todayShifts && Array.isArray(todayShifts) && todayShifts.length > 0) {
-          const now = new Date();
-          const currentMinutes = now.getHours() * 60 + now.getMinutes();
-          const gracePeriod = userProfile.grace_period || 15;
-
-          // Find the closest shift
-          let closestShift = todayShifts[0];
-          let minDiff = Infinity;
-
-          for (const shift of todayShifts) {
-            const [startH, startM] = shift.start.split(':').map(Number);
-            const [endH, endM] = shift.end.split(':').map(Number);
-            const startMinutes = startH * 60 + startM;
-            const endMinutes = endH * 60 + endM;
-
-            const diff = type === 'check_in' 
-              ? Math.abs(currentMinutes - startMinutes)
-              : Math.abs(currentMinutes - endMinutes);
-
-            if (diff < minDiff) {
-              minDiff = diff;
-              closestShift = shift;
-            }
-          }
-
-          const [startH, startM] = closestShift.start.split(':').map(Number);
-          const [endH, endM] = closestShift.end.split(':').map(Number);
-          const startMinutes = startH * 60 + startM;
-          const endMinutes = endH * 60 + endM;
-
-          if (type === 'check_in') {
-            if (currentMinutes < (startMinutes - gracePeriod)) {
-              alertTitle = 'Overtime Notice';
-              alertMessage = 'You are clocking in early. Since overtime needs approval (or your limit is reached), this extra time will be sent to your manager as a pending request. Proceed?';
-            } else if (currentMinutes > (startMinutes + gracePeriod)) {
-              alertTitle = 'Tardiness Notice';
-              alertMessage = 'You are clocking in late. This delay will be recorded and may result in a payroll deduction. Proceed?';
-            }
-          } else if (type === 'check_out') {
-            if (currentMinutes < (endMinutes - gracePeriod)) {
-              alertTitle = 'Early Leave Notice';
-              alertMessage = 'You are leaving before your shift ends. A request will be sent to your manager. If rejected, the missing time will be deducted from your payroll. Proceed?';
-            } else if (currentMinutes > (endMinutes + gracePeriod)) {
-              alertTitle = 'Overtime Notice';
-              alertMessage = 'You are clocking out late. This extra time will be sent to your manager for overtime approval. Proceed?';
-            }
-          }
-        }
-      } catch (e) {
-        console.error('Error parsing schedule:', e);
-      }
-    }
+    const alertTitle = `Confirm Clock ${type === 'check_in' ? 'In' : 'Out'}`;
+    const alertMessage = `Are you sure you want to clock ${type === 'check_in' ? 'in' : 'out'} now?`;
 
     Alert.alert(
       alertTitle,

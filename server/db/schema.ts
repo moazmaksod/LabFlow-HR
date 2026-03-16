@@ -153,6 +153,18 @@ CREATE TABLE IF NOT EXISTS payroll_transactions (
     FOREIGN KEY (payroll_id) REFERENCES payrolls(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_name TEXT NOT NULL,
+    entity_id INTEGER NOT NULL,
+    action TEXT NOT NULL,
+    actor_id INTEGER, -- NULL means 'System'
+    old_values TEXT, -- JSON
+    new_values TEXT, -- JSON
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
 -- Performance Indexes for Foreign Keys
 CREATE INDEX IF NOT EXISTS idx_profiles_user_id ON profiles(user_id);
 CREATE INDEX IF NOT EXISTS idx_profiles_job_id ON profiles(job_id);
@@ -161,6 +173,7 @@ CREATE INDEX IF NOT EXISTS idx_requests_user_id ON requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_requests_attendance_id ON requests(attendance_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_shift_interruptions_attendance_id ON shift_interruptions(attendance_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_name, entity_id);
 
 -- Triggers for updated_at (with safety condition to prevent infinite loops)
 CREATE TRIGGER IF NOT EXISTS update_users_updated_at AFTER UPDATE ON users

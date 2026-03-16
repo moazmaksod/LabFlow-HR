@@ -14,6 +14,7 @@ import ManagerDashboardScreen from '../screens/ManagerDashboardScreen';
 import HistoryScreen from '../screens/HistoryScreen';
 import RequestsScreen from '../screens/RequestsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import PayslipScreen from '../screens/PayslipScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -50,6 +51,16 @@ function MainTabs() {
           tabBarIcon: ({ color, size }) => <History color={color} size={size} />,
         }}
       />
+      {user?.role === 'employee' && (
+        <Tab.Screen 
+          name="Payroll" 
+          component={PayslipScreen} 
+          options={{
+            tabBarLabel: 'Payroll',
+            tabBarIcon: ({ color, size }) => <DollarSign color={color} size={size} />,
+          }}
+        />
+      )}
       <Tab.Screen 
         name="Requests" 
         component={RequestsScreen} 

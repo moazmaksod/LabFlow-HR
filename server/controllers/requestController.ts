@@ -4,6 +4,7 @@ import { AuthRequest } from '../middlewares/authMiddleware.js';
 import { getLogicalShiftDetails } from '../utils/shiftUtils.js';
 import { getDateStringInTimezone } from '../utils/dateUtils.js';
 import { getOrCreateDraftPayroll } from './payrollController.js';
+import { logAudit } from '../services/auditService.js';
 
 export const createRequest = (req: AuthRequest, res: Response): void => {
     try {
@@ -37,6 +38,8 @@ export const createRequest = (req: AuthRequest, res: Response): void => {
         const info = insert.run(userId, attendance_id || null, requested_check_in || null, requested_check_out || null, requestType, reason);
         const newReq = db.prepare('SELECT * FROM requests WHERE id = ?').get(info.lastInsertRowid);
         
+        logAudit('requests', info.lastInsertRowid as number, 'CREATE', userId, null, newReq);
+
         res.status(201).json(newReq);
     } catch (error) {
         console.error('Error creating request:', error);
@@ -188,6 +191,16 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
         if (!manager_note || manager_note.trim() === '') {
             res.status(400).json({ error: 'A manager note is mandatory to approve or reject this request.' });
             return;
+        }
+
+        const oldRequest = { ...requestRecord };
+        let oldAttendance = null;
+        if (requestRecord.attendance_id) {
+            oldAttendance = db.prepare('SELECT * FROM attendance WHERE id = ?').get(requestRecord.attendance_id) as any;
+        }
+        let oldInterruption = null;
+        if (requestRecord.type === 'permission_to_leave' && requestRecord.reference_id) {
+            oldInterruption = db.prepare('SELECT * FROM shift_interruptions WHERE id = ?').get(requestRecord.reference_id) as any;
         }
 
         const transaction = db.transaction(() => {
@@ -429,7 +442,7 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
             const userProfile = db.prepare('SELECT hourly_rate FROM profiles WHERE user_id = ?').get(requestRecord.user_id) as any;
             const hourlyRate = userProfile?.hourly_rate || 0;
             const dateStr = new Date().toISOString().split('T')[0]; // Use current date for the payroll period
-            const payrollId = getOrCreateDraftPayroll(requestRecord.user_id, dateStr);
+            const payrollId = getOrCreateDraftPayroll(requestRecord.user_id, dateStr, actorId);
 
             if (requestRecord.type === 'overtime_approval') {
                 const requestedMinutes = requestRecord.details ? JSON.parse(requestRecord.details).requested_overtime_minutes : 0;
@@ -468,6 +481,23 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
             JOIN users u ON r.user_id = u.id 
             WHERE r.id = ?
         `).get(id);
+
+        const actorId = (req as AuthRequest).user!.id;
+        logAudit('requests', Number(id), status === 'approved' ? 'APPROVE' : 'REJECT', actorId, oldRequest, updatedRequest);
+
+        if (oldAttendance) {
+            const newAttendance = db.prepare('SELECT * FROM attendance WHERE id = ?').get(requestRecord.attendance_id) as any;
+            if (JSON.stringify(oldAttendance) !== JSON.stringify(newAttendance)) {
+                logAudit('attendance', requestRecord.attendance_id, 'UPDATE', actorId, oldAttendance, newAttendance);
+            }
+        }
+
+        if (oldInterruption) {
+            const newInterruption = db.prepare('SELECT * FROM shift_interruptions WHERE id = ?').get(requestRecord.reference_id) as any;
+            if (JSON.stringify(oldInterruption) !== JSON.stringify(newInterruption)) {
+                logAudit('shift_interruptions', requestRecord.reference_id, 'UPDATE', actorId, oldInterruption, newInterruption);
+            }
+        }
         
         res.json(updatedRequest);
     } catch (error) {

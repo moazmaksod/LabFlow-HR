@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/axios';
-import { CheckCircle, XCircle, Clock, FileText, X } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, FileText, X, AlertCircle } from 'lucide-react';
 
 interface RequestLog {
   id: number;
@@ -344,8 +344,11 @@ export default function RequestManagement() {
                 </div>
               )}
 
-              <div className="space-y-2 pt-2">
-                <label className="text-sm font-medium">Manager Note <span className="text-destructive">*</span></label>
+              <div className="space-y-3 pt-4 border-t border-border">
+                <div className="flex justify-between items-center">
+                  <label className="text-sm font-bold text-foreground">Manager Justification <span className="text-destructive">*</span></label>
+                  <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-100 text-amber-700 rounded uppercase">Required for Payroll Audit</span>
+                </div>
                 <textarea 
                   value={managerNote}
                   onChange={(e) => {
@@ -353,30 +356,35 @@ export default function RequestManagement() {
                     if (e.target.value.trim()) setError(null);
                   }}
                   disabled={selectedRequest.status !== 'pending'}
-                  placeholder="Add a note for the employee..."
-                  className={`w-full px-3 py-2 bg-background border rounded-lg min-h-[80px] focus:ring-2 focus:ring-primary/20 outline-none resize-none disabled:opacity-50 ${
-                    error ? 'border-destructive' : 'border-border'
+                  placeholder="Explain why this request is being approved or rejected..."
+                  className={`w-full px-4 py-3 bg-amber-50/30 dark:bg-amber-500/5 border-2 rounded-xl min-h-[100px] focus:ring-4 focus:ring-primary/10 outline-none resize-none transition-all disabled:opacity-50 ${
+                    error ? 'border-destructive' : 'border-amber-200 dark:border-amber-500/20'
                   }`}
                 />
-                {error && <p className="text-xs text-destructive font-medium">{error}</p>}
+                {error && <p className="text-xs text-destructive font-bold flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> {error}
+                </p>}
+                <p className="text-[11px] text-muted-foreground italic">
+                  This note will be permanently attached to the payroll transaction and visible to the employee.
+                </p>
               </div>
             </div>
 
             {selectedRequest.status === 'pending' && (
-              <div className="p-4 border-t border-border bg-muted/30 flex justify-end gap-3">
+              <div className="p-6 border-t border-border bg-muted/30 flex justify-end gap-3">
                 <button 
                   onClick={handleReject}
-                  disabled={updateStatusMutation.isPending}
-                  className="px-4 py-2 bg-destructive/10 text-destructive font-medium rounded-lg hover:bg-destructive/20 transition-colors flex items-center gap-2"
+                  disabled={updateStatusMutation.isPending || !managerNote.trim()}
+                  className="flex-1 px-4 py-3 bg-destructive/10 text-destructive font-bold rounded-xl hover:bg-destructive/20 transition-all flex items-center justify-center gap-2 disabled:opacity-30 disabled:grayscale"
                 >
-                  <XCircle className="w-4 h-4" /> Reject
+                  <XCircle className="w-5 h-5" /> Reject
                 </button>
                 <button 
                   onClick={handleApprove}
-                  disabled={updateStatusMutation.isPending}
-                  className="px-4 py-2 bg-primary text-primary-foreground font-medium rounded-lg hover:bg-primary/90 transition-colors flex items-center gap-2"
+                  disabled={updateStatusMutation.isPending || !managerNote.trim()}
+                  className="flex-1 px-4 py-3 bg-primary text-primary-foreground font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2 disabled:opacity-30 disabled:grayscale"
                 >
-                  <CheckCircle className="w-4 h-4" /> Approve
+                  <CheckCircle className="w-5 h-5" /> Approve
                 </button>
               </div>
             )}

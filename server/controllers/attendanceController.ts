@@ -3,6 +3,7 @@ import db from '../db/index.js';
 import { getDateStringInTimezone } from '../utils/dateUtils.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
 import { getLogicalShiftDetails } from '../utils/shiftUtils.js';
+import { logAudit } from '../services/auditService.js';
 
 // Haversine formula to calculate distance between two points in meters
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -191,6 +192,7 @@ export const clockAttendance = (req: AuthRequest, res: Response): void => {
 
             const newId = insertTransaction();
             const newRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(newId);
+            logAudit('attendance', Number(newId), 'CREATE', userId, null, newRecord);
             res.status(201).json(newRecord);
             return;
 
@@ -201,6 +203,8 @@ export const clockAttendance = (req: AuthRequest, res: Response): void => {
                 return;
             }
 
+            const oldSession = { ...activeSession };
+
             // Note: current_status in the DB schema is CHECK(current_status IN ('working', 'away'))
             // We'll leave it as 'working' or set it to what it was, but the primary way to tell if it's checked out is if check_out is NOT NULL.
             db.prepare(`
@@ -209,7 +213,7 @@ export const clockAttendance = (req: AuthRequest, res: Response): void => {
                 WHERE id = ?
             `).run(timestamp, lat, lng, activeSession.id);
 
-            const updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id) as any;
+            let updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id) as any;
             
             const shiftDetails = getLogicalShiftDetails(schedule, timestamp, timezone, 'check_out', activeSession.check_in);
             const scheduledTime = shiftDetails.scheduledTime;
@@ -248,6 +252,8 @@ export const clockAttendance = (req: AuthRequest, res: Response): void => {
                         WHERE id = ?
                     `).run(activeSession.id);
 
+                    updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id) as any;
+
                     db.prepare(`
                         INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
                         VALUES (?, 'early_leave_approval', ?, ?, ?, ?, 'pending')
@@ -261,6 +267,7 @@ export const clockAttendance = (req: AuthRequest, res: Response): void => {
                 }
             }
 
+            logAudit('attendance', activeSession.id, 'UPDATE', userId, oldSession, updatedRecord);
             res.json(updatedRecord);
         }
     } catch (error) {
@@ -345,20 +352,35 @@ export const syncOfflineLogs = (req: AuthRequest, res: Response): void => {
 
                 if (type === 'check_in') {
                     if (!existingRecord) {
-                        insertCheckInStmt.run(userId, timestamp, logicalDate, lat, lng);
+                        const info = insertCheckInStmt.run(userId, timestamp, logicalDate, lat, lng);
+                        const newRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(info.lastInsertRowid);
+                        logAudit('attendance', Number(info.lastInsertRowid), 'CREATE', userId, null, newRecord);
                         results.push({ logId: log.id, status: 'success', action: 'inserted' });
                     } else if (existingRecord.check_out) {
                         // Re-entry logic for offline sync
+                        const oldRecord = { ...existingRecord };
                         updateResumeStmt.run(existingRecord.id);
+                        const updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(existingRecord.id);
+                        logAudit('attendance', existingRecord.id, 'UPDATE', userId, oldRecord, updatedRecord);
+
                         const info = insertInterruptionStmt.run(existingRecord.id, existingRecord.check_out, timestamp);
-                        insertRequestStmt.run(userId, existingRecord.id, info.lastInsertRowid);
+                        const newInterruption = db.prepare('SELECT * FROM shift_interruptions WHERE id = ?').get(info.lastInsertRowid);
+                        logAudit('shift_interruptions', Number(info.lastInsertRowid), 'CREATE', userId, null, newInterruption);
+
+                        const reqInfo = insertRequestStmt.run(userId, existingRecord.id, info.lastInsertRowid);
+                        const newReq = db.prepare('SELECT * FROM requests WHERE id = ?').get(reqInfo.lastInsertRowid);
+                        logAudit('requests', Number(reqInfo.lastInsertRowid), 'CREATE', userId, null, newReq);
+
                         results.push({ logId: log.id, status: 'success', action: 'resumed' });
                     } else {
                         results.push({ logId: log.id, status: 'skipped', reason: 'already checked in' });
                     }
                 } else if (type === 'check_out') {
                     if (existingRecord && !existingRecord.check_out) {
+                        const oldRecord = { ...existingRecord };
                         updateCheckOutStmt.run(timestamp, lat, lng, existingRecord.id);
+                        const updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(existingRecord.id);
+                        logAudit('attendance', existingRecord.id, 'UPDATE', userId, oldRecord, updatedRecord);
                         results.push({ logId: log.id, status: 'success', action: 'updated' });
                     } else {
                         results.push({ logId: log.id, status: 'skipped', reason: 'no check-in or already checked out' });
@@ -511,6 +533,8 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
         const status = hasBreakBalance ? 'auto_approved' : 'pending_manager';
 
         const stepAwayTransaction = db.transaction(() => {
+            const oldAttendance = { ...activeAttendance };
+
             // Update attendance status
             db.prepare('UPDATE attendance SET current_status = ? WHERE id = ?').run('away', activeAttendance.id);
 
@@ -524,11 +548,19 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
 
             // If no break balance, create a request
             if (!hasBreakBalance) {
-                db.prepare(`
+                const reqInsert = db.prepare(`
                     INSERT INTO requests (user_id, attendance_id, type, reference_id, reason, status)
                     VALUES (?, ?, 'permission_to_leave', ?, 'Step away with 0 break balance', 'pending')
                 `).run(userId, activeAttendance.id, interruptionId);
+                const newReq = db.prepare('SELECT * FROM requests WHERE id = ?').get(reqInsert.lastInsertRowid);
+                logAudit('requests', Number(reqInsert.lastInsertRowid), 'CREATE', userId, null, newReq);
             }
+
+            const updatedAttendance = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeAttendance.id);
+            logAudit('attendance', activeAttendance.id, 'UPDATE', userId, oldAttendance, updatedAttendance);
+
+            const newInterruption = db.prepare('SELECT * FROM shift_interruptions WHERE id = ?').get(interruptionId);
+            logAudit('shift_interruptions', Number(interruptionId), 'CREATE', userId, null, newInterruption);
 
             return { interruptionId, status };
         });
@@ -589,11 +621,20 @@ export const resumeWork = (req: AuthRequest, res: Response): void => {
         }
 
         const resumeTransaction = db.transaction(() => {
+            const oldInterruption = { ...activeInterruption };
+            const oldAttendance = { ...activeAttendance };
+
             // Update interruption end_time
             db.prepare('UPDATE shift_interruptions SET end_time = ? WHERE id = ?').run(timestamp, activeInterruption.id);
 
             // Update attendance status
             db.prepare('UPDATE attendance SET current_status = ? WHERE id = ?').run('working', activeAttendance.id);
+
+            const updatedInterruption = db.prepare('SELECT * FROM shift_interruptions WHERE id = ?').get(activeInterruption.id);
+            logAudit('shift_interruptions', activeInterruption.id, 'UPDATE', userId, oldInterruption, updatedInterruption);
+
+            const updatedAttendance = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeAttendance.id);
+            logAudit('attendance', activeAttendance.id, 'UPDATE', userId, oldAttendance, updatedAttendance);
         });
 
         resumeTransaction();

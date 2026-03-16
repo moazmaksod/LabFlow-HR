@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import { useAuthStore } from '../store/useAuthStore';
-import { Moon, Sun, Globe, LayoutDashboard, Users, Calendar, FileText, Settings, LogOut, Briefcase, DollarSign } from 'lucide-react';
+import { Moon, Sun, Globe, LayoutDashboard, Users, Calendar, FileText, Settings, LogOut, Briefcase, DollarSign, Activity } from 'lucide-react';
 import { cn } from '../lib/utils';
 import TimezoneClock from './TimezoneClock';
 
@@ -17,12 +17,13 @@ export default function DashboardLayout() {
 
   const navItems = [
     { icon: LayoutDashboard, label: 'app.dashboard', path: '/' },
-    { icon: Users, label: 'app.employees', path: '/employees' },
-    { icon: Briefcase, label: 'Job Roles', path: '/jobs' },
+    ...(user?.role === 'manager' ? [{ icon: Users, label: 'app.employees', path: '/employees' }] : []),
+    ...(user?.role === 'manager' ? [{ icon: Briefcase, label: 'Job Roles', path: '/jobs' }] : []),
     { icon: Calendar, label: 'app.attendance', path: '/attendance' },
     { icon: FileText, label: 'app.requests', path: '/requests' },
-    { icon: DollarSign, label: 'Payroll', path: '/payroll' },
-    { icon: Settings, label: 'app.settings', path: '/settings' },
+    ...(user?.role === 'manager' ? [{ icon: DollarSign, label: 'Payroll', path: '/payroll' }] : []),
+    ...(user?.role === 'manager' ? [{ icon: Activity, label: 'Audit Logs', path: '/audit' }] : []),
+    ...(user?.role === 'manager' ? [{ icon: Settings, label: 'app.settings', path: '/settings' }] : []),
   ];
 
   return (

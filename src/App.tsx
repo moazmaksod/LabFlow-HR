@@ -18,6 +18,7 @@ import RequestManagement from './features/requests/RequestManagement';
 import PayrollView from './features/payroll/PayrollView';
 import SettingsView from './features/settings/SettingsView';
 import ManagerProfile from './features/profile/ManagerProfile';
+import { AuditLogs } from './features/audit/AuditLogs';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -64,6 +65,7 @@ export default function App() {
             <Route path="payroll" element={<PayrollView />} />
             <Route path="settings" element={<SettingsView />} />
             <Route path="profile" element={<ManagerProfile />} />
+            <Route path="audit" element={<AuditLogs />} />
           </Route>
         </Routes>
       </BrowserRouter>

@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import db from '../db/index.js';
+import { AuthRequest } from '../middlewares/authMiddleware.js';
+import { logAudit } from '../services/auditService.js';
 
 const calculateUserPayroll = (user: any, start_date: string, end_date: string) => {
     const hourlyRate = user.hourly_rate || 0;
@@ -205,7 +207,7 @@ export const getAllPayroll = (req: Request, res: Response): void => {
 };
 
 // Helper to get or create a draft payroll for a user for a specific month
-export function getOrCreateDraftPayroll(userId: number, dateStr: string): number {
+export function getOrCreateDraftPayroll(userId: number, dateStr: string, actorId?: number): number {
     const date = new Date(dateStr);
     const year = date.getFullYear();
     const month = date.getMonth();
@@ -229,12 +231,20 @@ export function getOrCreateDraftPayroll(userId: number, dateStr: string): number
         VALUES (?, ?, ?, 0, 'draft')
     `).run(userId, startDate, endDate);
 
-    return result.lastInsertRowid as number;
+    const newPayrollId = result.lastInsertRowid as number;
+    const newPayroll = db.prepare('SELECT * FROM payrolls WHERE id = ?').get(newPayrollId);
+    
+    if (actorId) {
+        logAudit('payrolls', newPayrollId, 'CREATE', actorId, null, newPayroll);
+    }
+
+    return newPayrollId;
 }
 
-export const generateDraftPayroll = (req: Request, res: Response) => {
+export const generateDraftPayroll = (req: AuthRequest, res: Response) => {
     try {
         const { month, year } = req.query;
+        const actorId = req.user!.id;
         
         if (!month || !year) {
             return res.status(400).json({ error: 'Month and year are required' });
@@ -248,59 +258,67 @@ export const generateDraftPayroll = (req: Request, res: Response) => {
 
         const generatedPayrolls = [];
 
-        for (const user of users) {
-            const payrollId = getOrCreateDraftPayroll(user.id, startDate);
-            
-            // Calculate base salary based on profile/job
-            const profile = db.prepare(`
-                SELECT p.hourly_rate, j.required_hours_per_week 
-                FROM profiles p 
-                LEFT JOIN jobs j ON p.job_id = j.id 
-                WHERE p.user_id = ?
-            `).get(user.id) as any;
+        const generateTransaction = db.transaction(() => {
+            for (const user of users) {
+                const payrollId = getOrCreateDraftPayroll(user.id, startDate, actorId);
+                const oldPayroll = db.prepare('SELECT * FROM payrolls WHERE id = ?').get(payrollId);
+                
+                // Calculate base salary based on profile/job
+                const profile = db.prepare(`
+                    SELECT p.hourly_rate, j.required_hours_per_week 
+                    FROM profiles p 
+                    LEFT JOIN jobs j ON p.job_id = j.id 
+                    WHERE p.user_id = ?
+                `).get(user.id) as any;
 
-            let baseSalary = 0;
-            if (profile && profile.hourly_rate && profile.required_hours_per_week) {
-                // Approximate monthly salary: weekly hours * 4 weeks * hourly rate
-                baseSalary = profile.required_hours_per_week * 4 * profile.hourly_rate;
-            }
-
-            // Aggregate transactions
-            const transactions = db.prepare(`
-                SELECT type, amount, status 
-                FROM payroll_transactions 
-                WHERE payroll_id = ? AND status = 'applied'
-            `).all(payrollId) as any[];
-
-            let totalAdditions = 0;
-            let totalDeductions = 0;
-
-            for (const tx of transactions) {
-                if (tx.type === 'overtime' || tx.type === 'bonus') {
-                    totalAdditions += tx.amount;
-                } else if (tx.type === 'late_deduction' || tx.type === 'step_away_unpaid' || tx.type === 'deduction') {
-                    totalDeductions += tx.amount;
+                let baseSalary = 0;
+                if (profile && profile.hourly_rate && profile.required_hours_per_week) {
+                    // Approximate monthly salary: weekly hours * 4 weeks * hourly rate
+                    baseSalary = profile.required_hours_per_week * 4 * profile.hourly_rate;
                 }
+
+                // Aggregate transactions
+                const transactions = db.prepare(`
+                    SELECT type, amount, status 
+                    FROM payroll_transactions 
+                    WHERE payroll_id = ? AND status = 'applied'
+                `).all(payrollId) as any[];
+
+                let totalAdditions = 0;
+                let totalDeductions = 0;
+
+                for (const tx of transactions) {
+                    if (tx.type === 'overtime' || tx.type === 'bonus') {
+                        totalAdditions += tx.amount;
+                    } else if (tx.type === 'late_deduction' || tx.type === 'step_away_unpaid' || tx.type === 'deduction') {
+                        totalDeductions += tx.amount;
+                    }
+                }
+
+                const netSalary = baseSalary + totalAdditions - totalDeductions;
+
+                // Update payroll
+                db.prepare(`
+                    UPDATE payrolls 
+                    SET base_salary = ?, total_additions = ?, total_deductions = ?, net_salary = ?
+                    WHERE id = ?
+                `).run(baseSalary, totalAdditions, totalDeductions, netSalary, payrollId);
+
+                const updatedPayroll = db.prepare('SELECT * FROM payrolls WHERE id = ?').get(payrollId);
+                logAudit('payrolls', payrollId, 'UPDATE', actorId, oldPayroll, updatedPayroll);
+
+                generatedPayrolls.push({
+                    payroll_id: payrollId,
+                    user_id: user.id,
+                    base_salary: baseSalary,
+                    total_additions: totalAdditions,
+                    total_deductions: totalDeductions,
+                    net_salary: netSalary
+                });
             }
+        });
 
-            const netSalary = baseSalary + totalAdditions - totalDeductions;
-
-            // Update payroll
-            db.prepare(`
-                UPDATE payrolls 
-                SET base_salary = ?, total_additions = ?, total_deductions = ?, net_salary = ?
-                WHERE id = ?
-            `).run(baseSalary, totalAdditions, totalDeductions, netSalary, payrollId);
-
-            generatedPayrolls.push({
-                payroll_id: payrollId,
-                user_id: user.id,
-                base_salary: baseSalary,
-                total_additions: totalAdditions,
-                total_deductions: totalDeductions,
-                net_salary: netSalary
-            });
-        }
+        generateTransaction();
 
         res.json({ message: 'Draft payrolls generated successfully', payrolls: generatedPayrolls });
     } catch (error) {
@@ -351,5 +369,93 @@ export const getPayrollTransactions = (req: Request, res: Response) => {
     } catch (error) {
         console.error('Error fetching payroll transactions:', error);
         res.status(500).json({ error: 'Failed to fetch payroll transactions' });
+    }
+};
+
+export const getMyPayrolls = (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.user!.id;
+        const { month, year } = req.query;
+        
+        let query = `
+            SELECT p.*, u.name as user_name, u.email as user_email 
+            FROM payrolls p
+            JOIN users u ON p.user_id = u.id
+            WHERE p.user_id = ?
+        `;
+        const params: any[] = [userId];
+
+        if (month && year) {
+            const startDate = new Date(Number(year), Number(month) - 1, 1).toISOString().split('T')[0];
+            const endDate = new Date(Number(year), Number(month), 0).toISOString().split('T')[0];
+            query += ` AND p.start_date >= ? AND p.end_date <= ?`;
+            params.push(startDate, endDate);
+        }
+
+        const payrolls = db.prepare(query).all(...params);
+        res.json(payrolls);
+    } catch (error) {
+        console.error('Error fetching my payrolls:', error);
+        res.status(500).json({ error: 'Failed to fetch your payrolls' });
+    }
+};
+
+export const getMyPayrollTransactions = (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.user!.id;
+        const { payroll_id } = req.params;
+
+        // Verify ownership
+        const payroll = db.prepare('SELECT user_id FROM payrolls WHERE id = ?').get(payroll_id) as any;
+        if (!payroll || payroll.user_id !== userId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        const transactions = db.prepare(`
+            SELECT * FROM payroll_transactions WHERE payroll_id = ? ORDER BY created_at DESC
+        `).all(payroll_id);
+        res.json(transactions);
+    } catch (error) {
+        console.error('Error fetching my payroll transactions:', error);
+        res.status(500).json({ error: 'Failed to fetch your payroll transactions' });
+    }
+};
+
+export const updatePayrollStatus = (req: AuthRequest, res: Response): void => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+        const actorId = req.user!.id;
+
+        if (!['draft', 'finalized', 'paid'].includes(status)) {
+            res.status(400).json({ error: 'Invalid status' });
+            return;
+        }
+
+        const updateTransaction = db.transaction(() => {
+            const oldPayroll = db.prepare('SELECT * FROM payrolls WHERE id = ?').get(id);
+            if (!oldPayroll) {
+                return null;
+            }
+
+            db.prepare('UPDATE payrolls SET status = ? WHERE id = ?').run(status, id);
+            
+            const updatedPayroll = db.prepare('SELECT * FROM payrolls WHERE id = ?').get(id);
+            logAudit('payrolls', Number(id), 'UPDATE', actorId, oldPayroll, updatedPayroll);
+
+            return updatedPayroll;
+        });
+
+        const result = updateTransaction();
+
+        if (!result) {
+            res.status(404).json({ error: 'Payroll not found' });
+            return;
+        }
+
+        res.json(result);
+    } catch (error) {
+        console.error('Error updating payroll status:', error);
+        res.status(500).json({ error: 'Internal server error' });
     }
 };
