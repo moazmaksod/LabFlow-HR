@@ -52,25 +52,7 @@ export const WeeklyScheduleBuilder: React.FC<WeeklyScheduleBuilderProps> = ({ sc
   };
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-      <div className="bg-slate-50 border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
-            <Clock className="w-4 h-4 text-indigo-600" />
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-slate-900">Weekly Schedule</h3>
-            <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">Standard Shift Entry</p>
-          </div>
-        </div>
-        <button 
-          onClick={() => onChange({})}
-          className="text-[10px] font-bold uppercase tracking-widest text-rose-600 hover:text-rose-700 transition-colors"
-        >
-          Reset All
-        </button>
-      </div>
-
+    <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
       <div className="p-4 space-y-2">
         {DAYS.map((day) => {
           const shift = schedule[day]?.[0];
@@ -79,62 +61,70 @@ export const WeeklyScheduleBuilder: React.FC<WeeklyScheduleBuilderProps> = ({ sc
           return (
             <div 
               key={day} 
-              className={`flex items-center gap-4 p-3 rounded-lg border transition-all ${
-                isActive ? 'bg-indigo-50/30 border-indigo-100' : 'bg-slate-50/50 border-slate-100 opacity-60'
+              onClick={() => !isActive && handleToggleDay(day)}
+              className={`flex items-center gap-4 p-3 rounded-xl border transition-all ${
+                isActive 
+                  ? 'bg-primary/5 border-primary/20' 
+                  : 'bg-muted/30 border-transparent opacity-60 hover:opacity-100 hover:bg-muted/50 cursor-pointer'
               }`}
             >
               {/* Day Label & Toggle */}
-              <div className="flex items-center gap-3 w-32 shrink-0">
-                <button
-                  onClick={() => handleToggleDay(day)}
-                  className={`transition-colors ${isActive ? 'text-indigo-600' : 'text-slate-300'}`}
-                >
+              <div 
+                className="flex items-center gap-3 w-32 shrink-0 cursor-pointer"
+                onClick={(e) => {
+                  if (isActive) {
+                    e.stopPropagation();
+                    handleToggleDay(day);
+                  }
+                }}
+              >
+                <div className={`transition-colors ${isActive ? 'text-primary' : 'text-muted-foreground/30'}`}>
                   {isActive ? <CheckCircle2 className="w-5 h-5" /> : <Circle className="w-5 h-5" />}
-                </button>
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-700 capitalize">
+                </div>
+                <span className={`text-xs font-black uppercase tracking-widest transition-colors ${isActive ? 'text-foreground' : 'text-muted-foreground'}`}>
                   {day}
                 </span>
               </div>
 
               {/* Time Inputs */}
-              <div className="flex items-center gap-2 flex-1">
+              <div className="flex items-center gap-2 flex-1" onClick={(e) => e.stopPropagation()}>
                 {isActive ? (
-                  <div className="flex items-center gap-4">
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter ml-1">Start</label>
+                  <div className="flex items-center gap-6">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[9px] font-black text-muted-foreground uppercase tracking-widest ml-1">Start Time</label>
                       <input 
                         type="time"
                         value={shift.start}
                         onChange={(e) => handleTimeChange(day, 'start', e.target.value)}
-                        className="bg-white border border-slate-200 rounded-md px-2 py-1.5 text-xs font-mono font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+                        className="bg-background border border-border rounded-xl px-3 py-2 text-xs font-mono font-bold text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
                       />
                     </div>
-                    <div className="h-px w-3 bg-slate-300 mt-4" />
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter ml-1">End</label>
+                    <div className="h-px w-4 bg-border mt-5" />
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[9px] font-black text-muted-foreground uppercase tracking-widest ml-1">End Time</label>
                       <input 
                         type="time"
                         value={shift.end}
                         onChange={(e) => handleTimeChange(day, 'end', e.target.value)}
-                        className="bg-white border border-slate-200 rounded-md px-2 py-1.5 text-xs font-mono font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+                        className="bg-background border border-border rounded-xl px-3 py-2 text-xs font-mono font-bold text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
                       />
                     </div>
                   </div>
                 ) : (
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic ml-1">
+                  <span className="text-[10px] font-black text-muted-foreground/40 uppercase tracking-[0.2em] italic ml-1">
                     Day Off
                   </span>
                 )}
               </div>
 
               {/* Row Actions */}
-              <div className="w-24 flex justify-end">
+              <div className="w-28 flex justify-end" onClick={(e) => e.stopPropagation()}>
                 {day === 'monday' && isActive && (
                   <button 
                     onClick={copyMondayToAll}
-                    className="flex items-center gap-1.5 px-2 py-1 rounded bg-indigo-600 text-white text-[9px] font-bold uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-sm"
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-primary text-primary-foreground text-[10px] font-black uppercase tracking-widest hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
                   >
-                    <Copy className="w-3 h-3" /> Copy All
+                    <Copy className="w-3.5 h-3.5" /> Copy All
                   </button>
                 )}
               </div>
@@ -143,9 +133,9 @@ export const WeeklyScheduleBuilder: React.FC<WeeklyScheduleBuilderProps> = ({ sc
         })}
       </div>
 
-      <div className="bg-slate-50 border-t border-slate-200 px-6 py-3 flex items-center gap-4">
-        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-          <Info className="w-3.5 h-3.5 text-indigo-500" />
+      <div className="bg-muted/30 border-t border-border px-6 py-3 flex items-center gap-4">
+        <div className="flex items-center gap-2 text-[10px] font-black text-muted-foreground uppercase tracking-widest">
+          <Info className="w-4 h-4 text-primary" />
           <span>Night shifts (e.g. 22:00 - 06:00) are automatically handled.</span>
         </div>
       </div>

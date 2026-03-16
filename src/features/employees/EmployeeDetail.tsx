@@ -277,16 +277,24 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                   </h4>
                   <p className="text-xs text-muted-foreground mt-1">Define the standard weekly timeline for this employee.</p>
                 </div>
-                <div className="flex items-center gap-4 bg-muted/50 p-2 rounded-2xl border border-border">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-2">Lunch Break</span>
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="number" 
-                      value={formData.lunch_break_minutes} 
-                      onChange={(e) => setFormData({...formData, lunch_break_minutes: Number(e.target.value)})}
-                      className="w-16 px-3 py-1.5 bg-background border border-border rounded-xl text-xs font-bold focus:ring-2 focus:ring-primary/20 outline-none"
-                    />
-                    <span className="text-[10px] font-bold text-muted-foreground mr-2">MIN</span>
+                <div className="flex items-center gap-6">
+                  <button 
+                    onClick={() => setFormData({ ...formData, weekly_schedule: {} })}
+                    className="text-[10px] font-black uppercase tracking-[0.2em] text-rose-500 hover:text-rose-600 transition-colors"
+                  >
+                    Reset All
+                  </button>
+                  <div className="flex items-center gap-4 bg-muted/50 p-2 rounded-2xl border border-border">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-2">Lunch Break</span>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="number" 
+                        value={formData.lunch_break_minutes} 
+                        onChange={(e) => setFormData({...formData, lunch_break_minutes: Number(e.target.value)})}
+                        className="w-16 px-3 py-1.5 bg-background border border-border rounded-xl text-xs font-bold focus:ring-2 focus:ring-primary/20 outline-none"
+                      />
+                      <span className="text-[10px] font-bold text-muted-foreground mr-2">MIN</span>
+                    </div>
                   </div>
                 </div>
               </div>

@@ -302,8 +302,16 @@ export default function JobManagement() {
                       <h4 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Default Weekly Schedule</h4>
                       <p className="text-xs text-muted-foreground mt-1">Shifts defined here will be the default for new employees in this role.</p>
                     </div>
-                    <div className="p-2 bg-background rounded-xl border border-border">
-                      <Clock className="w-4 h-4 text-primary" />
+                    <div className="flex items-center gap-6">
+                      <button 
+                        onClick={() => setFormData({ ...formData, weekly_schedule: {} })}
+                        className="text-[10px] font-black uppercase tracking-[0.2em] text-rose-500 hover:text-rose-600 transition-colors"
+                      >
+                        Reset All
+                      </button>
+                      <div className="p-2 bg-background rounded-xl border border-border">
+                        <Clock className="w-4 h-4 text-primary" />
+                      </div>
                     </div>
                   </div>
                   
