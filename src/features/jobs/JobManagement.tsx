@@ -307,7 +307,7 @@ export default function JobManagement() {
                     </div>
                   </div>
                   
-                  <div className="h-[500px]">
+                  <div className="min-h-[400px]">
                     <WeeklyScheduleBuilder 
                       schedule={formData.weekly_schedule}
                       onChange={(newSchedule) => setFormData({ ...formData, weekly_schedule: newSchedule })}

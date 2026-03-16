@@ -291,7 +291,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                 </div>
               </div>
               
-              <div className="h-[500px]">
+              <div className="min-h-[400px]">
                 <WeeklyScheduleBuilder 
                   schedule={formData.weekly_schedule}
                   onChange={(newSchedule) => setFormData({ ...formData, weekly_schedule: newSchedule })}
