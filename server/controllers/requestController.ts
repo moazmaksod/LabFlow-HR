@@ -169,6 +169,7 @@ export const createAttendanceCorrection = (req: AuthRequest, res: Response): voi
 
 export const updateRequestStatus = (req: Request, res: Response): void => {
     try {
+        const actorId = (req as AuthRequest).user!.id;
         const { id } = req.params;
         const { status, manager_note, approved_minutes, is_paid_permission, paid_permission_minutes } = req.body;
 
@@ -482,7 +483,6 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
             WHERE r.id = ?
         `).get(id);
 
-        const actorId = (req as AuthRequest).user!.id;
         logAudit('requests', Number(id), status === 'approved' ? 'APPROVE' : 'REJECT', actorId, oldRequest, updatedRequest);
 
         if (oldAttendance) {
