@@ -114,20 +114,20 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
 
   return (
     <motion.div 
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 20 }}
-      className="h-full flex flex-col bg-background border-l border-border shadow-2xl overflow-hidden"
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      className="h-full flex flex-col bg-background rounded-3xl shadow-2xl overflow-hidden border border-border"
     >
       {/* Header */}
-      <div className="p-6 border-b border-border flex items-center justify-between bg-muted/30">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xl">
+      <div className="p-8 border-b border-border flex items-center justify-between bg-muted/30">
+        <div className="flex items-center gap-6">
+          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center text-primary font-bold text-2xl shadow-inner border border-primary/20">
             {formData.profile_picture_url ? (
               <img 
                 src={formData.profile_picture_url.startsWith('http') ? formData.profile_picture_url : `${window.location.origin}${formData.profile_picture_url}`} 
                 alt={formData.name}
-                className="w-full h-full rounded-full object-cover"
+                className="w-full h-full rounded-2xl object-cover"
                 referrerPolicy="no-referrer"
               />
             ) : (
@@ -135,278 +135,213 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
             )}
           </div>
           <div>
-            <h3 className="text-lg font-bold leading-none">{formData.name}</h3>
-            <p className="text-sm text-muted-foreground mt-1">{formData.email}</p>
+            <div className="flex items-center gap-3">
+              <h3 className="text-2xl font-black tracking-tight">{formData.name}</h3>
+              <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${
+                formData.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 
+                formData.status === 'suspended' ? 'bg-rose-100 text-rose-700' : 'bg-muted text-muted-foreground'
+              }`}>
+                {formData.status}
+              </span>
+            </div>
+            <p className="text-sm text-muted-foreground font-medium mt-1">{formData.email} • ID: #{formData.id}</p>
           </div>
         </div>
-        <button
-          onClick={onClose}
-          className="p-2 hover:bg-muted rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50"
-          aria-label="Close details"
-          title="Close details"
-        >
-          <X className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={handleSave}
+            disabled={isSaving}
+            className="bg-primary text-primary-foreground px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 disabled:opacity-50"
+          >
+            {isSaving ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> : <Save className="w-4 h-4" />}
+            Save Changes
+          </button>
+          <button
+            onClick={onClose}
+            className="p-2.5 hover:bg-muted rounded-xl transition-colors border border-border"
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-8">
-        {/* Personal Info */}
-        <section className="space-y-4">
-          <h4 className="flex items-center gap-2 font-semibold text-sm uppercase tracking-wider text-muted-foreground">
-            <User className="w-4 h-4" /> Personal Information (Read-Only)
-          </h4>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Full Name</label>
-              <input 
-                type="text" 
-                value={formData.name} 
-                disabled
-                className="w-full px-3 py-2 bg-muted border border-border rounded-md text-sm text-muted-foreground cursor-not-allowed"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Email Address</label>
-              <input 
-                type="email" 
-                value={formData.email} 
-                disabled
-                className="w-full px-3 py-2 bg-muted border border-border rounded-md text-sm text-muted-foreground cursor-not-allowed"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Age</label>
-              <input 
-                type="number" 
-                value={formData.age} 
-                disabled
-                className="w-full px-3 py-2 bg-muted border border-border rounded-md text-sm text-muted-foreground cursor-not-allowed"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Gender</label>
-              <select 
-                value={formData.gender} 
-                disabled
-                className="w-full px-3 py-2 bg-muted border border-border rounded-md text-sm text-muted-foreground cursor-not-allowed"
-              >
-                <option value="">Select...</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-          </div>
-        </section>
-
-        {/* HR Settings */}
-        <section className="space-y-4">
-          <h4 className="flex items-center gap-2 font-semibold text-sm uppercase tracking-wider text-muted-foreground">
-            <Shield className="w-4 h-4" /> HR Settings
-          </h4>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Job Role</label>
-              <select 
-                value={formData.job_id || ''} 
-                onChange={(e) => setFormData({...formData, job_id: e.target.value ? Number(e.target.value) : null})}
-                className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-              >
-                {(!employee.job_id || formData.job_id === null) && <option value="">Unassigned</option>}
-                {jobs?.map((job: any) => (
-                  <option key={job.id} value={job.id}>{job.title}</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                <Shield className="w-3 h-3" /> Status
-              </label>
-              <select 
-                value={formData.status || 'inactive'} 
-                onChange={(e) => setFormData({...formData, status: e.target.value})}
-                className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-              >
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-                <option value="suspended">Suspended</option>
-                {employee.status === 'pending' && <option value="pending">Pending</option>}
-              </select>
-            </div>
-            {formData.status === 'suspended' && (
-              <div className="space-y-1.5 col-span-2">
-                <label className="text-xs font-medium text-destructive flex items-center gap-1">
-                  <Shield className="w-3 h-3" /> Suspension Reason (Required)
-                </label>
-                <input 
-                  type="text" 
-                  value={formData.suspension_reason || ''} 
-                  onChange={(e) => setFormData({...formData, suspension_reason: e.target.value})}
-                  placeholder="Enter reason for suspension..."
-                  className="w-full px-3 py-2 bg-destructive/10 border border-destructive/30 rounded-md text-sm focus:ring-2 focus:ring-destructive/20 outline-none"
-                  required
-                />
-              </div>
-            )}
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                <DollarSign className="w-3 h-3" /> Hourly Rate
-              </label>
-              <input 
-                type="number" 
-                value={formData.hourly_rate} 
-                onChange={(e) => setFormData({...formData, hourly_rate: Number(e.target.value)})}
-                className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                <Calendar className="w-3 h-3" /> Leave Balance (Days)
-              </label>
-              <input 
-                type="number" 
-                value={formData.leave_balance} 
-                onChange={(e) => setFormData({...formData, leave_balance: Number(e.target.value)})}
-                className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                <Clock className="w-3 h-3" /> Allow Overtime
-              </label>
-              <div className="flex items-center h-9">
-                <input 
-                  type="checkbox" 
-                  checked={formData.allow_overtime} 
-                  onChange={(e) => setFormData({...formData, allow_overtime: e.target.checked})}
-                  className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
-                />
-                <span className="ml-2 text-sm text-muted-foreground">Enable OT</span>
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                <Clock className="w-3 h-3" /> Max OT Hours
-              </label>
-              <input 
-                type="number" 
-                step="0.5"
-                value={formData.max_overtime_hours} 
-                onChange={(e) => setFormData({...formData, max_overtime_hours: Number(e.target.value)})}
-                disabled={!formData.allow_overtime}
-                className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-2 focus:ring-primary/20 outline-none disabled:opacity-50"
-              />
-            </div>
-            <div className="space-y-1.5 col-span-2">
-              <label className="text-xs font-medium text-muted-foreground">Device Binding</label>
-              <button 
-                onClick={async () => {
-                  if (confirm('Are you sure you want to reset the device binding for this employee?')) {
-                    await api.put(`/users/${userId}/reset-device`);
-                    alert('Device binding reset successfully');
-                    queryClient.invalidateQueries({ queryKey: ['user', userId] });
-                  }
-                }}
-                className="w-full px-3 py-2 bg-amber-100 text-amber-700 border border-amber-200 rounded-md text-sm font-medium hover:bg-amber-200 transition-colors"
-              >
-                Reset Device Binding
-              </button>
-            </div>
-          </div>
-        </section>
-
-        {/* Schedule Manager */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h4 className="flex items-center gap-2 font-semibold text-sm uppercase tracking-wider text-muted-foreground">
-              <Clock className="w-4 h-4" /> Weekly Schedule
-            </h4>
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-medium text-muted-foreground">Lunch Break (min)</label>
-              <input 
-                type="number" 
-                value={formData.lunch_break_minutes} 
-                onChange={(e) => setFormData({...formData, lunch_break_minutes: Number(e.target.value)})}
-                className="w-16 px-2 py-1 bg-background border border-border rounded-md text-xs focus:ring-2 focus:ring-primary/20 outline-none"
-              />
-            </div>
-          </div>
-          
-          <div className="h-[600px]">
-            <WeeklyScheduleBuilder 
-              schedule={formData.weekly_schedule}
-              onChange={(newSchedule) => setFormData({ ...formData, weekly_schedule: newSchedule })}
-            />
-          </div>
-        </section>
-
-        {/* Emergency Contact */}
-        <section className="space-y-4">
-          <h4 className="flex items-center gap-2 font-semibold text-sm uppercase tracking-wider text-muted-foreground">
-            <Phone className="w-4 h-4" /> Emergency Contact (Read-Only)
-          </h4>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Contact Name</label>
-              <input 
-                type="text" 
-                value={formData.emergency_contact_name} 
-                disabled
-                className="w-full px-3 py-2 bg-muted border border-border rounded-md text-sm text-muted-foreground cursor-not-allowed"
-                placeholder="Name"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Phone Number</label>
-              <input 
-                type="text" 
-                value={formData.emergency_contact_phone} 
-                disabled
-                className="w-full px-3 py-2 bg-muted border border-border rounded-md text-sm text-muted-foreground cursor-not-allowed"
-                placeholder="+1 234 567 890"
-              />
-            </div>
-          </div>
-        </section>
-
-        {/* Documents Placeholder */}
-        <section className="space-y-4">
-          <h4 className="flex items-center gap-2 font-semibold text-sm uppercase tracking-wider text-muted-foreground">
-            <FileText className="w-4 h-4" /> Employee Documents
-          </h4>
-          <div className="grid grid-cols-1 gap-3">
-            {['National ID / Passport', 'Employment Contract', 'Training Certificates'].map((doc) => (
-              <div key={doc} className="flex items-center justify-between p-3 border border-dashed border-border rounded-lg bg-muted/10">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-muted rounded">
-                    <FileText className="w-4 h-4 text-muted-foreground" />
+      {/* Content Grid */}
+      <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
+          {/* Left Column: Info & Settings */}
+          <div className="xl:col-span-4 space-y-8">
+            {/* Personal Info */}
+            <div className="bg-card border border-border rounded-2xl p-6 space-y-6">
+              <h4 className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-muted-foreground">
+                <User className="w-4 h-4" /> Personal Information
+              </h4>
+              <div className="grid grid-cols-1 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Full Name</label>
+                  <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">
+                    {formData.name}
                   </div>
-                  <span className="text-sm font-medium">{doc}</span>
                 </div>
-                <button className="text-xs text-primary font-medium hover:underline">Upload</button>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Age</label>
+                    <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">
+                      {formData.age || '-'}
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Gender</label>
+                    <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground capitalize">
+                      {formData.gender || '-'}
+                    </div>
+                  </div>
+                </div>
               </div>
-            ))}
-          </div>
-        </section>
-      </div>
+            </div>
 
-      {/* Footer */}
-      <div className="p-6 border-t border-border bg-muted/30">
-        <button 
-          onClick={handleSave}
-          disabled={isSaving}
-          className="w-full bg-primary text-primary-foreground py-3 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors disabled:opacity-50"
-        >
-          {isSaving ? (
-            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-          ) : (
-            <>
-              <Save className="w-5 h-5" />
-              Save Changes
-            </>
-          )}
-        </button>
+            {/* HR Settings */}
+            <div className="bg-card border border-border rounded-2xl p-6 space-y-6">
+              <h4 className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-muted-foreground">
+                <Shield className="w-4 h-4" /> HR & Payroll Settings
+              </h4>
+              <div className="grid grid-cols-1 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Job Role</label>
+                  <select 
+                    value={formData.job_id || ''} 
+                    onChange={(e) => setFormData({...formData, job_id: e.target.value ? Number(e.target.value) : null})}
+                    className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                  >
+                    {(!employee.job_id || formData.job_id === null) && <option value="">Unassigned</option>}
+                    {jobs?.map((job: any) => (
+                      <option key={job.id} value={job.id}>{job.title}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Hourly Rate ($)</label>
+                    <input 
+                      type="number" 
+                      value={formData.hourly_rate} 
+                      onChange={(e) => setFormData({...formData, hourly_rate: Number(e.target.value)})}
+                      className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Leave Balance</label>
+                    <input 
+                      type="number" 
+                      value={formData.leave_balance} 
+                      onChange={(e) => setFormData({...formData, leave_balance: Number(e.target.value)})}
+                      className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between p-4 bg-muted/30 border border-border rounded-xl">
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Overtime Policy</span>
+                    <p className="text-xs font-medium">Allow extra hours</p>
+                  </div>
+                  <input 
+                    type="checkbox" 
+                    checked={formData.allow_overtime} 
+                    onChange={(e) => setFormData({...formData, allow_overtime: e.target.checked})}
+                    className="w-5 h-5 rounded-lg border-border text-primary focus:ring-primary transition-all"
+                  />
+                </div>
+                {formData.allow_overtime && (
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Max OT Hours / Week</label>
+                    <input 
+                      type="number" 
+                      step="0.5"
+                      value={formData.max_overtime_hours} 
+                      onChange={(e) => setFormData({...formData, max_overtime_hours: Number(e.target.value)})}
+                      className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column: Schedule & Documents */}
+          <div className="xl:col-span-8 space-y-8">
+            {/* Schedule Section */}
+            <div className="bg-card border border-border rounded-3xl p-8 space-y-6 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="flex items-center gap-2 font-black text-sm uppercase tracking-[0.2em] text-muted-foreground">
+                    <Clock className="w-5 h-5" /> Weekly Work Schedule
+                  </h4>
+                  <p className="text-xs text-muted-foreground mt-1">Define the standard weekly timeline for this employee.</p>
+                </div>
+                <div className="flex items-center gap-4 bg-muted/50 p-2 rounded-2xl border border-border">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-2">Lunch Break</span>
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="number" 
+                      value={formData.lunch_break_minutes} 
+                      onChange={(e) => setFormData({...formData, lunch_break_minutes: Number(e.target.value)})}
+                      className="w-16 px-3 py-1.5 bg-background border border-border rounded-xl text-xs font-bold focus:ring-2 focus:ring-primary/20 outline-none"
+                    />
+                    <span className="text-[10px] font-bold text-muted-foreground mr-2">MIN</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="h-[500px]">
+                <WeeklyScheduleBuilder 
+                  schedule={formData.weekly_schedule}
+                  onChange={(newSchedule) => setFormData({ ...formData, weekly_schedule: newSchedule })}
+                />
+              </div>
+            </div>
+
+            {/* Bottom Row: Emergency & Documents */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="bg-card border border-border rounded-2xl p-6 space-y-6">
+                <h4 className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-muted-foreground">
+                  <Phone className="w-4 h-4" /> Emergency Contact
+                </h4>
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Contact Name</label>
+                    <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">
+                      {formData.emergency_contact_name || 'Not provided'}
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Phone Number</label>
+                    <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">
+                      {formData.emergency_contact_phone || 'Not provided'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-card border border-border rounded-2xl p-6 space-y-6">
+                <h4 className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-muted-foreground">
+                  <FileText className="w-4 h-4" /> Compliance Documents
+                </h4>
+                <div className="space-y-3">
+                  {['Employment Contract', 'ID Verification'].map((doc) => (
+                    <div key={doc} className="flex items-center justify-between p-3 border border-border rounded-xl bg-muted/10 group hover:bg-muted/20 transition-all">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-background rounded-lg border border-border">
+                          <FileText className="w-4 h-4 text-primary" />
+                        </div>
+                        <span className="text-xs font-bold">{doc}</span>
+                      </div>
+                      <button className="text-[10px] font-black uppercase tracking-tighter text-primary hover:underline">View</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </motion.div>
   );

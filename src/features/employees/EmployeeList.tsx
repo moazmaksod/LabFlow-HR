@@ -251,13 +251,15 @@ export default function EmployeeList() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setViewingEmployeeId(null)}
-              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40"
+              className="fixed inset-0 bg-black/40 backdrop-blur-md z-40"
             />
-            <div className="fixed inset-y-0 right-0 w-full max-w-xl z-50">
-              <EmployeeDetail 
-                userId={viewingEmployeeId} 
-                onClose={() => setViewingEmployeeId(null)} 
-              />
+            <div className="fixed inset-0 flex items-center justify-center p-4 md:p-8 z-50 pointer-events-none">
+              <div className="w-full h-full max-w-[95vw] max-h-[95vh] pointer-events-auto">
+                <EmployeeDetail 
+                  userId={viewingEmployeeId} 
+                  onClose={() => setViewingEmployeeId(null)} 
+                />
+              </div>
             </div>
           </>
         )}
