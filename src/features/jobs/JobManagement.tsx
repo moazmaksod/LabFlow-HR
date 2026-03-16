@@ -32,6 +32,7 @@ export default function JobManagement() {
   const queryClient = useQueryClient();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingJobId, setEditingJobId] = useState<number | null>(null);
+  const [hasScheduleError, setHasScheduleError] = useState(false);
   
   const defaultSchedule: WeeklySchedule = {};
   DAYS.forEach(day => {
@@ -319,6 +320,7 @@ export default function JobManagement() {
                     <WeeklyScheduleBuilder 
                       schedule={formData.weekly_schedule}
                       onChange={(newSchedule) => setFormData({ ...formData, weekly_schedule: newSchedule })}
+                      onError={setHasScheduleError}
                     />
                   </div>
                 </div>
@@ -329,8 +331,8 @@ export default function JobManagement() {
               <button type="button" onClick={resetForm} className="px-8 py-2.5 text-sm font-bold hover:bg-muted rounded-xl transition-colors">Cancel</button>
               <button 
                 type="submit" 
-                disabled={createJobMutation.isPending || updateJobMutation.isPending} 
-                className="px-8 py-2.5 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+                disabled={createJobMutation.isPending || updateJobMutation.isPending || hasScheduleError} 
+                className="px-8 py-2.5 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 disabled:opacity-50"
               >
                 {createJobMutation.isPending || updateJobMutation.isPending ? 'Saving...' : (editingJobId ? 'Update Job Role' : 'Create Job Role')}
               </button>

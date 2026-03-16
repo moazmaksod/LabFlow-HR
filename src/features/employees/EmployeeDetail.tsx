@@ -25,6 +25,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState<any>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [hasScheduleError, setHasScheduleError] = useState(false);
 
   const { data: employee, isLoading } = useQuery({
     queryKey: ['user', userId],
@@ -150,7 +151,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
         <div className="flex items-center gap-4">
           <button 
             onClick={handleSave}
-            disabled={isSaving}
+            disabled={isSaving || hasScheduleError}
             className="bg-primary text-primary-foreground px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 disabled:opacity-50"
           >
             {isSaving ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> : <Save className="w-4 h-4" />}
@@ -303,6 +304,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                 <WeeklyScheduleBuilder 
                   schedule={formData.weekly_schedule}
                   onChange={(newSchedule) => setFormData({ ...formData, weekly_schedule: newSchedule })}
+                  onError={setHasScheduleError}
                 />
               </div>
             </div>
