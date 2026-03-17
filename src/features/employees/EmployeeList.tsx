@@ -173,9 +173,11 @@ export default function EmployeeList() {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         <span className="text-muted-foreground">{user.job_title || '-'}</span>
-                        {user.status === 'active' && (
+                        {user.status === 'active' ? (
                           <CheckCircle className="w-3 h-3 text-green-500" />
-                        )}
+                        ) : user.status === 'suspended' ? (
+                          <XCircle className="w-3 h-3 text-rose-500" />
+                        ) : null}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right">

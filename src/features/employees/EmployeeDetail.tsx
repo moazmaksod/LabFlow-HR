@@ -160,7 +160,14 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                 {formData.status}
               </span>
             </div>
-            <p className="text-sm text-muted-foreground font-medium mt-1">{formData.email} • ID: #{formData.id}</p>
+            <div className="flex flex-col gap-1 mt-1">
+              <p className="text-sm text-muted-foreground font-medium">{formData.email} • ID: #{formData.id}</p>
+              {formData.status === 'suspended' && formData.suspension_reason && (
+                <p className="text-rose-600 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                  <XCircle className="w-3 h-3" /> Reason: {formData.suspension_reason}
+                </p>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -275,6 +282,32 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                       value={formData.max_overtime_hours} 
                       onChange={(e) => setFormData({...formData, max_overtime_hours: Number(e.target.value)})}
                       className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Employment Status</label>
+                  <select 
+                    value={formData.status || 'active'} 
+                    onChange={(e) => setFormData({...formData, status: e.target.value})}
+                    className={`w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${
+                      formData.status === 'active' ? 'text-emerald-600' : 'text-rose-600'
+                    }`}
+                  >
+                    <option value="active">Active</option>
+                    <option value="suspended">Suspended</option>
+                  </select>
+                </div>
+
+                {formData.status === 'suspended' && (
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Suspension Reason</label>
+                    <textarea 
+                      value={formData.suspension_reason || ''} 
+                      onChange={(e) => setFormData({...formData, suspension_reason: e.target.value})}
+                      placeholder="Enter reason for suspension..."
+                      className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all min-h-[80px] resize-none"
                     />
                   </div>
                 )}
