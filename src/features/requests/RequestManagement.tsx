@@ -26,6 +26,8 @@ export default function RequestManagement() {
   const [isPaidPermission, setIsPaidPermission] = useState(false);
   const [paidPermissionMinutes, setPaidPermissionMinutes] = useState<number>(0);
   const [maxPaidMinutes, setMaxPaidMinutes] = useState<number>(0);
+  const [penaltyHours, setPenaltyHours] = useState<number>(0);
+  const [isRejecting, setIsRejecting] = useState(false);
 
   const { data: requests, isLoading } = useQuery<RequestLog[]>({
     queryKey: ['requests'],
@@ -36,8 +38,8 @@ export default function RequestManagement() {
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, status, manager_note, approved_minutes, is_paid_permission, paid_permission_minutes }: { id: number, status: string, manager_note?: string, approved_minutes?: number, is_paid_permission?: boolean, paid_permission_minutes?: number }) => {
-      const res = await api.put(`/requests/${id}/status`, { status, manager_note, approved_minutes, is_paid_permission, paid_permission_minutes });
+    mutationFn: async ({ id, status, manager_note, approved_minutes, is_paid_permission, paid_permission_minutes, penalty_hours }: { id: number, status: string, manager_note?: string, approved_minutes?: number, is_paid_permission?: boolean, paid_permission_minutes?: number, penalty_hours?: number }) => {
+      const res = await api.put(`/requests/${id}/status`, { status, manager_note, approved_minutes, is_paid_permission, paid_permission_minutes, penalty_hours });
       return res.data;
     },
     onSuccess: () => {
@@ -66,6 +68,8 @@ export default function RequestManagement() {
     setIsPaidPermission(false);
     setPaidPermissionMinutes(0);
     setMaxPaidMinutes(0);
+    setPenaltyHours(0);
+    setIsRejecting(false);
     setError(null);
     
     if (req.type === 'overtime_approval' && req.details) {
@@ -123,7 +127,8 @@ export default function RequestManagement() {
     updateStatusMutation.mutate({ 
       id: selectedRequest.id, 
       status: 'rejected',
-      manager_note: managerNote
+      manager_note: managerNote,
+      penalty_hours: penaltyHours
     });
   };
 
@@ -371,21 +376,61 @@ export default function RequestManagement() {
             </div>
 
             {selectedRequest.status === 'pending' && (
-              <div className="p-6 border-t border-border bg-muted/30 flex justify-end gap-3">
-                <button 
-                  onClick={handleReject}
-                  disabled={updateStatusMutation.isPending || !managerNote.trim()}
-                  className="flex-1 px-4 py-3 bg-destructive/10 text-destructive font-bold rounded-xl hover:bg-destructive/20 transition-all flex items-center justify-center gap-2 disabled:opacity-30 disabled:grayscale"
-                >
-                  <XCircle className="w-5 h-5" /> Reject
-                </button>
-                <button 
-                  onClick={handleApprove}
-                  disabled={updateStatusMutation.isPending || !managerNote.trim()}
-                  className="flex-1 px-4 py-3 bg-primary text-primary-foreground font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2 disabled:opacity-30 disabled:grayscale"
-                >
-                  <CheckCircle className="w-5 h-5" /> Approve
-                </button>
+              <div className="p-6 border-t border-border bg-muted/30 space-y-4">
+                {isRejecting && (
+                  <div className="bg-destructive/5 p-4 rounded-xl border border-destructive/20 animate-in fade-in slide-in-from-top-2">
+                    <label className="text-sm font-bold text-destructive block mb-2">
+                      Apply Disciplinary Penalty (Hours)
+                    </label>
+                    <input 
+                      type="number" 
+                      value={penaltyHours}
+                      onChange={(e) => setPenaltyHours(Math.max(0, Number(e.target.value)))}
+                      placeholder="0.0"
+                      step="0.5"
+                      className="w-full px-3 py-2 bg-background border border-destructive/20 rounded-lg focus:ring-2 focus:ring-destructive/20 outline-none font-mono"
+                    />
+                    <p className="text-[11px] text-muted-foreground mt-2 italic">
+                      Did this unauthorized action disrupt operations? You can apply an additional penalty deduction here.
+                    </p>
+                  </div>
+                )}
+                
+                <div className="flex gap-3">
+                  {!isRejecting ? (
+                    <>
+                      <button 
+                        onClick={() => setIsRejecting(true)}
+                        className="flex-1 px-4 py-3 bg-destructive/10 text-destructive font-bold rounded-xl hover:bg-destructive/20 transition-all flex items-center justify-center gap-2"
+                      >
+                        <XCircle className="w-5 h-5" /> Reject
+                      </button>
+                      <button 
+                        onClick={handleApprove}
+                        disabled={updateStatusMutation.isPending || !managerNote.trim()}
+                        className="flex-1 px-4 py-3 bg-primary text-primary-foreground font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2 disabled:opacity-30 disabled:grayscale"
+                      >
+                        <CheckCircle className="w-5 h-5" /> Approve
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button 
+                        onClick={() => setIsRejecting(false)}
+                        className="px-4 py-3 bg-muted text-muted-foreground font-bold rounded-xl hover:bg-muted/80 transition-all"
+                      >
+                        Cancel
+                      </button>
+                      <button 
+                        onClick={handleReject}
+                        disabled={updateStatusMutation.isPending || !managerNote.trim()}
+                        className="flex-1 px-4 py-3 bg-destructive text-white font-bold rounded-xl hover:bg-destructive/90 shadow-lg shadow-destructive/20 transition-all flex items-center justify-center gap-2 disabled:opacity-30"
+                      >
+                        <XCircle className="w-5 h-5" /> Confirm Rejection
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             )}
           </div>

@@ -171,7 +171,7 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
     try {
         const actorId = (req as AuthRequest).user!.id;
         const { id } = req.params;
-        const { status, manager_note, approved_minutes, is_paid_permission, paid_permission_minutes } = req.body;
+        const { status, manager_note, approved_minutes, is_paid_permission, paid_permission_minutes, penalty_hours } = req.body;
 
         if (!['approved', 'rejected'].includes(status)) {
             res.status(400).json({ error: 'Invalid status' });
@@ -471,6 +471,15 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                         VALUES (?, ?, 'step_away_unpaid', ?, 0, 'rejected', ?)
                     `).run(payrollId, id, hours, manager_note);
                 }
+            }
+
+            // Disciplinary Penalty Logic
+            if (status === 'rejected' && penalty_hours && penalty_hours > 0) {
+                const penaltyAmount = penalty_hours * hourlyRate;
+                db.prepare(`
+                    INSERT INTO payroll_transactions (payroll_id, reference_id, type, hours, amount, status, manager_notes)
+                    VALUES (?, ?, 'disciplinary_penalty', ?, ?, 'applied', ?)
+                `).run(payrollId, id, penalty_hours, penaltyAmount, manager_note);
             }
         });
 

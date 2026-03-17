@@ -279,28 +279,42 @@ export default function PayrollView() {
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border">
-                                  {transactions?.map(tx => (
-                                    <tr key={tx.id} className="hover:bg-muted/10 transition-colors">
-                                      <td className="px-4 py-2 font-bold text-foreground">{tx.type}</td>
-                                      <td className={`px-4 py-2 font-mono font-bold ${tx.amount >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                        {tx.amount >= 0 ? '+' : ''}{tx.amount.toFixed(2)}
-                                      </td>
-                                      <td className="px-4 py-2 font-mono">{tx.hours !== null ? tx.hours.toFixed(2) : '-'}</td>
-                                      <td className="px-4 py-2">
-                                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
-                                          tx.status === 'applied' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                                        }`}>
-                                          {tx.status}
-                                        </span>
-                                      </td>
-                                      <td className="px-4 py-2 italic text-muted-foreground max-w-[200px] truncate" title={tx.manager_notes || ''}>
-                                        {tx.manager_notes || <span className="opacity-30">No note provided</span>}
-                                      </td>
-                                      <td className="px-4 py-2 text-muted-foreground font-mono">
-                                        {format(new Date(tx.created_at), 'yyyy-MM-dd HH:mm')}
-                                      </td>
-                                    </tr>
-                                  ))}
+                                    {transactions?.map(tx => {
+                                      const isDeduction = ['late_deduction', 'step_away_unpaid', 'deduction', 'disciplinary_penalty'].includes(tx.type);
+                                      const isAddition = ['overtime', 'bonus'].includes(tx.type);
+                                      
+                                      return (
+                                        <tr key={tx.id} className="hover:bg-muted/10 transition-colors">
+                                          <td className="px-4 py-2 font-bold text-foreground capitalize">
+                                            {tx.type.replace(/_/g, ' ')}
+                                          </td>
+                                          <td className={`px-4 py-2 font-mono font-bold ${
+                                            isAddition ? 'text-emerald-600' : 
+                                            isDeduction && tx.amount > 0 ? 'text-rose-600' : 
+                                            'text-muted-foreground'
+                                          }`}>
+                                            {isAddition ? '+' : isDeduction && tx.amount > 0 ? '-' : ''}
+                                            {tx.amount.toFixed(2)}
+                                          </td>
+                                          <td className="px-4 py-2 font-mono">{tx.hours !== null ? tx.hours.toFixed(2) : '-'}</td>
+                                          <td className="px-4 py-2">
+                                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                                              tx.status === 'applied' ? 'bg-emerald-100 text-emerald-800' : 
+                                              tx.status === 'rejected' ? 'bg-rose-100 text-rose-800' :
+                                              'bg-amber-100 text-amber-800'
+                                            }`}>
+                                              {tx.status}
+                                            </span>
+                                          </td>
+                                          <td className="px-4 py-2 italic text-muted-foreground max-w-[200px] truncate" title={tx.manager_notes || ''}>
+                                            {tx.manager_notes || <span className="opacity-30">No note provided</span>}
+                                          </td>
+                                          <td className="px-4 py-2 text-muted-foreground font-mono">
+                                            {format(new Date(tx.created_at), 'yyyy-MM-dd HH:mm')}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
                                 </tbody>
                               </table>
                             )}

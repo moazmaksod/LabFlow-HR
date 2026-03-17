@@ -290,7 +290,7 @@ export const generateDraftPayroll = (req: AuthRequest, res: Response) => {
                 for (const tx of transactions) {
                     if (tx.type === 'overtime' || tx.type === 'bonus') {
                         totalAdditions += tx.amount;
-                    } else if (tx.type === 'late_deduction' || tx.type === 'step_away_unpaid' || tx.type === 'deduction') {
+                    } else if (tx.type === 'late_deduction' || tx.type === 'step_away_unpaid' || tx.type === 'deduction' || tx.type === 'disciplinary_penalty') {
                         totalDeductions += tx.amount;
                     }
                 }
