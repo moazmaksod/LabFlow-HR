@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl, TouchableOpacity, Modal, ScrollView } from 'react-native';
 import { DollarSign, Calendar, ChevronRight, X, Info, AlertCircle, CheckCircle2 } from 'lucide-react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import api from '../lib/axios';
 import { useNetworkStore } from '../store/useNetworkStore';
 
 interface PayrollRecord {

@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, ScrollView,
 import * as ImagePicker from 'expo-image-picker';
 import { User, Camera, Save, LogOut, Mail, UserCircle } from 'lucide-react-native';
 import api from '../lib/axios';
+import { useAuthStore } from '../store/useAuthStore';
 import { useNetworkStore } from '../store/useNetworkStore';
 
 // Base URL for images derived from API URL

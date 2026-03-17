@@ -5,6 +5,7 @@ import { Clock, Calendar, CheckCircle, XCircle, AlertCircle, MessageSquare, X } 
 import api from '../lib/axios';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNetworkStore } from '../store/useNetworkStore';
+import { saveOfflineRequest } from '../lib/db';
 
 interface RequestItem {
   id: number;

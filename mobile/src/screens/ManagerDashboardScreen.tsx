@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { LayoutDashboard, Users, Clock, AlertTriangle, CheckCircle, UserCircle } from 'lucide-react-native';
 import api from '../lib/axios';
+import { useAuthStore } from '../store/useAuthStore';
 import { useNetworkStore } from '../store/useNetworkStore';
 
 export default function ManagerDashboardScreen() {

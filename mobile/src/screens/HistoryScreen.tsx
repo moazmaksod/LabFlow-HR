@@ -6,6 +6,7 @@ import api from '../lib/axios';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { formatStatusLabel } from '../lib/utils';
 import { useNetworkStore } from '../store/useNetworkStore';
+import { saveOfflineRequest } from '../lib/db';
 
 interface AttendanceLog {
   id: number;
