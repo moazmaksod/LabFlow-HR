@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS requests (
     manager_note TEXT,
     is_paid_permission BOOLEAN DEFAULT 0,
     paid_permission_minutes INTEGER DEFAULT 0,
-    status TEXT NOT NULL CHECK(status IN ('pending', 'approved', 'rejected')) DEFAULT 'pending',
+    status TEXT NOT NULL CHECK(status IN ('pending', 'approved', 'rejected', 'canceled')) DEFAULT 'pending',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -146,7 +146,7 @@ CREATE TABLE IF NOT EXISTS payroll_transactions (
     type TEXT NOT NULL, -- 'overtime', 'late_deduction', 'step_away_unpaid', 'bonus', 'deduction'
     hours REAL NOT NULL DEFAULT 0,
     amount REAL NOT NULL DEFAULT 0,
-    status TEXT NOT NULL CHECK(status IN ('applied', 'rejected')) DEFAULT 'applied',
+    status TEXT NOT NULL CHECK(status IN ('applied', 'rejected', 'voided')) DEFAULT 'applied',
     manager_notes TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,

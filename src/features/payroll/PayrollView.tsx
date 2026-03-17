@@ -280,15 +280,17 @@ export default function PayrollView() {
                                 </thead>
                                 <tbody className="divide-y divide-border">
                                     {transactions?.map(tx => {
-                                      const isDeduction = ['late_deduction', 'step_away_unpaid', 'deduction', 'disciplinary_penalty'].includes(tx.type);
-                                      const isAddition = ['overtime', 'bonus'].includes(tx.type);
+                                      const isVoided = tx.status === 'voided';
+                                      const isDeduction = !isVoided && ['late_deduction', 'step_away_unpaid', 'deduction', 'disciplinary_penalty'].includes(tx.type);
+                                      const isAddition = !isVoided && ['overtime', 'bonus'].includes(tx.type);
                                       
                                       return (
-                                        <tr key={tx.id} className="hover:bg-muted/10 transition-colors">
+                                        <tr key={tx.id} className={`hover:bg-muted/10 transition-colors ${isVoided ? 'opacity-50' : ''}`}>
                                           <td className="px-4 py-2 font-bold text-foreground capitalize">
                                             {tx.type.replace(/_/g, ' ')}
                                           </td>
                                           <td className={`px-4 py-2 font-mono font-bold ${
+                                            isVoided ? 'text-muted-foreground line-through' :
                                             isAddition ? 'text-emerald-600' : 
                                             isDeduction && tx.amount > 0 ? 'text-rose-600' : 
                                             'text-muted-foreground'
@@ -300,6 +302,7 @@ export default function PayrollView() {
                                           <td className="px-4 py-2">
                                             <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
                                               tx.status === 'applied' ? 'bg-emerald-100 text-emerald-800' : 
+                                              tx.status === 'voided' ? 'bg-gray-100 text-gray-700' :
                                               tx.status === 'rejected' ? 'bg-rose-100 text-rose-800' :
                                               'bg-amber-100 text-amber-800'
                                             }`}>

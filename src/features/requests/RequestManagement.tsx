@@ -191,6 +191,7 @@ export default function RequestManagement() {
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                         req.status === 'approved' ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' :
                         req.status === 'rejected' ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400' :
+                        req.status === 'canceled' ? 'bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-400' :
                         'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400'
                       }`}>
                         {req.status.toUpperCase()}

@@ -109,6 +109,28 @@ export const clockAttendance = (req: AuthRequest, res: Response): void => {
                 const resumeTransaction = db.transaction(() => {
                     db.prepare('UPDATE attendance SET check_out = NULL, current_status = ? WHERE id = ?').run('working', existingAttendance.id);
 
+                    // 1. Void the Old Request (early_leave_approval)
+                    const oldRequest = db.prepare(`
+                        SELECT id FROM requests 
+                        WHERE attendance_id = ? AND type = 'early_leave_approval' AND status != 'canceled'
+                    `).get(existingAttendance.id) as any;
+
+                    if (oldRequest) {
+                        db.prepare(`
+                            UPDATE requests 
+                            SET status = 'canceled', 
+                                manager_note = COALESCE(manager_note, '') || '\nSYSTEM: Auto-canceled because the employee returned. Replaced by a shift interruption request.'
+                            WHERE id = ?
+                        `).run(oldRequest.id);
+
+                        // 2. Payroll Ledger Reversal
+                        db.prepare(`
+                            UPDATE payroll_transactions 
+                            SET status = 'voided', amount = 0, manager_notes = COALESCE(manager_notes, '') || '\nSYSTEM: Voided due to employee return'
+                            WHERE reference_id = ?
+                        `).run(oldRequest.id);
+                    }
+
                     const insertInterruption = db.prepare(`
                         INSERT INTO shift_interruptions (attendance_id, start_time, end_time, type, status)
                         VALUES (?, ?, ?, 'step_away', 'pending_manager')
@@ -360,6 +382,29 @@ export const syncOfflineLogs = (req: AuthRequest, res: Response): void => {
                         // Re-entry logic for offline sync
                         const oldRecord = { ...existingRecord };
                         updateResumeStmt.run(existingRecord.id);
+
+                        // 1. Void the Old Request (early_leave_approval)
+                        const oldRequest = db.prepare(`
+                            SELECT id FROM requests 
+                            WHERE attendance_id = ? AND type = 'early_leave_approval' AND status != 'canceled'
+                        `).get(existingRecord.id) as any;
+
+                        if (oldRequest) {
+                            db.prepare(`
+                                UPDATE requests 
+                                SET status = 'canceled', 
+                                    manager_note = COALESCE(manager_note, '') || '\nSYSTEM: Auto-canceled because the employee returned. Replaced by a shift interruption request.'
+                                WHERE id = ?
+                            `).run(oldRequest.id);
+
+                            // 2. Payroll Ledger Reversal
+                            db.prepare(`
+                                UPDATE payroll_transactions 
+                                SET status = 'voided', amount = 0, manager_notes = COALESCE(manager_notes, '') || '\nSYSTEM: Voided due to employee return'
+                                WHERE reference_id = ?
+                            `).run(oldRequest.id);
+                        }
+
                         const updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(existingRecord.id);
                         logAudit('attendance', existingRecord.id, 'UPDATE', userId, oldRecord, updatedRecord);
 
