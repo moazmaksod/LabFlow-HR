@@ -14,6 +14,13 @@ export const initLocalDb = () => {
       lng REAL NOT NULL,
       synced INTEGER DEFAULT 0
     );
+    CREATE TABLE IF NOT EXISTS local_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      method TEXT NOT NULL,
+      endpoint TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      synced INTEGER DEFAULT 0
+    );
   `);
 };
 
@@ -30,6 +37,26 @@ export const getUnsyncedLogs = () => {
   return db.getAllSync('SELECT * FROM local_logs WHERE synced = 0');
 };
 
+// Save an offline request
+export const saveOfflineRequest = (method: string, endpoint: string, payload: any) => {
+  db.runSync(
+    'INSERT INTO local_requests (method, endpoint, payload, synced) VALUES (?, ?, ?, 0)',
+    [method, endpoint, JSON.stringify(payload)]
+  );
+};
+
+// Get all unsynced requests
+export const getUnsyncedRequests = () => {
+  return db.getAllSync('SELECT * FROM local_requests WHERE synced = 0');
+};
+
+// Mark requests as synced
+export const markRequestsAsSynced = (ids: number[]) => {
+  if (ids.length === 0) return;
+  const placeholders = ids.map(() => '?').join(',');
+  db.runSync(`UPDATE local_requests SET synced = 1 WHERE id IN (${placeholders})`, ids);
+};
+
 // Mark logs as synced
 export const markLogsAsSynced = (ids: number[]) => {
   if (ids.length === 0) return;
@@ -40,4 +67,5 @@ export const markLogsAsSynced = (ids: number[]) => {
 // Clear synced logs to save space (optional)
 export const clearSyncedLogs = () => {
   db.runSync('DELETE FROM local_logs WHERE synced = 1');
+  db.runSync('DELETE FROM local_requests WHERE synced = 1');
 };

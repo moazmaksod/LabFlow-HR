@@ -4,6 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Clock, Calendar, CheckCircle, XCircle, AlertCircle, MessageSquare, X } from 'lucide-react-native';
 import api from '../lib/axios';
 import { useAuthStore } from '../store/useAuthStore';
+import { saveOfflineRequest } from '../lib/db';
 
 interface RequestItem {
   id: number;
@@ -90,17 +91,31 @@ export default function RequestsScreen() {
 
     setSubmitting(true);
     try {
-      await api.put(`/requests/${selectedRequest.id}/status`, {
+      const payload = {
         status: actionType,
         manager_note: managerNote,
         is_paid_permission: isPaidPermission,
         paid_permission_minutes: isPaidPermission ? parseInt(paidPermissionMinutes) || 0 : 0
-      });
+      };
+      await api.put(`/requests/${selectedRequest.id}/status`, payload);
       Alert.alert('Success', `Request has been ${actionType}.`);
       setModalVisible(false);
       fetchRequests();
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.error || 'Failed to update request status');
+      if (!error.response) {
+        saveOfflineRequest('PUT', `/requests/${selectedRequest.id}/status`, {
+          status: actionType,
+          manager_note: managerNote,
+          is_paid_permission: isPaidPermission,
+          paid_permission_minutes: isPaidPermission ? parseInt(paidPermissionMinutes) || 0 : 0
+        });
+        Alert.alert('Offline Mode', 'Network error. Your action was saved locally and will be synced later.');
+        setModalVisible(false);
+        // Optimistically update the UI
+        setRequests(prev => prev.map(r => r.id === selectedRequest.id ? { ...r, status: actionType } : r));
+      } else {
+        Alert.alert('Error', error.response?.data?.error || 'Failed to update request status');
+      }
     } finally {
       setSubmitting(false);
     }

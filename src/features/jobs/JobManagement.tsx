@@ -99,48 +99,23 @@ export default function JobManagement() {
     setFormData({
       title: '',
       hourly_rate: '',
-      required_hours_per_week: '40',
       grace_period: '15',
       preferred_gender: 'any',
       min_age: '',
-      max_age: '',
-      weekly_schedule: defaultSchedule
+      max_age: ''
     });
   };
 
   const handleEdit = (job: Job) => {
     setEditingJobId(job.id);
     
-    let parsedSchedule = defaultSchedule;
-    if (job.weekly_schedule) {
-      try {
-        const parsed = JSON.parse(job.weekly_schedule);
-        const fullSchedule: WeeklySchedule = {};
-        DAYS.forEach(day => {
-          const daySchedule = parsed[day];
-          if (Array.isArray(daySchedule)) {
-            fullSchedule[day] = daySchedule;
-          } else if (daySchedule && !daySchedule.isOff) {
-            fullSchedule[day] = [{ start: daySchedule.start || '09:00', end: daySchedule.end || '17:00' }];
-          } else {
-            fullSchedule[day] = [];
-          }
-        });
-        parsedSchedule = fullSchedule;
-      } catch (e) {
-        console.error('Failed to parse schedule', e);
-      }
-    }
-
     setFormData({
       title: job.title,
       hourly_rate: job.hourly_rate.toString(),
-      required_hours_per_week: job.required_hours_per_week.toString(),
       grace_period: job.grace_period.toString(),
       preferred_gender: job.preferred_gender,
       min_age: job.min_age ? job.min_age.toString() : '',
-      max_age: job.max_age ? job.max_age.toString() : '',
-      weekly_schedule: parsedSchedule
+      max_age: job.max_age ? job.max_age.toString() : ''
     });
     setIsFormOpen(true);
   };
@@ -150,11 +125,9 @@ export default function JobManagement() {
     const payload = {
       ...formData,
       hourly_rate: Number(formData.hourly_rate),
-      required_hours_per_week: Number(formData.required_hours_per_week),
       grace_period: Number(formData.grace_period),
       min_age: formData.min_age ? Number(formData.min_age) : null,
-      max_age: formData.max_age ? Number(formData.max_age) : null,
-      weekly_schedule: JSON.stringify(formData.weekly_schedule)
+      max_age: formData.max_age ? Number(formData.max_age) : null
     };
 
     if (editingJobId) {
@@ -251,18 +224,6 @@ export default function JobManagement() {
                         />
                       </div>
                     </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Required Weekly Hours</label>
-                      <input 
-                        required 
-                        type="number" 
-                        step="0.5" 
-                        value={formData.required_hours_per_week} 
-                        onChange={e => setFormData({...formData, required_hours_per_week: e.target.value})} 
-                        className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all" 
-                      />
-                    </div>
                   </div>
                 </div>
 
@@ -294,44 +255,13 @@ export default function JobManagement() {
                   </div>
                 </div>
               </div>
-
-              {/* Schedule Builder */}
-              <div className="xl:col-span-8 space-y-6">
-                <div className="bg-muted/30 p-8 rounded-3xl border border-border space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Default Weekly Schedule</h4>
-                      <p className="text-xs text-muted-foreground mt-1">Shifts defined here will be the default for new employees in this role.</p>
-                    </div>
-                    <div className="flex items-center gap-6">
-                      <button 
-                        onClick={() => setFormData({ ...formData, weekly_schedule: {} })}
-                        className="text-[10px] font-black uppercase tracking-[0.2em] text-rose-500 hover:text-rose-600 transition-colors"
-                      >
-                        Reset All
-                      </button>
-                      <div className="p-2 bg-background rounded-xl border border-border">
-                        <Clock className="w-4 h-4 text-primary" />
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="min-h-[400px]">
-                    <WeeklyScheduleBuilder 
-                      schedule={formData.weekly_schedule}
-                      onChange={(newSchedule) => setFormData({ ...formData, weekly_schedule: newSchedule })}
-                      onError={setHasScheduleError}
-                    />
-                  </div>
-                </div>
-              </div>
             </div>
 
             <div className="flex justify-end gap-4 pt-4 border-t border-border">
               <button type="button" onClick={resetForm} className="px-8 py-2.5 text-sm font-bold hover:bg-muted rounded-xl transition-colors">Cancel</button>
               <button 
                 type="submit" 
-                disabled={createJobMutation.isPending || updateJobMutation.isPending || hasScheduleError} 
+                disabled={createJobMutation.isPending || updateJobMutation.isPending} 
                 className="px-8 py-2.5 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 disabled:opacity-50"
               >
                 {createJobMutation.isPending || updateJobMutation.isPending ? 'Saving...' : (editingJobId ? 'Update Job Role' : 'Create Job Role')}

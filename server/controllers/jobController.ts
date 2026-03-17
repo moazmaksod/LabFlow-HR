@@ -18,15 +18,13 @@ export const createJob = (req: Request, res: Response): void => {
         const { 
             title, 
             hourly_rate, 
-            required_hours_per_week,
             preferred_gender,
             min_age,
             max_age,
-            grace_period,
-            weekly_schedule
+            grace_period
         } = req.body;
 
-        if (!title || hourly_rate === undefined || required_hours_per_week === undefined) {
+        if (!title || hourly_rate === undefined) {
             res.status(400).json({ error: 'Missing required fields' });
             return;
         }
@@ -36,26 +34,22 @@ export const createJob = (req: Request, res: Response): void => {
                 title, 
                 hourly_rate, 
                 required_hours, -- Keep for backward compatibility if needed, but we'll set it to 0 or same as weekly
-                required_hours_per_week,
                 preferred_gender,
                 min_age,
                 max_age,
-                grace_period,
-                weekly_schedule
+                grace_period
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         `);
         
         const info = insert.run(
             title, 
             hourly_rate, 
-            required_hours_per_week, // Setting daily required_hours to weekly for now or just 0
-            required_hours_per_week,
+            0, // Setting daily required_hours to 0
             preferred_gender || 'any',
             min_age || null,
             max_age || null,
-            grace_period || 15,
-            weekly_schedule || null
+            grace_period || 15
         );
         
         const newJob = db.prepare('SELECT * FROM jobs WHERE id = ?').get(info.lastInsertRowid);
@@ -75,15 +69,13 @@ export const updateJob = (req: Request, res: Response): void => {
         const { 
             title, 
             hourly_rate, 
-            required_hours_per_week,
             preferred_gender,
             min_age,
             max_age,
-            grace_period,
-            weekly_schedule
+            grace_period
         } = req.body;
 
-        if (!title || hourly_rate === undefined || required_hours_per_week === undefined) {
+        if (!title || hourly_rate === undefined) {
             res.status(400).json({ error: 'Missing required fields' });
             return;
         }
@@ -97,39 +89,27 @@ export const updateJob = (req: Request, res: Response): void => {
                     title = ?, 
                     hourly_rate = ?, 
                     required_hours = ?, 
-                    required_hours_per_week = ?,
                     preferred_gender = ?,
                     min_age = ?,
                     max_age = ?,
-                    grace_period = ?,
-                    weekly_schedule = ?
+                    grace_period = ?
                 WHERE id = ?
             `);
             
             const result = update.run(
                 title, 
                 hourly_rate, 
-                required_hours_per_week, 
-                required_hours_per_week,
+                0, 
                 preferred_gender || 'any',
                 min_age || null,
                 max_age || null,
                 grace_period || 15,
-                weekly_schedule || null,
                 id
             );
 
             if (result.changes === 0) {
                 return false;
             }
-
-            // Inheritance Logic: Cascade update to all employees assigned to this job
-            // Only update if they haven't overridden their schedule (for simplicity, we update all)
-            db.prepare(`
-                UPDATE profiles 
-                SET weekly_schedule = ?
-                WHERE job_id = ?
-            `).run(weekly_schedule || null, id);
 
             const updatedJob = db.prepare('SELECT * FROM jobs WHERE id = ?').get(id);
             logAudit('jobs', Number(id), 'UPDATE', (req as AuthRequest).user!.id, oldJob, updatedJob);

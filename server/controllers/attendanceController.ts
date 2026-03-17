@@ -24,6 +24,207 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
 // getClosestShift has been moved and refactored as getLogicalShiftDetails in shiftUtils.ts
 export { getLogicalShiftDetails } from '../utils/shiftUtils.js';
 
+function processAttendanceEvent(userId: number, type: string, timestamp: string, lat: number, lng: number, userProfile: any, timezone: string, schedule: any) {
+    if (type === 'check_in') {
+        const shiftDetails = getLogicalShiftDetails(schedule, timestamp, timezone, 'check_in');
+        const logicalDate = shiftDetails.logicalDate;
+        const scheduledTime = shiftDetails.scheduledTime;
+        const matchedShift = shiftDetails.shift;
+
+        // Re-entry logic: Is there already a closed attendance for this user and logical date?
+        const existingAttendance = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ? ORDER BY check_in DESC LIMIT 1').get(userId, logicalDate) as any;
+
+        if (existingAttendance) {
+            if (!existingAttendance.check_out) {
+                return { status: 400, error: 'You already have an active session for this shift. Please check out first.' };
+            }
+
+            // Auto-Resume existing session
+            const resumeTransaction = db.transaction(() => {
+                db.prepare(`
+                    UPDATE attendance 
+                    SET check_out = NULL, 
+                        current_status = ?,
+                        status = CASE WHEN status = 'early_out' THEN 'on_time' ELSE status END
+                    WHERE id = ?
+                `).run('working', existingAttendance.id);
+
+                // 1. Void the Old Request (early_leave_approval)
+                const oldRequest = db.prepare(`
+                    SELECT id FROM requests 
+                    WHERE attendance_id = ? AND type = 'early_leave_approval' AND status != 'canceled'
+                `).get(existingAttendance.id) as any;
+
+                if (oldRequest) {
+                    db.prepare(`
+                        UPDATE requests 
+                        SET status = 'canceled', 
+                            manager_note = COALESCE(manager_note, '') || '\nSYSTEM: Auto-canceled because the employee returned. Replaced by a shift interruption request.'
+                        WHERE id = ?
+                    `).run(oldRequest.id);
+
+                    // 2. Payroll Ledger Reversal
+                    db.prepare(`
+                        UPDATE payroll_transactions 
+                        SET status = 'voided', amount = 0, manager_notes = COALESCE(manager_notes, '') || '\nSYSTEM: Voided due to employee return'
+                        WHERE reference_id = ?
+                    `).run(oldRequest.id);
+                }
+
+                const insertInterruption = db.prepare(`
+                    INSERT INTO shift_interruptions (attendance_id, start_time, end_time, type, status)
+                    VALUES (?, ?, ?, 'step_away', 'pending_manager')
+                `);
+                const info = insertInterruption.run(existingAttendance.id, existingAttendance.check_out, timestamp);
+                const interruptionId = info.lastInsertRowid;
+
+                db.prepare(`
+                    INSERT INTO requests (user_id, attendance_id, type, reference_id, reason, status)
+                    VALUES (?, ?, 'shift_interruption_review', ?, 'Auto-resumed shift gap review', 'pending')
+                `).run(userId, existingAttendance.id, interruptionId);
+            });
+
+            resumeTransaction();
+
+            const updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(existingAttendance.id);
+            return { status: 200, data: updatedRecord };
+        }
+
+        // Normal Check-in logic
+        let status = 'on_time';
+        let isUnscheduled = false;
+        let otMinutes = 0;
+
+        // Pure Schedule-Driven Logic:
+        const clockInTime = new Date(timestamp);
+        const gracePeriod = userProfile.grace_period || 15;
+
+        if (!matchedShift || !scheduledTime) {
+            status = 'unscheduled';
+            isUnscheduled = true;
+        } else {
+            const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
+            
+            if (diffMinutes > gracePeriod) {
+                status = 'late_in';
+            } else if (diffMinutes < -gracePeriod) {
+                // Early Entry: status remains 'on_time' but otMinutes > 0 triggers request
+                otMinutes = Math.floor(Math.abs(diffMinutes));
+            }
+        }
+
+        const insertTransaction = db.transaction(() => {
+            const insert = db.prepare(`
+                INSERT INTO attendance (user_id, check_in, date, location_lat, location_lng, status)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `);
+            const info = insert.run(userId, timestamp, logicalDate, lat, lng, status);
+            const newId = info.lastInsertRowid;
+
+            if (isUnscheduled) {
+                db.prepare(`
+                    INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
+                    VALUES (?, 'overtime_approval', ?, ?, 'Unscheduled Check-in', '{}', 'pending')
+                `).run(userId, newId, newId);
+            } else if (otMinutes > 0) {
+                const maxOtMinutes = (userProfile.max_overtime_hours || 0) * 60;
+                const requestedOtMinutes = maxOtMinutes > 0 ? Math.min(otMinutes, maxOtMinutes) : otMinutes;
+
+                db.prepare(`
+                    INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
+                    VALUES (?, 'overtime_approval', ?, ?, ?, ?, 'pending')
+                `).run(
+                    userId,
+                    newId,
+                    newId,
+                    `Early clock-in by ${otMinutes} minutes`,
+                    JSON.stringify({ raw_overtime_minutes: otMinutes, requested_overtime_minutes: requestedOtMinutes })
+                );
+            }
+
+            return newId;
+        });
+
+        const newId = insertTransaction();
+        const newRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(newId);
+        logAudit('attendance', Number(newId), 'CREATE', userId, null, newRecord);
+        return { status: 201, data: newRecord };
+
+    } else if (type === 'check_out') {
+        const activeSession = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND check_out IS NULL ORDER BY check_in DESC LIMIT 1').get(userId) as any;
+        if (!activeSession) {
+            return { status: 400, error: 'No active check-in record found to check out.' };
+        }
+
+        const oldSession = { ...activeSession };
+
+        db.prepare(`
+            UPDATE attendance 
+            SET check_out = ?, location_lat = ?, location_lng = ?
+            WHERE id = ?
+        `).run(timestamp, lat, lng, activeSession.id);
+
+        let updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id) as any;
+        
+        const shiftDetails = getLogicalShiftDetails(schedule, timestamp, timezone, 'check_out', activeSession.check_in);
+        const scheduledTime = shiftDetails.scheduledTime;
+        const matchedShift = shiftDetails.shift;
+
+        if (!matchedShift) {
+            // Was checked in unscheduled, create another overtime request for the checkout if needed, or it's handled by manager
+        } else if (scheduledTime) {
+            const clockOutTime = new Date(timestamp);
+            const diffMinutes = (clockOutTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
+            const gracePeriod = userProfile.grace_period || 15;
+
+            if (diffMinutes > gracePeriod) {
+                const otMins = Math.floor(diffMinutes);
+                const maxOtMinutes = (userProfile.max_overtime_hours || 0) * 60;
+                const requestedOtMinutes = maxOtMinutes > 0 ? Math.min(otMins, maxOtMinutes) : otMins;
+
+                if (requestedOtMinutes > 0) {
+                    db.prepare(`
+                        INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
+                        VALUES (?, 'overtime_approval', ?, ?, ?, ?, 'pending')
+                    `).run(
+                        userId,
+                        activeSession.id,
+                        activeSession.id,
+                        `System detected ${otMins} minutes of overtime at checkout.`,
+                        JSON.stringify({ raw_overtime_minutes: otMins, requested_overtime_minutes: requestedOtMinutes })
+                    );
+                }
+            } else if (diffMinutes < -gracePeriod) {
+                const earlyMinutes = Math.floor(Math.abs(diffMinutes));
+
+                db.prepare(`
+                    UPDATE attendance
+                    SET status = CASE WHEN status = 'on_time' THEN 'early_out' ELSE status END
+                    WHERE id = ?
+                `).run(activeSession.id);
+
+                updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id) as any;
+
+                db.prepare(`
+                    INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
+                    VALUES (?, 'early_leave_approval', ?, ?, ?, ?, 'pending')
+                `).run(
+                    userId,
+                    activeSession.id,
+                    activeSession.id,
+                    `System detected early leave by ${earlyMinutes} minutes.`,
+                    JSON.stringify({ early_leave_minutes: earlyMinutes, missing_minutes: earlyMinutes })
+                );
+            }
+        }
+
+        logAudit('attendance', activeSession.id, 'UPDATE', userId, oldSession, updatedRecord);
+        return { status: 200, data: updatedRecord };
+    }
+    
+    return { status: 400, error: 'Invalid type' };
+}
+
 export const clockAttendance = (req: AuthRequest, res: Response): void => {
     try {
         const userId = req.user!.id;
@@ -90,208 +291,14 @@ export const clockAttendance = (req: AuthRequest, res: Response): void => {
             }
         }
 
-        if (type === 'check_in') {
-            const shiftDetails = getLogicalShiftDetails(schedule, timestamp, timezone, 'check_in');
-            const logicalDate = shiftDetails.logicalDate;
-            const scheduledTime = shiftDetails.scheduledTime;
-            const matchedShift = shiftDetails.shift;
-
-            // Re-entry logic: Is there already a closed attendance for this user and logical date?
-            const existingAttendance = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ? ORDER BY check_in DESC LIMIT 1').get(userId, logicalDate) as any;
-
-            if (existingAttendance) {
-                if (!existingAttendance.check_out) {
-                    res.status(400).json({ error: 'You already have an active session for this shift. Please check out first.' });
-                    return;
-                }
-
-                // Auto-Resume existing session
-                const resumeTransaction = db.transaction(() => {
-                    db.prepare('UPDATE attendance SET check_out = NULL, current_status = ? WHERE id = ?').run('working', existingAttendance.id);
-
-                    // 1. Void the Old Request (early_leave_approval)
-                    const oldRequest = db.prepare(`
-                        SELECT id FROM requests 
-                        WHERE attendance_id = ? AND type = 'early_leave_approval' AND status != 'canceled'
-                    `).get(existingAttendance.id) as any;
-
-                    if (oldRequest) {
-                        db.prepare(`
-                            UPDATE requests 
-                            SET status = 'canceled', 
-                                manager_note = COALESCE(manager_note, '') || '\nSYSTEM: Auto-canceled because the employee returned. Replaced by a shift interruption request.'
-                            WHERE id = ?
-                        `).run(oldRequest.id);
-
-                        // 2. Payroll Ledger Reversal
-                        db.prepare(`
-                            UPDATE payroll_transactions 
-                            SET status = 'voided', amount = 0, manager_notes = COALESCE(manager_notes, '') || '\nSYSTEM: Voided due to employee return'
-                            WHERE reference_id = ?
-                        `).run(oldRequest.id);
-                    }
-
-                    const insertInterruption = db.prepare(`
-                        INSERT INTO shift_interruptions (attendance_id, start_time, end_time, type, status)
-                        VALUES (?, ?, ?, 'step_away', 'pending_manager')
-                    `);
-                    const info = insertInterruption.run(existingAttendance.id, existingAttendance.check_out, timestamp);
-                    const interruptionId = info.lastInsertRowid;
-
-                    db.prepare(`
-                        INSERT INTO requests (user_id, attendance_id, type, reference_id, reason, status)
-                        VALUES (?, ?, 'shift_interruption_review', ?, 'Auto-resumed shift gap review', 'pending')
-                    `).run(userId, existingAttendance.id, interruptionId);
-                });
-
-                resumeTransaction();
-
-                const updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(existingAttendance.id);
-                res.status(200).json(updatedRecord);
-                return;
-            }
-
-            // Normal Check-in logic
-            let status = 'on_time';
-            let isUnscheduled = false;
-            let otMinutes = 0;
-
-            // Pure Schedule-Driven Logic:
-            // 1. If no matchedShift or scheduledTime, it's unscheduled (no shifts in schedule).
-            // 2. Otherwise, bind to the nearest upcoming shift.
-            // 3. If clock-in > (scheduledTime + gracePeriod) -> late_in.
-            // 4. If clock-in < (scheduledTime - gracePeriod) -> Early Entry (triggers overtime_approval).
-            // 5. Otherwise -> on_time.
-            
-            const clockInTime = new Date(timestamp);
-            const gracePeriod = userProfile.grace_period || 15;
-
-            if (!matchedShift || !scheduledTime) {
-                status = 'unscheduled';
-                isUnscheduled = true;
-            } else {
-                const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
-                
-                if (diffMinutes > gracePeriod) {
-                    status = 'late_in';
-                } else if (diffMinutes < -gracePeriod) {
-                    // Early Entry: status remains 'on_time' but otMinutes > 0 triggers request
-                    otMinutes = Math.floor(Math.abs(diffMinutes));
-                }
-            }
-
-            const insertTransaction = db.transaction(() => {
-                const insert = db.prepare(`
-                    INSERT INTO attendance (user_id, check_in, date, location_lat, location_lng, status)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                `);
-                const info = insert.run(userId, timestamp, logicalDate, lat, lng, status);
-                const newId = info.lastInsertRowid;
-
-                if (isUnscheduled) {
-                    db.prepare(`
-                        INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
-                        VALUES (?, 'overtime_approval', ?, ?, 'Unscheduled Check-in', '{}', 'pending')
-                    `).run(userId, newId, newId);
-                } else if (otMinutes > 0) {
-                    const maxOtMinutes = (userProfile.max_overtime_hours || 0) * 60;
-                    const requestedOtMinutes = maxOtMinutes > 0 ? Math.min(otMinutes, maxOtMinutes) : otMinutes;
-
-                    db.prepare(`
-                        INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
-                        VALUES (?, 'overtime_approval', ?, ?, ?, ?, 'pending')
-                    `).run(
-                        userId,
-                        newId,
-                        newId,
-                        `Early clock-in by ${otMinutes} minutes`,
-                        JSON.stringify({ raw_overtime_minutes: otMinutes, requested_overtime_minutes: requestedOtMinutes })
-                    );
-                }
-
-                return newId;
-            });
-
-            const newId = insertTransaction();
-            const newRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(newId);
-            logAudit('attendance', Number(newId), 'CREATE', userId, null, newRecord);
-            res.status(201).json(newRecord);
+        const result = processAttendanceEvent(userId, type, timestamp, lat, lng, userProfile, timezone, schedule);
+        
+        if (result.error) {
+            res.status(result.status).json({ error: result.error });
             return;
-
-        } else if (type === 'check_out') {
-            const activeSession = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND check_out IS NULL ORDER BY check_in DESC LIMIT 1').get(userId) as any;
-            if (!activeSession) {
-                res.status(400).json({ error: 'No active check-in record found to check out.' });
-                return;
-            }
-
-            const oldSession = { ...activeSession };
-
-            // Note: current_status in the DB schema is CHECK(current_status IN ('working', 'away'))
-            // We'll leave it as 'working' or set it to what it was, but the primary way to tell if it's checked out is if check_out is NOT NULL.
-            db.prepare(`
-                UPDATE attendance 
-                SET check_out = ?, location_lat = ?, location_lng = ?
-                WHERE id = ?
-            `).run(timestamp, lat, lng, activeSession.id);
-
-            let updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id) as any;
-            
-            const shiftDetails = getLogicalShiftDetails(schedule, timestamp, timezone, 'check_out', activeSession.check_in);
-            const scheduledTime = shiftDetails.scheduledTime;
-            const matchedShift = shiftDetails.shift;
-
-            if (!matchedShift) {
-                // Was checked in unscheduled, create another overtime request for the checkout if needed, or it's handled by manager
-            } else if (scheduledTime) {
-                const clockOutTime = new Date(timestamp);
-                const diffMinutes = (clockOutTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
-                const gracePeriod = userProfile.grace_period || 15;
-
-                if (diffMinutes > gracePeriod) {
-                    const otMins = Math.floor(diffMinutes);
-                    const maxOtMinutes = (userProfile.max_overtime_hours || 0) * 60;
-                    const requestedOtMinutes = maxOtMinutes > 0 ? Math.min(otMins, maxOtMinutes) : otMins;
-
-                    if (requestedOtMinutes > 0) {
-                        db.prepare(`
-                            INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
-                            VALUES (?, 'overtime_approval', ?, ?, ?, ?, 'pending')
-                        `).run(
-                            userId,
-                            activeSession.id,
-                            activeSession.id,
-                            `System detected ${otMins} minutes of overtime at checkout.`,
-                            JSON.stringify({ raw_overtime_minutes: otMins, requested_overtime_minutes: requestedOtMinutes })
-                        );
-                    }
-                } else if (diffMinutes < -gracePeriod) {
-                    const earlyMinutes = Math.floor(Math.abs(diffMinutes));
-
-                    db.prepare(`
-                        UPDATE attendance
-                        SET status = CASE WHEN status = 'on_time' THEN 'early_out' ELSE status END
-                        WHERE id = ?
-                    `).run(activeSession.id);
-
-                    updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id) as any;
-
-                    db.prepare(`
-                        INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
-                        VALUES (?, 'early_leave_approval', ?, ?, ?, ?, 'pending')
-                    `).run(
-                        userId,
-                        activeSession.id,
-                        activeSession.id,
-                        `System detected early leave by ${earlyMinutes} minutes.`,
-                        JSON.stringify({ early_leave_minutes: earlyMinutes, missing_minutes: earlyMinutes })
-                    );
-                }
-            }
-
-            logAudit('attendance', activeSession.id, 'UPDATE', userId, oldSession, updatedRecord);
-            res.json(updatedRecord);
         }
+        
+        res.status(result.status).json(result.data);
     } catch (error) {
         console.error('Error clocking attendance:', error);
         res.status(500).json({ error: 'Internal server error' });
@@ -313,7 +320,7 @@ export const syncOfflineLogs = (req: AuthRequest, res: Response): void => {
             const timezone = settingsForTz?.timezone || 'UTC';
 
             const userProfile = db.prepare(`
-                SELECT p.weekly_schedule, j.grace_period
+                SELECT p.weekly_schedule, j.grace_period, p.max_overtime_hours
                 FROM profiles p
                 LEFT JOIN jobs j ON p.job_id = j.id
                 WHERE p.user_id = ?
@@ -330,29 +337,6 @@ export const syncOfflineLogs = (req: AuthRequest, res: Response): void => {
 
             const results = [];
             const currentServerTime = Date.now();
-
-            const getCheckInStmt = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ? ORDER BY check_in DESC LIMIT 1');
-            const getActiveSessionStmt = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND check_out IS NULL ORDER BY check_in DESC LIMIT 1');
-            const insertCheckInStmt = db.prepare(`
-                INSERT INTO attendance (user_id, check_in, date, location_lat, location_lng, status)
-                VALUES (?, ?, ?, ?, ?, 'on_time')
-            `);
-            const updateCheckOutStmt = db.prepare(`
-                UPDATE attendance
-                SET check_out = ?, location_lat = ?, location_lng = ?
-                WHERE id = ?
-            `);
-            const updateResumeStmt = db.prepare(`
-                UPDATE attendance SET check_out = NULL, current_status = 'working' WHERE id = ?
-            `);
-            const insertInterruptionStmt = db.prepare(`
-                INSERT INTO shift_interruptions (attendance_id, start_time, end_time, type, status)
-                VALUES (?, ?, ?, 'step_away', 'pending_manager')
-            `);
-            const insertRequestStmt = db.prepare(`
-                INSERT INTO requests (user_id, attendance_id, type, reference_id, reason, status)
-                VALUES (?, ?, 'shift_interruption_review', ?, 'Auto-resumed shift gap review (Offline Sync)', 'pending')
-            `);
             
             for (const log of logsToSync) {
                 const { type, delay_in_milliseconds, lat, lng } = log;
@@ -361,75 +345,12 @@ export const syncOfflineLogs = (req: AuthRequest, res: Response): void => {
                 const delay = typeof delay_in_milliseconds === 'number' ? delay_in_milliseconds : 0;
                 const timestamp = new Date(currentServerTime - delay).toISOString();
                 
-                // Determine Logical Shift Date
-                const shiftDetails = getLogicalShiftDetails(schedule, timestamp, timezone, type as 'check_in' | 'check_out');
-                const logicalDate = shiftDetails.logicalDate;
+                const result = processAttendanceEvent(userId, type, timestamp, lat, lng, userProfile, timezone, schedule);
                 
-                let existingRecord;
-                if (type === 'check_in') {
-                    existingRecord = getCheckInStmt.get(userId, logicalDate) as any;
+                if (result.error) {
+                    results.push({ logId: log.id, status: 'skipped', reason: result.error });
                 } else {
-                    existingRecord = getActiveSessionStmt.get(userId) as any;
-                }
-
-                if (type === 'check_in') {
-                    if (!existingRecord) {
-                        const info = insertCheckInStmt.run(userId, timestamp, logicalDate, lat, lng);
-                        const newRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(info.lastInsertRowid);
-                        logAudit('attendance', Number(info.lastInsertRowid), 'CREATE', userId, null, newRecord);
-                        results.push({ logId: log.id, status: 'success', action: 'inserted' });
-                    } else if (existingRecord.check_out) {
-                        // Re-entry logic for offline sync
-                        const oldRecord = { ...existingRecord };
-                        updateResumeStmt.run(existingRecord.id);
-
-                        // 1. Void the Old Request (early_leave_approval)
-                        const oldRequest = db.prepare(`
-                            SELECT id FROM requests 
-                            WHERE attendance_id = ? AND type = 'early_leave_approval' AND status != 'canceled'
-                        `).get(existingRecord.id) as any;
-
-                        if (oldRequest) {
-                            db.prepare(`
-                                UPDATE requests 
-                                SET status = 'canceled', 
-                                    manager_note = COALESCE(manager_note, '') || '\nSYSTEM: Auto-canceled because the employee returned. Replaced by a shift interruption request.'
-                                WHERE id = ?
-                            `).run(oldRequest.id);
-
-                            // 2. Payroll Ledger Reversal
-                            db.prepare(`
-                                UPDATE payroll_transactions 
-                                SET status = 'voided', amount = 0, manager_notes = COALESCE(manager_notes, '') || '\nSYSTEM: Voided due to employee return'
-                                WHERE reference_id = ?
-                            `).run(oldRequest.id);
-                        }
-
-                        const updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(existingRecord.id);
-                        logAudit('attendance', existingRecord.id, 'UPDATE', userId, oldRecord, updatedRecord);
-
-                        const info = insertInterruptionStmt.run(existingRecord.id, existingRecord.check_out, timestamp);
-                        const newInterruption = db.prepare('SELECT * FROM shift_interruptions WHERE id = ?').get(info.lastInsertRowid);
-                        logAudit('shift_interruptions', Number(info.lastInsertRowid), 'CREATE', userId, null, newInterruption);
-
-                        const reqInfo = insertRequestStmt.run(userId, existingRecord.id, info.lastInsertRowid);
-                        const newReq = db.prepare('SELECT * FROM requests WHERE id = ?').get(reqInfo.lastInsertRowid);
-                        logAudit('requests', Number(reqInfo.lastInsertRowid), 'CREATE', userId, null, newReq);
-
-                        results.push({ logId: log.id, status: 'success', action: 'resumed' });
-                    } else {
-                        results.push({ logId: log.id, status: 'skipped', reason: 'already checked in' });
-                    }
-                } else if (type === 'check_out') {
-                    if (existingRecord && !existingRecord.check_out) {
-                        const oldRecord = { ...existingRecord };
-                        updateCheckOutStmt.run(timestamp, lat, lng, existingRecord.id);
-                        const updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(existingRecord.id);
-                        logAudit('attendance', existingRecord.id, 'UPDATE', userId, oldRecord, updatedRecord);
-                        results.push({ logId: log.id, status: 'success', action: 'updated' });
-                    } else {
-                        results.push({ logId: log.id, status: 'skipped', reason: 'no check-in or already checked out' });
-                    }
+                    results.push({ logId: log.id, status: 'success', action: result.status === 201 ? 'inserted' : 'updated' });
                 }
             }
             return results;

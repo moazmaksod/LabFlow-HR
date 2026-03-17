@@ -5,6 +5,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import api from '../lib/axios';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { formatStatusLabel } from '../lib/utils';
+import { saveOfflineRequest } from '../lib/db';
 
 interface AttendanceLog {
   id: number;
@@ -101,17 +102,31 @@ export default function HistoryScreen() {
           text: 'Submit',
           onPress: async () => {
             try {
-              await api.post('/requests/attendance-correction', {
+              const payload = {
                 attendance_id: selectedLog.id,
                 new_clock_in: newCheckIn.toISOString(),
                 new_clock_out: newCheckOut.toISOString(),
                 reason
-              });
+              };
+              await api.post('/requests/attendance-correction', payload);
               Alert.alert('Success', 'Attendance correction request submitted.');
               setModalVisible(false);
               setReason('');
             } catch (error: any) {
-              Alert.alert('Error', error.response?.data?.error || 'Failed to submit request');
+              if (!error.response) {
+                // Network error, save offline
+                saveOfflineRequest('POST', '/requests/attendance-correction', {
+                  attendance_id: selectedLog.id,
+                  new_clock_in: newCheckIn.toISOString(),
+                  new_clock_out: newCheckOut.toISOString(),
+                  reason
+                });
+                Alert.alert('Offline Mode', 'Network error. Your request was saved locally and will be synced later.');
+                setModalVisible(false);
+                setReason('');
+              } else {
+                Alert.alert('Error', error.response?.data?.error || 'Failed to submit request');
+              }
             }
           },
         },

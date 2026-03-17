@@ -24,6 +24,7 @@ function MainTabs() {
   
   return (
     <Tab.Navigator 
+      id="MainTabs"
       screenOptions={{ 
         headerShown: false,
         tabBarActiveTintColor: '#18181b',
@@ -86,7 +87,7 @@ export default function AppNavigator() {
 
   return (
     <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Navigator id="RootStack" screenOptions={{ headerShown: false }}>
         {!isAuthenticated ? (
           // 1. Auth Stack (Public)
           <>

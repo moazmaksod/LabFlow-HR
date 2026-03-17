@@ -5,14 +5,15 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Pause, Play, LayoutDashboard, LogOut, RefreshCw } from 'lucide-react-native';
 import { useAuthStore } from '../store/useAuthStore';
 import api from '../lib/axios';
-import { initLocalDb, saveOfflineLog, getUnsyncedLogs, markLogsAsSynced } from '../lib/db';
+import { initLocalDb, saveOfflineLog, getUnsyncedLogs, markLogsAsSynced, getUnsyncedRequests, saveOfflineRequest } from '../lib/db';
+import { useNetworkStore } from '../store/useNetworkStore';
 import { getUniqueDeviceId } from '../utils/device';
 
 export default function DashboardScreen() {
   const { user, logout } = useAuthStore();
   const [loading, setLoading] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [unsyncedCount, setUnsyncedCount] = useState(0);
+  const { isSyncing, syncOfflineRecords } = useNetworkStore();
   const [currentStatus, setCurrentStatus] = useState<'working' | 'away' | 'none'>('none');
   const [userProfile, setUserProfile] = useState<any>(null);
   const [consumedBreakMinutes, setConsumedBreakMinutes] = useState(0);
@@ -69,7 +70,8 @@ export default function DashboardScreen() {
 
   const checkUnsyncedLogs = () => {
     const logs = getUnsyncedLogs();
-    setUnsyncedCount(logs.length);
+    const requests = getUnsyncedRequests();
+    setUnsyncedCount(logs.length + requests.length);
   };
 
   const executeClock = async (type: 'check_in' | 'check_out') => {
@@ -140,39 +142,8 @@ export default function DashboardScreen() {
   };
 
   const handleSync = async () => {
-    const logs = getUnsyncedLogs() as any[];
-    if (logs.length === 0) {
-      Alert.alert('Sync', 'No offline logs to sync.');
-      return;
-    }
-
-    setSyncing(true);
-    try {
-      const now = Date.now();
-      const logsWithDelay = logs.map(log => {
-        const originalTime = new Date(log.timestamp).getTime();
-        const delay_in_milliseconds = Math.max(0, now - originalTime);
-        return {
-          ...log,
-          delay_in_milliseconds
-        };
-      });
-
-      const response = await api.post('/attendance/sync', { logs: logsWithDelay });
-      
-      // Mark successfully processed logs as synced
-      const syncedIds = response.data.results.map((r: any) => r.logId);
-      if (syncedIds.length > 0) {
-        markLogsAsSynced(syncedIds);
-      }
-      
-      Alert.alert('Sync Complete', `Successfully synced ${syncedIds.length} logs.`);
-      checkUnsyncedLogs();
-    } catch (error: any) {
-      Alert.alert('Sync Failed', error.response?.data?.error || 'Could not reach the server.');
-    } finally {
-      setSyncing(false);
-    }
+    await syncOfflineRecords();
+    checkUnsyncedLogs();
   };
 
   const handleStepAway = async () => {
@@ -200,7 +171,16 @@ export default function DashboardScreen() {
             setCurrentStatus('away');
             fetchStatus(); // Refresh to update consumed time
           } catch (error: any) {
-            Alert.alert('Error', error.response?.data?.error || 'Failed to step away');
+            if (!error.response) {
+              const deviceId = await getUniqueDeviceId();
+              const timestamp = new Date().toISOString();
+              saveOfflineRequest('POST', '/attendance/step-away', { timestamp, deviceId });
+              Alert.alert('Offline Mode', 'Network error. Your request was saved locally and will be synced later.');
+              setCurrentStatus('away');
+              checkUnsyncedLogs();
+            } else {
+              Alert.alert('Error', error.response?.data?.error || 'Failed to step away');
+            }
           } finally {
             setLoading(false);
           }
@@ -219,7 +199,16 @@ export default function DashboardScreen() {
       setCurrentStatus('working');
       fetchStatus(); // Refresh to update consumed time
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.error || 'Failed to resume work');
+      if (!error.response) {
+        const deviceId = await getUniqueDeviceId();
+        const timestamp = new Date().toISOString();
+        saveOfflineRequest('POST', '/attendance/resume-work', { timestamp, deviceId });
+        Alert.alert('Offline Mode', 'Network error. Your request was saved locally and will be synced later.');
+        setCurrentStatus('working');
+        checkUnsyncedLogs();
+      } else {
+        Alert.alert('Error', error.response?.data?.error || 'Failed to resume work');
+      }
     } finally {
       setLoading(false);
     }
@@ -319,12 +308,12 @@ export default function DashboardScreen() {
         <TouchableOpacity 
           style={[styles.syncButton, unsyncedCount === 0 && styles.syncButtonDisabled]} 
           onPress={handleSync}
-          disabled={syncing || unsyncedCount === 0}
+          disabled={isSyncing || unsyncedCount === 0}
           accessibilityLabel="Sync offline logs"
           accessibilityRole="button"
-          accessibilityState={{ disabled: syncing || unsyncedCount === 0 }}
+          accessibilityState={{ disabled: isSyncing || unsyncedCount === 0 }}
         >
-          {syncing ? <ActivityIndicator color="#18181b" /> : <RefreshCw color="#18181b" size={20} />}
+          {isSyncing ? <ActivityIndicator color="#18181b" /> : <RefreshCw color="#18181b" size={20} />}
         </TouchableOpacity>
       </View>
 
