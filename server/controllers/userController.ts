@@ -15,7 +15,7 @@ export const getUsers = (req: Request, res: Response): void => {
         const users = db.prepare(`
             SELECT 
                 u.id, u.name, u.email, u.role, u.created_at,
-                p.status, p.job_id, p.weekly_schedule,
+                p.status, p.job_id, p.weekly_schedule, p.device_id,
                 j.title as job_title,
                 (SELECT current_status FROM attendance a WHERE a.user_id = u.id AND a.check_out IS NULL ORDER BY a.check_in DESC LIMIT 1) as raw_current_status,
                 (SELECT date FROM attendance a WHERE a.user_id = u.id AND a.check_out IS NULL ORDER BY a.check_in DESC LIMIT 1) as current_attendance_date
@@ -265,7 +265,8 @@ export const getUserById = (req: Request, res: Response): void => {
                 p.emergency_contact_name, p.emergency_contact_phone, p.leave_balance,
                 p.job_id, j.title as job_title,
                 p.status, p.suspension_reason,
-                p.allow_overtime, p.max_overtime_hours
+                p.allow_overtime, p.max_overtime_hours,
+                p.device_id
             FROM users u
             LEFT JOIN profiles p ON u.id = p.user_id
             LEFT JOIN jobs j ON p.job_id = j.id

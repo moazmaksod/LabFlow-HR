@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/axios';
-import { X, Save, User, Phone, Mail, Clock, Shield, DollarSign, Calendar, FileText, ChevronRight, Plus } from 'lucide-react';
+import { X, Save, User, Phone, Mail, Clock, Shield, DollarSign, Calendar, FileText, ChevronRight, Plus, Smartphone, RefreshCcw } from 'lucide-react';
 import { WeeklyScheduleBuilder } from '../../components/WeeklyScheduleBuilder';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -91,6 +91,21 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
       queryClient.invalidateQueries({ queryKey: ['users'] });
       queryClient.invalidateQueries({ queryKey: ['user', userId] });
       alert('Employee profile updated successfully');
+    }
+  });
+
+  const resetDeviceMutation = useMutation({
+    mutationFn: async () => {
+      const res = await api.put(`/users/${userId}/reset-device`);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['user', userId] });
+      alert('Device binding reset successfully');
+    },
+    onError: (error: any) => {
+      alert(error.response?.data?.error || 'Failed to reset device binding');
     }
   });
 
@@ -263,6 +278,40 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                     />
                   </div>
                 )}
+                
+                {/* Device Binding Section */}
+                <div className="pt-4 border-t border-border">
+                  <div className="flex items-center justify-between p-4 bg-muted/30 border border-border rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2 rounded-lg ${formData.device_id ? 'bg-emerald-100 text-emerald-600' : 'bg-muted text-muted-foreground'}`}>
+                        <Smartphone className="w-4 h-4" />
+                      </div>
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Device Binding</span>
+                        <p className="text-xs font-medium">{formData.device_id ? 'Device Bound' : 'No Device Linked'}</p>
+                      </div>
+                    </div>
+                    {formData.device_id && (
+                      <button 
+                        onClick={() => {
+                          if (window.confirm('Are you sure you want to reset this employee\'s device binding? They will be able to clock in from a new device.')) {
+                            resetDeviceMutation.mutate();
+                          }
+                        }}
+                        disabled={resetDeviceMutation.isPending}
+                        className="p-2 hover:bg-rose-100 text-rose-500 rounded-lg transition-all"
+                        title="Reset Device Binding"
+                      >
+                        <RefreshCcw className={`w-4 h-4 ${resetDeviceMutation.isPending ? 'animate-spin' : ''}`} />
+                      </button>
+                    )}
+                  </div>
+                  {formData.device_id && (
+                    <p className="text-[9px] text-muted-foreground mt-2 px-1">
+                      ID: <span className="font-mono">{formData.device_id}</span>
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           </div>
