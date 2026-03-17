@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl, TouchableOpacity, Modal, ScrollView } from 'react-native';
 import { DollarSign, Calendar, ChevronRight, X, Info, AlertCircle, CheckCircle2 } from 'lucide-react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import api from '../lib/axios';
+import { useNetworkStore } from '../store/useNetworkStore';
 
 interface PayrollRecord {
   id: number;
@@ -33,17 +33,26 @@ export default function PayslipScreen() {
   const [loadingTransactions, setLoadingTransactions] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
 
+  const { isConnected } = useNetworkStore();
+
   const fetchPayrolls = useCallback(async () => {
+    if (!isConnected) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     try {
       const response = await api.get('/payroll/my-records');
       setPayrolls(response.data);
-    } catch (error) {
-      console.error('Error fetching payrolls:', error);
+    } catch (error: any) {
+      if (!error.isNetworkError) {
+        console.error('Error fetching payrolls:', error);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [isConnected]);
 
   useFocusEffect(
     useCallback(() => {
@@ -57,12 +66,15 @@ export default function PayslipScreen() {
   };
 
   const fetchTransactions = async (payrollId: number) => {
+    if (!isConnected) return;
     setLoadingTransactions(true);
     try {
       const response = await api.get(`/payroll/my-records/${payrollId}/transactions`);
       setTransactions(response.data);
-    } catch (error) {
-      console.error('Error fetching transactions:', error);
+    } catch (error: any) {
+      if (!error.isNetworkError) {
+        console.error('Error fetching transactions:', error);
+      }
     } finally {
       setLoadingTransactions(false);
     }

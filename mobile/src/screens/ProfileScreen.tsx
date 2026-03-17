@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, ScrollView,
 import * as ImagePicker from 'expo-image-picker';
 import { User, Camera, Save, LogOut, Mail, UserCircle } from 'lucide-react-native';
 import api from '../lib/axios';
-import { useAuthStore } from '../store/useAuthStore';
+import { useNetworkStore } from '../store/useNetworkStore';
 
 // Base URL for images derived from API URL
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://ais-dev-dt5wflxz22iihcij747x5r-137896224739.europe-west1.run.app/api';
@@ -18,11 +18,17 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
 
+  const { isConnected } = useNetworkStore();
+
   useEffect(() => {
     fetchProfile();
   }, []);
 
   const fetchProfile = async () => {
+    if (!isConnected) {
+      setFetching(false);
+      return;
+    }
     try {
       const response = await api.get('/users/profile');
       const data = response.data;
@@ -30,9 +36,11 @@ export default function ProfileScreen() {
       setAge(data.age?.toString() || '');
       setGender(data.gender || '');
       setAvatar(data.profile_picture_url || null);
-    } catch (error) {
-      console.error('Error fetching profile:', error);
-      Alert.alert('Error', 'Failed to load profile data');
+    } catch (error: any) {
+      if (!error.isNetworkError) {
+        console.error('Error fetching profile:', error);
+        Alert.alert('Error', 'Failed to load profile data');
+      }
     } finally {
       setFetching(false);
     }
@@ -109,9 +117,12 @@ export default function ProfileScreen() {
       }
 
       Alert.alert('Success', 'Profile updated successfully');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating profile:', error);
-      Alert.alert('Error', 'Failed to update profile');
+      const message = error.isNetworkError 
+        ? 'Network unavailable. Update saved locally and will sync later.' 
+        : (error.response?.data?.error || 'Failed to update profile');
+      Alert.alert('Profile Update', message);
     } finally {
       setLoading(false);
     }

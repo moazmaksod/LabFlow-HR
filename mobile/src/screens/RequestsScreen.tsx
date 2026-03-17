@@ -4,7 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Clock, Calendar, CheckCircle, XCircle, AlertCircle, MessageSquare, X } from 'lucide-react-native';
 import api from '../lib/axios';
 import { useAuthStore } from '../store/useAuthStore';
-import { saveOfflineRequest } from '../lib/db';
+import { useNetworkStore } from '../store/useNetworkStore';
 
 interface RequestItem {
   id: number;
@@ -37,14 +37,23 @@ export default function RequestsScreen() {
   const [maxPaidMinutes, setMaxPaidMinutes] = useState(0);
   const [submitting, setSubmitting] = useState(false);
 
+  const { isConnected } = useNetworkStore();
+
   const isManager = user?.role === 'manager' || user?.role === 'admin';
 
   const fetchRequests = async () => {
+    if (!isConnected) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     try {
       const response = await api.get('/requests');
       setRequests(response.data);
-    } catch (error) {
-      console.error('Error fetching requests:', error);
+    } catch (error: any) {
+      if (!error.isNetworkError) {
+        console.error('Error fetching requests:', error);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);

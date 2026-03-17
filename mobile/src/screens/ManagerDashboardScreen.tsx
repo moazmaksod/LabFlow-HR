@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { LayoutDashboard, Users, Clock, AlertTriangle, CheckCircle, UserCircle } from 'lucide-react-native';
 import api from '../lib/axios';
-import { useAuthStore } from '../store/useAuthStore';
+import { useNetworkStore } from '../store/useNetworkStore';
 
 export default function ManagerDashboardScreen() {
   const [loading, setLoading] = useState(true);
@@ -11,19 +11,27 @@ export default function ManagerDashboardScreen() {
   const navigation = useNavigation<any>();
   const { user } = useAuthStore();
 
+  const { isConnected } = useNetworkStore();
+
   useFocusEffect(
     useCallback(() => {
       fetchStats();
-    }, [])
+    }, [isConnected])
   );
 
   const fetchStats = async () => {
+    if (!isConnected) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const response = await api.get('/attendance/stats');
       setStats(response.data);
-    } catch (error) {
-      console.error('Error fetching manager stats:', error);
+    } catch (error: any) {
+      if (!error.isNetworkError) {
+        console.error('Error fetching manager stats:', error);
+      }
     } finally {
       setLoading(false);
     }

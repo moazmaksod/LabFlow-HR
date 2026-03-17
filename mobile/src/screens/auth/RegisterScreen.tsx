@@ -25,7 +25,10 @@ export default function RegisterScreen({ navigation }: any) {
         [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
       );
     } catch (error: any) {
-      Alert.alert('Registration Failed', error.response?.data?.error || 'An error occurred');
+      const message = error.isNetworkError 
+        ? 'Network unavailable. Please check your connection and try again.' 
+        : (error.response?.data?.error || 'An error occurred');
+      Alert.alert('Registration Failed', message);
     } finally {
       setLoading(false);
     }

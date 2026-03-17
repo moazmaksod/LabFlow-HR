@@ -63,7 +63,10 @@ export default function LoginScreen({ navigation }: any) {
           `Reason: ${errorData.suspension_reason || 'No reason provided.'}`
         );
       } else {
-        Alert.alert('Login Failed', errorData?.error || 'Invalid credentials');
+        const message = error.isNetworkError 
+          ? 'Network unavailable. Please check your connection and try again.' 
+          : (errorData?.error || 'Invalid credentials');
+        Alert.alert('Login Failed', message);
       }
     } finally {
       setLoading(false);

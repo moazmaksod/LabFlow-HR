@@ -13,7 +13,7 @@ export default function DashboardScreen() {
   const { user, logout } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [unsyncedCount, setUnsyncedCount] = useState(0);
-  const { isSyncing, syncOfflineRecords } = useNetworkStore();
+  const { isSyncing, syncOfflineRecords, isConnected } = useNetworkStore();
   const [currentStatus, setCurrentStatus] = useState<'working' | 'away' | 'none'>('none');
   const [userProfile, setUserProfile] = useState<any>(null);
   const [consumedBreakMinutes, setConsumedBreakMinutes] = useState(0);
@@ -32,15 +32,19 @@ export default function DashboardScreen() {
   );
 
   const fetchProfile = async () => {
+    if (!isConnected) return;
     try {
       const response = await api.get('/users/profile');
       setUserProfile(response.data);
-    } catch (error) {
-      console.error('Error fetching profile:', error);
+    } catch (error: any) {
+      if (!error.isNetworkError) {
+        console.error('Error fetching profile:', error);
+      }
     }
   };
 
   const fetchStatus = async () => {
+    if (!isConnected) return;
     try {
       const response = await api.get('/attendance/my-logs');
       const logs = response.data;
@@ -63,8 +67,10 @@ export default function DashboardScreen() {
         setCurrentStatus('none');
         setConsumedBreakMinutes(0);
       }
-    } catch (error) {
-      console.error('Error fetching status:', error);
+    } catch (error: any) {
+      if (!error.isNetworkError) {
+        console.error('Error fetching status:', error);
+      }
     }
   };
 

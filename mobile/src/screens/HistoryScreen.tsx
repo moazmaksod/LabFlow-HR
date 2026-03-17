@@ -5,7 +5,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import api from '../lib/axios';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { formatStatusLabel } from '../lib/utils';
-import { saveOfflineRequest } from '../lib/db';
+import { useNetworkStore } from '../store/useNetworkStore';
 
 interface AttendanceLog {
   id: number;
@@ -34,17 +34,26 @@ export default function HistoryScreen() {
   const [showCheckInPicker, setShowCheckInPicker] = useState(false);
   const [showCheckOutPicker, setShowCheckOutPicker] = useState(false);
 
+  const { isConnected } = useNetworkStore();
+
   const fetchLogs = useCallback(async () => {
+    if (!isConnected) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     try {
       const response = await api.get('/attendance/my-logs');
       setLogs(response.data);
-    } catch (error) {
-      console.error('Error fetching logs:', error);
+    } catch (error: any) {
+      if (!error.isNetworkError) {
+        console.error('Error fetching logs:', error);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [isConnected]);
 
   useFocusEffect(
     useCallback(() => {
