@@ -3,6 +3,8 @@ import NetInfo from '@react-native-community/netinfo';
 import { getUnsyncedLogs, markLogsAsSynced, getUnsyncedRequests, markRequestsAsSynced } from '../lib/db';
 import api from '../lib/axios';
 
+import { useAttendanceStore } from './useAttendanceStore';
+
 interface NetworkState {
   isConnected: boolean;
   isSyncing: boolean;
@@ -18,6 +20,7 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
     if (get().isSyncing) return;
     set({ isSyncing: true });
     try {
+      let hasSyncedAny = false;
       // Sync Attendance Logs
       const logs = getUnsyncedLogs() as any[];
       if (logs.length > 0) {
@@ -32,6 +35,7 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
         
         if (syncedIds.length > 0) {
           markLogsAsSynced(syncedIds);
+          hasSyncedAny = true;
         }
       }
 
@@ -53,15 +57,53 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
             }
             
             syncedRequestIds.push(req.id);
+            hasSyncedAny = true;
           } catch (err: any) {
             // If it's a server error (e.g., 400 Bad Request), we should still mark it as synced so it doesn't block
             if (err.response) {
               syncedRequestIds.push(req.id);
+              hasSyncedAny = true;
             }
           }
         }
         if (syncedRequestIds.length > 0) {
           markRequestsAsSynced(syncedRequestIds);
+        }
+      }
+
+      // If we synced anything, fetch authoritative state
+      if (hasSyncedAny) {
+        try {
+          const [profileRes, logsRes] = await Promise.all([
+            api.get('/users/profile'),
+            api.get('/attendance/my-logs')
+          ]);
+
+          const attendanceStore = useAttendanceStore.getState();
+          attendanceStore.setUserProfile(profileRes.data);
+
+          const logs = logsRes.data;
+          const today = new Date().toISOString().split('T')[0];
+          const activeSession = logs.find((l: any) => l.date === today && !l.check_out);
+          
+          if (activeSession) {
+            attendanceStore.setStatus(activeSession.current_status || 'working');
+            
+            let consumed = 0;
+            if (activeSession.breaks && Array.isArray(activeSession.breaks)) {
+              activeSession.breaks.forEach((b: any) => {
+                const start = new Date(b.start_time).getTime();
+                const end = b.end_time ? new Date(b.end_time).getTime() : new Date().getTime();
+                consumed += (end - start) / (1000 * 60);
+              });
+            }
+            attendanceStore.setConsumedBreakMinutes(Math.floor(consumed));
+          } else {
+            attendanceStore.setStatus('none');
+            attendanceStore.setConsumedBreakMinutes(0);
+          }
+        } catch (fetchError) {
+          console.error('Failed to fetch authoritative state after sync:', fetchError);
         }
       }
     } catch (error) {

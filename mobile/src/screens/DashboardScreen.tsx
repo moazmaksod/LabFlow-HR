@@ -8,15 +8,23 @@ import api from '../lib/axios';
 import { initLocalDb, saveOfflineLog, getUnsyncedLogs, markLogsAsSynced, getUnsyncedRequests, saveOfflineRequest } from '../lib/db';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { getUniqueDeviceId } from '../utils/device';
+import { useAttendanceStore } from '../store/useAttendanceStore';
 
 export default function DashboardScreen() {
   const { user, logout } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [unsyncedCount, setUnsyncedCount] = useState(0);
   const { isSyncing, syncOfflineRecords, isConnected } = useNetworkStore();
-  const [currentStatus, setCurrentStatus] = useState<'working' | 'away' | 'none'>('none');
-  const [userProfile, setUserProfile] = useState<any>(null);
-  const [consumedBreakMinutes, setConsumedBreakMinutes] = useState(0);
+  
+  const { 
+    currentStatus, 
+    setStatus, 
+    userProfile, 
+    setUserProfile, 
+    consumedBreakMinutes, 
+    setConsumedBreakMinutes,
+    setLastActionTimestamp
+  } = useAttendanceStore();
 
   useEffect(() => {
     // Initialize local SQLite database
@@ -52,7 +60,7 @@ export default function DashboardScreen() {
       // Check if there is an active session (today and check_out is null)
       const activeSession = logs.find((l: any) => l.date === today && !l.check_out);
       if (activeSession) {
-        setCurrentStatus(activeSession.current_status || 'working');
+        setStatus(activeSession.current_status || 'working');
         
         let consumed = 0;
         if (activeSession.breaks && Array.isArray(activeSession.breaks)) {
@@ -64,7 +72,7 @@ export default function DashboardScreen() {
         }
         setConsumedBreakMinutes(Math.floor(consumed));
       } else {
-        setCurrentStatus('none');
+        setStatus('none');
         setConsumedBreakMinutes(0);
       }
     } catch (error: any) {
@@ -98,6 +106,20 @@ export default function DashboardScreen() {
 
       const timestamp = new Date().toISOString();
 
+      // Optimistic Update if offline
+      if (!isConnected) {
+        saveOfflineLog(type, timestamp, latitude, longitude);
+        setStatus(type === 'check_in' ? 'working' : 'none');
+        setLastActionTimestamp(timestamp);
+        checkUnsyncedLogs();
+        Alert.alert(
+          'Offline Mode',
+          `Network error. Your ${type === 'check_in' ? 'check-in' : 'check-out'} was saved locally and will be synced later.`
+        );
+        setLoading(false);
+        return;
+      }
+
       // 3. Try to call the Backend API
       try {
         await api.post('/attendance/clock', {
@@ -108,7 +130,8 @@ export default function DashboardScreen() {
           deviceId,
         });
         Alert.alert('Success', `Successfully clocked ${type === 'check_in' ? 'in' : 'out'}!`);
-        setCurrentStatus(type === 'check_in' ? 'working' : 'none');
+        setStatus(type === 'check_in' ? 'working' : 'none');
+        setLastActionTimestamp(timestamp);
       } catch (apiError: any) {
         const errorMessage = apiError.response?.data?.error || apiError.message;
 
@@ -119,6 +142,8 @@ export default function DashboardScreen() {
           // Network error, save to local SQLite for later sync
           console.log('Network Error, saving offline:', apiError.message);
           saveOfflineLog(type, timestamp, latitude, longitude);
+          setStatus(type === 'check_in' ? 'working' : 'none');
+          setLastActionTimestamp(timestamp);
           Alert.alert(
             'Offline Mode',
             `Network error. Your ${type === 'check_in' ? 'check-in' : 'check-out'} was saved locally and will be synced later.`
@@ -166,6 +191,18 @@ export default function DashboardScreen() {
           try {
             const deviceId = await getUniqueDeviceId();
             const timestamp = new Date().toISOString();
+
+            // Optimistic Update if offline
+            if (!isConnected) {
+              saveOfflineRequest('POST', '/attendance/step-away', { timestamp, deviceId });
+              setStatus('away');
+              setLastActionTimestamp(timestamp);
+              checkUnsyncedLogs();
+              Alert.alert('Offline Mode', 'Network error. Your request was saved locally and will be synced later.');
+              setLoading(false);
+              return;
+            }
+
             const response = await api.post('/attendance/step-away', { timestamp, deviceId });
             
             if (!response.data.hasBreakBalance) {
@@ -174,7 +211,8 @@ export default function DashboardScreen() {
               Alert.alert('Success', 'You have stepped away.');
             }
             
-            setCurrentStatus('away');
+            setStatus('away');
+            setLastActionTimestamp(timestamp);
             fetchStatus(); // Refresh to update consumed time
           } catch (error: any) {
             if (!error.response) {
@@ -182,7 +220,8 @@ export default function DashboardScreen() {
               const timestamp = new Date().toISOString();
               saveOfflineRequest('POST', '/attendance/step-away', { timestamp, deviceId });
               Alert.alert('Offline Mode', 'Network error. Your request was saved locally and will be synced later.');
-              setCurrentStatus('away');
+              setStatus('away');
+              setLastActionTimestamp(timestamp);
               checkUnsyncedLogs();
             } else {
               Alert.alert('Error', error.response?.data?.error || 'Failed to step away');
@@ -200,9 +239,22 @@ export default function DashboardScreen() {
     try {
       const deviceId = await getUniqueDeviceId();
       const timestamp = new Date().toISOString();
+
+      // Optimistic Update if offline
+      if (!isConnected) {
+        saveOfflineRequest('POST', '/attendance/resume-work', { timestamp, deviceId });
+        setStatus('working');
+        setLastActionTimestamp(timestamp);
+        checkUnsyncedLogs();
+        Alert.alert('Offline Mode', 'Network error. Your request was saved locally and will be synced later.');
+        setLoading(false);
+        return;
+      }
+
       await api.post('/attendance/resume-work', { timestamp, deviceId });
       Alert.alert('Success', 'Welcome back! You have resumed work.');
-      setCurrentStatus('working');
+      setStatus('working');
+      setLastActionTimestamp(timestamp);
       fetchStatus(); // Refresh to update consumed time
     } catch (error: any) {
       if (!error.response) {
@@ -210,7 +262,8 @@ export default function DashboardScreen() {
         const timestamp = new Date().toISOString();
         saveOfflineRequest('POST', '/attendance/resume-work', { timestamp, deviceId });
         Alert.alert('Offline Mode', 'Network error. Your request was saved locally and will be synced later.');
-        setCurrentStatus('working');
+        setStatus('working');
+        setLastActionTimestamp(timestamp);
         checkUnsyncedLogs();
       } else {
         Alert.alert('Error', error.response?.data?.error || 'Failed to resume work');

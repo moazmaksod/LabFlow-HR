@@ -43,6 +43,8 @@ const secureStorage = {
   },
 };
 
+import { useAttendanceStore } from './useAttendanceStore';
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
@@ -52,6 +54,7 @@ export const useAuthStore = create<AuthState>()(
       login: (user, token) => set({ user, token, isAuthenticated: true }),
       logout: async () => {
         set({ user: null, token: null, isAuthenticated: false });
+        useAttendanceStore.getState().reset();
         try {
           await SecureStore.deleteItemAsync('labflow-mobile-auth');
         } catch (e) {
