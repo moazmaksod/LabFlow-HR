@@ -9,7 +9,7 @@ import { initLocalDb, saveOfflineLog, getUnsyncedLogs, markLogsAsSynced, getUnsy
 import { useNetworkStore } from '../store/useNetworkStore';
 import { getUniqueDeviceId } from '../utils/device';
 import { useAttendanceStore } from '../store/useAttendanceStore';
-import ShiftTimelineWidget from '../components/ShiftTimelineWidget';
+import SmartAttendanceCard from '../components/SmartAttendanceCard';
 
 export default function DashboardScreen() {
   const { user, logout } = useAuthStore();
@@ -327,80 +327,18 @@ export default function DashboardScreen() {
       </View>
 
       {userProfile && (
-        <ShiftTimelineWidget
+        <SmartAttendanceCard
           currentShift={userProfile.current_shift}
           currentStatus={currentStatus}
           consumedBreakMinutes={consumedBreakMinutes}
           activeSession={activeSession}
+          loading={loading}
+          handleClock={handleClock}
+          handleStepAway={handleStepAway}
+          handleResumeWork={handleResumeWork}
+          lunchBreakMinutes={userProfile.lunch_break_minutes || 0}
         />
       )}
-
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <Text style={styles.cardTitle}>Attendance</Text>
-          {currentStatus !== 'none' && (
-            <View style={[styles.statusBadge, currentStatus === 'working' ? styles.workingBadge : styles.awayBadge]}>
-              <Text style={styles.statusBadgeText}>{currentStatus === 'working' ? 'Working' : 'Away'}</Text>
-            </View>
-          )}
-        </View>
-        <Text style={styles.cardText}>
-          Make sure you are within the workplace radius before clocking in or out.
-        </Text>
-
-        {currentStatus !== 'none' && userProfile && (
-          <View style={styles.breakInfoContainer}>
-            <Text style={styles.breakInfoText}>
-              Break Time: {consumedBreakMinutes} / {userProfile.lunch_break_minutes || 0} mins
-            </Text>
-            {consumedBreakMinutes >= (userProfile.lunch_break_minutes || 0) && (
-              <Text style={styles.breakWarningText}>Break time exhausted</Text>
-            )}
-          </View>
-        )}
-
-        <View style={styles.buttonRow}>
-          {currentStatus === 'none' ? (
-            <TouchableOpacity 
-              style={[styles.clockButton, styles.clockInButton]} 
-              onPress={() => handleClock('check_in')}
-              disabled={loading}
-            >
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Clock In</Text>}
-            </TouchableOpacity>
-          ) : (
-            <>
-              {currentStatus === 'working' ? (
-                <TouchableOpacity 
-                  style={[styles.clockButton, styles.stepAwayButton]} 
-                  onPress={handleStepAway}
-                  disabled={loading}
-                >
-                  <Pause color="#fff" size={20} style={{ marginRight: 8 }} />
-                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Step Away</Text>}
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity 
-                  style={[styles.clockButton, styles.resumeButton]} 
-                  onPress={handleResumeWork}
-                  disabled={loading}
-                >
-                  <Play color="#fff" size={20} style={{ marginRight: 8 }} />
-                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Resume Work</Text>}
-                </TouchableOpacity>
-              )}
-              
-              <TouchableOpacity 
-                style={[styles.clockButton, styles.clockOutButton]} 
-                onPress={() => handleClock('check_out')}
-                disabled={loading}
-              >
-                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Clock Out</Text>}
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-      </View>
 
       <View style={styles.syncCard}>
         <View style={{ flex: 1 }}>
@@ -503,11 +441,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#18181b',
   },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  workingBadge: { backgroundColor: '#dcfce7' },
-  awayBadge: { backgroundColor: '#fef3c7' },
-  statusBadgeText: { fontSize: 10, fontWeight: '900', color: '#166534', letterSpacing: 0.5 },
   syncCard: {
     backgroundColor: '#fff', 
     padding: 24, 
@@ -521,18 +454,8 @@ const styles = StyleSheet.create({
   },
   cardTitle: { fontSize: 16, fontWeight: '800', color: '#18181b', textTransform: 'uppercase', letterSpacing: 1 },
   cardText: { fontSize: 13, color: '#71717a', lineHeight: 18, marginBottom: 16 },
-  buttonRow: { flexDirection: 'row', gap: 12 },
-  clockButton: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
-  clockInButton: { backgroundColor: '#10b981' }, // Emerald green
-  clockOutButton: { backgroundColor: '#ef4444' }, // Red
-  stepAwayButton: { backgroundColor: '#f59e0b' }, // Amber/Yellow
-  resumeButton: { backgroundColor: '#3b82f6' }, // Blue
   syncButton: { backgroundColor: '#f4f4f5', padding: 12, borderRadius: 12 },
   syncButtonDisabled: { opacity: 0.5 },
   syncButtonText: { color: '#18181b', fontWeight: '600' },
   logoutButton: { backgroundColor: '#ef4444', padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 24 },
-  buttonText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  breakInfoContainer: { backgroundColor: '#f4f4f5', padding: 12, borderRadius: 12, marginBottom: 16 },
-  breakInfoText: { fontSize: 13, color: '#3f3f46', fontWeight: '600' },
-  breakWarningText: { fontSize: 11, color: '#ef4444', marginTop: 4, fontWeight: '800', textTransform: 'uppercase' },
 });

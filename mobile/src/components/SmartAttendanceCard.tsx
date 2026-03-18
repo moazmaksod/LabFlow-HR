@@ -1,12 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Clock, Calendar, Play, Pause } from 'lucide-react-native';
 
-interface ShiftTimelineWidgetProps {
+interface SmartAttendanceCardProps {
   currentShift: any | null;
   currentStatus: 'working' | 'away' | 'none';
   consumedBreakMinutes: number;
   activeSession: any | null;
+  loading: boolean;
+  handleClock: (type: 'check_in' | 'check_out') => void;
+  handleStepAway: () => void;
+  handleResumeWork: () => void;
+  lunchBreakMinutes: number;
 }
 
 const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -32,12 +37,17 @@ const formatTime = (timeStr: string) => {
   return `${h12}:${m.toString().padStart(2, '0')} ${ampm}`;
 };
 
-export default function ShiftTimelineWidget({
+export default function SmartAttendanceCard({
   currentShift,
   currentStatus,
   consumedBreakMinutes,
-  activeSession
-}: ShiftTimelineWidgetProps) {
+  activeSession,
+  loading,
+  handleClock,
+  handleStepAway,
+  handleResumeWork,
+  lunchBreakMinutes
+}: SmartAttendanceCardProps) {
   const [nowMins, setNowMins] = useState(() => {
     const d = new Date();
     return d.getHours() * 60 + d.getMinutes();
@@ -56,10 +66,25 @@ export default function ShiftTimelineWidget({
   if (!todayShift) {
     return (
       <View style={styles.container}>
-        <View style={styles.noShiftCard}>
-          <Calendar color="#64748b" size={24} />
-          <Text style={styles.noShiftTitle}>No Shift Today</Text>
-          <Text style={styles.noShiftText}>Enjoy your day off!</Text>
+        <View style={styles.timelineCard}>
+          <View style={styles.timelineHeader}>
+            <View>
+              <Text style={styles.timelineTitle}>No Shift Today</Text>
+              <Text style={styles.timelineSubtitle}>Enjoy your day off!</Text>
+            </View>
+            <View style={[styles.statusBadge, styles.statusNone]}>
+              <Text style={[styles.statusText, styles.statusTextNone]}>Off Duty</Text>
+            </View>
+          </View>
+          <View style={styles.buttonRow}>
+            <TouchableOpacity 
+              style={[styles.clockButton, styles.clockInButton]} 
+              onPress={() => handleClock('check_in')}
+              disabled={loading}
+            >
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Clock In Anyway</Text>}
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     );
@@ -105,14 +130,15 @@ export default function ShiftTimelineWidget({
   if (nowPct < 0) nowPct = 0;
   if (nowPct > 100) nowPct = 100;
 
+  const isClockedIn = currentStatus === 'working' || currentStatus === 'away';
+
   return (
     <View style={styles.container}>
-      {/* Main Timeline Card */}
       <View style={styles.timelineCard}>
         <View style={styles.timelineHeader}>
           <View>
             <Text style={styles.timelineTitle}>
-              Scheduled Shift {dayDiff !== 0 ? `(${shiftDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })})` : ''}
+              {dayDiff === 0 ? 'Current Shift' : 'Next Shift'} {dayDiff !== 0 ? `(${shiftDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })})` : ''}
             </Text>
             <Text style={styles.timelineSubtitle}>{formatTime(todayShift.start)} - {formatTime(todayShift.end)}</Text>
           </View>
@@ -120,61 +146,120 @@ export default function ShiftTimelineWidget({
             {currentStatus === 'working' && <Play size={12} color="#10b981" style={{ marginRight: 4 }} />}
             {currentStatus === 'away' && <Pause size={12} color="#f59e0b" style={{ marginRight: 4 }} />}
             <Text style={[styles.statusText, currentStatus === 'working' ? styles.statusTextWorking : currentStatus === 'away' ? styles.statusTextAway : styles.statusTextNone]}>
-              {currentStatus === 'working' ? 'Active' : currentStatus === 'away' ? 'On Break' : 'Inactive'}
+              {currentStatus === 'working' ? 'Working' : currentStatus === 'away' ? 'Away' : 'Off Duty'}
             </Text>
           </View>
         </View>
 
-        {/* The Visual Timeline */}
-        <View style={styles.timelineWrapper}>
-          <View style={styles.timelineTrack}>
-            {/* Worked Segment */}
-            <View style={[styles.timelineSegment, styles.segmentWorked, { width: `${workedPct}%` }]} />
-            {/* Break Segment */}
-            <View style={[styles.timelineSegment, styles.segmentBreak, { width: `${breakPct}%` }]} />
-            {/* Remaining Segment */}
-            <View style={[styles.timelineSegment, styles.segmentRemaining, { width: `${remainingPct}%` }]} />
-          </View>
-          
-          {/* "Now" Indicator */}
-          <View style={[styles.nowIndicator, { left: `${nowPct}%` }]}>
-            <View style={styles.nowIndicatorLine} />
-            <View style={styles.nowIndicatorDot} />
-          </View>
-        </View>
+        {isClockedIn && (
+          <>
+            {/* The Visual Timeline */}
+            <View style={styles.timelineWrapper}>
+              <View style={styles.timelineTrack}>
+                {/* Worked Segment */}
+                <View style={[styles.timelineSegment, styles.segmentWorked, { width: `${workedPct}%` }]} />
+                {/* Break Segment */}
+                <View style={[styles.timelineSegment, styles.segmentBreak, { width: `${breakPct}%` }]} />
+                {/* Remaining Segment */}
+                <View style={[styles.timelineSegment, styles.segmentRemaining, { width: `${remainingPct}%` }]} />
+              </View>
+              
+              {/* "Now" Indicator */}
+              <View style={[styles.nowIndicator, { left: `${nowPct}%` }]}>
+                <View style={styles.nowIndicatorLine} />
+                <View style={styles.nowIndicatorDot} />
+              </View>
+            </View>
 
-        {/* Timeline Labels */}
-        <View style={styles.timelineLabels}>
-          <Text style={styles.timelineLabelText}>{formatTime(todayShift.start)}</Text>
-          <Text style={styles.timelineLabelText}>{formatTime(todayShift.end)}</Text>
-        </View>
+            {/* Timeline Labels */}
+            <View style={styles.timelineLabels}>
+              <Text style={styles.timelineLabelText}>{formatTime(todayShift.start)}</Text>
+              <Text style={styles.timelineLabelText}>{formatTime(todayShift.end)}</Text>
+            </View>
 
-        {/* Stats Row */}
-        <View style={styles.statsRow}>
-          <View style={styles.statBox}>
-            <View style={[styles.statDot, { backgroundColor: '#10b981' }]} />
-            <View>
-              <Text style={styles.statLabel}>Worked</Text>
-              <Text style={styles.statValue}>{formatDuration(workedMins)}</Text>
+            {/* Stats Row */}
+            <View style={styles.statsRow}>
+              <View style={styles.statBox}>
+                <View style={[styles.statDot, { backgroundColor: '#10b981' }]} />
+                <View>
+                  <Text style={styles.statLabel}>Worked</Text>
+                  <Text style={styles.statValue}>{formatDuration(workedMins)}</Text>
+                </View>
+              </View>
+              <View style={styles.statBox}>
+                <View style={[styles.statDot, { backgroundColor: '#f59e0b' }]} />
+                <View>
+                  <Text style={styles.statLabel}>Break</Text>
+                  <Text style={styles.statValue}>{formatDuration(breakMins)}</Text>
+                </View>
+              </View>
+              <View style={styles.statBox}>
+                <View style={[styles.statDot, { backgroundColor: '#e2e8f0' }]} />
+                <View>
+                  <Text style={styles.statLabel}>Remaining</Text>
+                  <Text style={styles.statValue}>{formatDuration(remainingMins)}</Text>
+                </View>
+              </View>
             </View>
-          </View>
-          <View style={styles.statBox}>
-            <View style={[styles.statDot, { backgroundColor: '#f59e0b' }]} />
-            <View>
-              <Text style={styles.statLabel}>Break</Text>
-              <Text style={styles.statValue}>{formatDuration(breakMins)}</Text>
+
+            {/* Break Info */}
+            <View style={styles.breakInfoContainer}>
+              <Text style={styles.breakInfoText}>
+                Break Time: {consumedBreakMinutes} / {lunchBreakMinutes} mins
+              </Text>
+              {consumedBreakMinutes >= lunchBreakMinutes && (
+                <Text style={styles.breakWarningText}>Break time exhausted</Text>
+              )}
             </View>
-          </View>
-          <View style={styles.statBox}>
-            <View style={[styles.statDot, { backgroundColor: '#e2e8f0' }]} />
-            <View>
-              <Text style={styles.statLabel}>Remaining</Text>
-              <Text style={styles.statValue}>{formatDuration(remainingMins)}</Text>
-            </View>
-          </View>
+          </>
+        )}
+
+        <Text style={styles.radiusWarning}>
+          Make sure you are within the workplace radius before clocking in or out.
+        </Text>
+
+        <View style={styles.buttonRow}>
+          {!isClockedIn ? (
+            <TouchableOpacity 
+              style={[styles.clockButton, styles.clockInButton]} 
+              onPress={() => handleClock('check_in')}
+              disabled={loading}
+            >
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Clock In</Text>}
+            </TouchableOpacity>
+          ) : (
+            <>
+              {currentStatus === 'working' ? (
+                <TouchableOpacity 
+                  style={[styles.clockButton, styles.stepAwayButton]} 
+                  onPress={handleStepAway}
+                  disabled={loading}
+                >
+                  <Pause color="#fff" size={20} style={{ marginRight: 8 }} />
+                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Step Away</Text>}
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity 
+                  style={[styles.clockButton, styles.resumeButton]} 
+                  onPress={handleResumeWork}
+                  disabled={loading}
+                >
+                  <Play color="#fff" size={20} style={{ marginRight: 8 }} />
+                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Resume Work</Text>}
+                </TouchableOpacity>
+              )}
+              
+              <TouchableOpacity 
+                style={[styles.clockButton, styles.clockOutButton]} 
+                onPress={() => handleClock('check_out')}
+                disabled={loading}
+              >
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Clock Out</Text>}
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </View>
-
     </View>
   );
 }
@@ -358,5 +443,60 @@ const styles = StyleSheet.create({
   noShiftText: {
     fontSize: 14,
     color: '#64748b',
+  },
+  breakInfoContainer: {
+    backgroundColor: '#f4f4f5',
+    padding: 12,
+    borderRadius: 12,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  breakInfoText: {
+    fontSize: 13,
+    color: '#3f3f46',
+    fontWeight: '600',
+  },
+  breakWarningText: {
+    fontSize: 11,
+    color: '#ef4444',
+    marginTop: 4,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  radiusWarning: {
+    fontSize: 12,
+    color: '#71717a',
+    textAlign: 'center',
+    marginTop: 16,
+    marginBottom: 12,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  clockButton: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  clockInButton: {
+    backgroundColor: '#10b981',
+  },
+  clockOutButton: {
+    backgroundColor: '#ef4444',
+  },
+  stepAwayButton: {
+    backgroundColor: '#f59e0b',
+  },
+  resumeButton: {
+    backgroundColor: '#3b82f6',
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });

@@ -222,7 +222,7 @@ export default function ProfileScreen() {
               shiftText = shifts.map((s: any) => {
                 if (typeof s === 'string') return s;
                 return `${formatTime(s.start)} - ${formatTime(s.end)}`;
-              }).join(', ');
+              }).join('\n');
             }
 
             return (
