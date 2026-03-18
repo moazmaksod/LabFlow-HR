@@ -9,11 +9,13 @@ import { initLocalDb, saveOfflineLog, getUnsyncedLogs, markLogsAsSynced, getUnsy
 import { useNetworkStore } from '../store/useNetworkStore';
 import { getUniqueDeviceId } from '../utils/device';
 import { useAttendanceStore } from '../store/useAttendanceStore';
+import ShiftTimelineWidget from '../components/ShiftTimelineWidget';
 
 export default function DashboardScreen() {
   const { user, logout } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [unsyncedCount, setUnsyncedCount] = useState(0);
+  const [activeSession, setActiveSession] = useState<any>(null);
   const { isSyncing, syncOfflineRecords, isConnected } = useNetworkStore();
   
   const { 
@@ -58,13 +60,14 @@ export default function DashboardScreen() {
       const logs = response.data;
       const today = new Date().toISOString().split('T')[0];
       // Check if there is an active session (today and check_out is null)
-      const activeSession = logs.find((l: any) => l.date === today && !l.check_out);
-      if (activeSession) {
-        setStatus(activeSession.current_status || 'working');
+      const session = logs.find((l: any) => l.date === today && !l.check_out);
+      setActiveSession(session || null);
+      if (session) {
+        setStatus(session.current_status || 'working');
         
         let consumed = 0;
-        if (activeSession.breaks && Array.isArray(activeSession.breaks)) {
-          activeSession.breaks.forEach((b: any) => {
+        if (session.breaks && Array.isArray(session.breaks)) {
+          session.breaks.forEach((b: any) => {
             const start = new Date(b.start_time).getTime();
             const end = b.end_time ? new Date(b.end_time).getTime() : new Date().getTime();
             consumed += (end - start) / (1000 * 60);
@@ -323,6 +326,15 @@ export default function DashboardScreen() {
           <LogOut color="#ef4444" size={24} />
         </TouchableOpacity>
       </View>
+
+      {userProfile?.weekly_schedule && (
+        <ShiftTimelineWidget
+          schedule={userProfile.weekly_schedule}
+          currentStatus={currentStatus}
+          consumedBreakMinutes={consumedBreakMinutes}
+          activeSession={activeSession}
+        />
+      )}
 
       <View style={styles.card}>
         <View style={styles.cardHeader}>
