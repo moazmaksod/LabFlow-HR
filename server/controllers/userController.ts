@@ -141,9 +141,12 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
                 p.age, p.gender, p.profile_picture_url, p.status,
                 p.weekly_schedule, p.hourly_rate, p.lunch_break_minutes,
                 p.emergency_contact_name, p.emergency_contact_phone, p.leave_balance,
-                p.bio, p.personal_phone, p.legal_name, p.id_photo_url, p.hire_date
+                p.bio, p.personal_phone, p.legal_name, p.id_photo_url, p.hire_date,
+                p.allow_overtime, p.max_overtime_hours,
+                p.job_id, j.title as job_title
             FROM users u
             LEFT JOIN profiles p ON u.id = p.user_id
+            LEFT JOIN jobs j ON p.job_id = j.id
             WHERE u.id = ?
         `).get(userId);
 
@@ -162,82 +165,75 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
 export const updateProfile = (req: AuthRequest, res: Response): void => {
     try {
         const userId = req.user!.id;
-        const { 
-            name, age, gender, profile_picture_url,
-            weekly_schedule, hourly_rate, lunch_break_minutes,
-            emergency_contact_name, emergency_contact_phone, leave_balance,
-            bio, personal_phone, legal_name, id_photo_url, hire_date
-        } = req.body;
+        const body = req.body;
 
         const updateTransaction = db.transaction(() => {
             const oldUser = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
             const oldProfile = db.prepare('SELECT * FROM profiles WHERE user_id = ?').get(userId);
 
-            if (name) {
-                db.prepare('UPDATE users SET name = ? WHERE id = ?').run(name, userId);
+            if (body.name) {
+                db.prepare('UPDATE users SET name = ? WHERE id = ?').run(body.name, userId);
             }
 
             const profileExists = db.prepare('SELECT id FROM profiles WHERE user_id = ?').get(userId);
             if (profileExists) {
-                db.prepare(`
-                    UPDATE profiles 
-                    SET age = COALESCE(?, age), 
-                        gender = COALESCE(?, gender), 
-                        profile_picture_url = COALESCE(?, profile_picture_url),
-                        weekly_schedule = COALESCE(?, weekly_schedule),
-                        hourly_rate = COALESCE(?, hourly_rate),
-                        lunch_break_minutes = COALESCE(?, lunch_break_minutes),
-                        emergency_contact_name = COALESCE(?, emergency_contact_name),
-                        emergency_contact_phone = COALESCE(?, emergency_contact_phone),
-                        leave_balance = COALESCE(?, leave_balance),
-                        bio = COALESCE(?, bio),
-                        personal_phone = COALESCE(?, personal_phone),
-                        legal_name = COALESCE(?, legal_name),
-                        id_photo_url = COALESCE(?, id_photo_url),
-                        hire_date = COALESCE(?, hire_date)
-                    WHERE user_id = ?
-                `).run(
-                    age || null, 
-                    gender || null, 
-                    profile_picture_url || null,
-                    weekly_schedule ? JSON.stringify(weekly_schedule) : null,
-                    hourly_rate !== undefined ? hourly_rate : null,
-                    lunch_break_minutes !== undefined ? lunch_break_minutes : null,
-                    emergency_contact_name || null,
-                    emergency_contact_phone || null,
-                    leave_balance !== undefined ? leave_balance : null,
-                    bio || null,
-                    personal_phone || null,
-                    legal_name || null,
-                    id_photo_url || null,
-                    hire_date || null,
-                    userId
-                );
+                // Build dynamic update query to allow setting fields to NULL
+                const fields = [];
+                const values = [];
+
+                const allowedFields = [
+                    'age', 'gender', 'profile_picture_url', 'weekly_schedule', 
+                    'hourly_rate', 'lunch_break_minutes', 'emergency_contact_name', 
+                    'emergency_contact_phone', 'leave_balance', 'bio', 'personal_phone', 
+                    'legal_name', 'id_photo_url', 'hire_date', 'allow_overtime', 'max_overtime_hours'
+                ];
+
+                for (const field of allowedFields) {
+                    if (Object.prototype.hasOwnProperty.call(body, field)) {
+                        fields.push(`${field} = ?`);
+                        let value = body[field];
+                        if (field === 'weekly_schedule' && value) {
+                            value = typeof value === 'string' ? value : JSON.stringify(value);
+                        }
+                        if (field === 'allow_overtime') {
+                            value = value ? 1 : 0;
+                        }
+                        values.push(value === undefined ? null : value);
+                    }
+                }
+
+                if (fields.length > 0) {
+                    values.push(userId);
+                    db.prepare(`UPDATE profiles SET ${fields.join(', ')} WHERE user_id = ?`).run(...values);
+                }
             } else {
                 db.prepare(`
                     INSERT INTO profiles (
                         user_id, age, gender, profile_picture_url, status,
                         weekly_schedule, hourly_rate, lunch_break_minutes,
                         emergency_contact_name, emergency_contact_phone, leave_balance,
-                        bio, personal_phone, legal_name, id_photo_url, hire_date
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        bio, personal_phone, legal_name, id_photo_url, hire_date,
+                        allow_overtime, max_overtime_hours
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `).run(
                     userId, 
-                    age || null, 
-                    gender || null, 
-                    profile_picture_url || null, 
+                    body.age || null, 
+                    body.gender || null, 
+                    body.profile_picture_url || null, 
                     'active',
-                    weekly_schedule ? JSON.stringify(weekly_schedule) : null,
-                    hourly_rate || 0,
-                    lunch_break_minutes || 0,
-                    emergency_contact_name || null,
-                    emergency_contact_phone || null,
-                    leave_balance || 21,
-                    bio || null,
-                    personal_phone || null,
-                    legal_name || null,
-                    id_photo_url || null,
-                    hire_date || null
+                    body.weekly_schedule ? JSON.stringify(body.weekly_schedule) : null,
+                    body.hourly_rate || 0,
+                    body.lunch_break_minutes || 0,
+                    body.emergency_contact_name || null,
+                    body.emergency_contact_phone || null,
+                    body.leave_balance || 21,
+                    body.bio || null,
+                    body.personal_phone || null,
+                    body.legal_name || null,
+                    body.id_photo_url || null,
+                    body.hire_date || null,
+                    body.allow_overtime ? 1 : 0,
+                    body.max_overtime_hours || 0
                 );
             }
 
@@ -259,9 +255,13 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
                 u.id, u.name, u.email, u.role,
                 p.age, p.gender, p.profile_picture_url,
                 p.weekly_schedule, p.hourly_rate, p.lunch_break_minutes,
-                p.emergency_contact_name, p.emergency_contact_phone, p.leave_balance
+                p.emergency_contact_name, p.emergency_contact_phone, p.leave_balance,
+                p.bio, p.personal_phone, p.legal_name, p.id_photo_url, p.hire_date,
+                p.allow_overtime, p.max_overtime_hours,
+                p.job_id, j.title as job_title
             FROM users u
             LEFT JOIN profiles p ON u.id = p.user_id
+            LEFT JOIN jobs j ON p.job_id = j.id
             WHERE u.id = ?
         `).get(userId);
 
@@ -307,14 +307,7 @@ export const getUserById = (req: Request, res: Response): void => {
 export const updateUserProfile = (req: Request, res: Response): void => {
     try {
         const { id } = req.params;
-        const { 
-            name, age, gender, profile_picture_url,
-            weekly_schedule, hourly_rate, lunch_break_minutes,
-            emergency_contact_name, emergency_contact_phone, leave_balance,
-            job_id, status, suspension_reason,
-            allow_overtime, max_overtime_hours,
-            bio, personal_phone, legal_name, id_photo_url, hire_date
-        } = req.body;
+        const body = req.body;
 
         const updateTransaction = db.transaction(() => {
             const oldUser = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
@@ -328,57 +321,45 @@ export const updateUserProfile = (req: Request, res: Response): void => {
                 roleToSet = 'employee';
             }
 
-            if (name || roleToSet) {
+            if (body.name || roleToSet) {
                 db.prepare('UPDATE users SET name = COALESCE(?, name), role = COALESCE(?, role) WHERE id = ?')
-                  .run(name || null, roleToSet || null, id);
+                  .run(body.name || null, roleToSet || null, id);
             }
 
             const profileExists = db.prepare('SELECT id FROM profiles WHERE user_id = ?').get(id);
             if (profileExists) {
-                db.prepare(`
-                    UPDATE profiles 
-                    SET age = COALESCE(?, age), 
-                        gender = COALESCE(?, gender), 
-                        profile_picture_url = COALESCE(?, profile_picture_url),
-                        weekly_schedule = COALESCE(?, weekly_schedule),
-                        hourly_rate = COALESCE(?, hourly_rate),
-                        lunch_break_minutes = COALESCE(?, lunch_break_minutes),
-                        emergency_contact_name = COALESCE(?, emergency_contact_name),
-                        emergency_contact_phone = COALESCE(?, emergency_contact_phone),
-                        leave_balance = COALESCE(?, leave_balance),
-                        job_id = COALESCE(?, job_id),
-                        status = COALESCE(?, status),
-                        suspension_reason = COALESCE(?, suspension_reason),
-                        allow_overtime = COALESCE(?, allow_overtime),
-                        max_overtime_hours = COALESCE(?, max_overtime_hours),
-                        bio = COALESCE(?, bio),
-                        personal_phone = COALESCE(?, personal_phone),
-                        legal_name = COALESCE(?, legal_name),
-                        id_photo_url = COALESCE(?, id_photo_url),
-                        hire_date = COALESCE(?, hire_date)
-                    WHERE user_id = ?
-                `).run(
-                    age || null, 
-                    gender || null, 
-                    profile_picture_url || null,
-                    weekly_schedule ? (typeof weekly_schedule === 'string' ? weekly_schedule : JSON.stringify(weekly_schedule)) : null,
-                    hourly_rate !== undefined ? hourly_rate : null,
-                    lunch_break_minutes !== undefined ? lunch_break_minutes : null,
-                    emergency_contact_name || null,
-                    emergency_contact_phone || null,
-                    leave_balance !== undefined ? leave_balance : null,
-                    job_id !== undefined ? job_id : null,
-                    status || null,
-                    status === 'suspended' ? suspension_reason : null,
-                    allow_overtime !== undefined ? (allow_overtime ? 1 : 0) : null,
-                    max_overtime_hours !== undefined ? max_overtime_hours : null,
-                    bio || null,
-                    personal_phone || null,
-                    legal_name || null,
-                    id_photo_url || null,
-                    hire_date || null,
-                    id
-                );
+                const fields = [];
+                const values = [];
+
+                const allowedFields = [
+                    'age', 'gender', 'profile_picture_url', 'weekly_schedule', 
+                    'hourly_rate', 'lunch_break_minutes', 'emergency_contact_name', 
+                    'emergency_contact_phone', 'leave_balance', 'job_id', 'status', 
+                    'suspension_reason', 'allow_overtime', 'max_overtime_hours', 
+                    'bio', 'personal_phone', 'legal_name', 'id_photo_url', 'hire_date'
+                ];
+
+                for (const field of allowedFields) {
+                    if (Object.prototype.hasOwnProperty.call(body, field)) {
+                        fields.push(`${field} = ?`);
+                        let value = body[field];
+                        if (field === 'weekly_schedule' && value) {
+                            value = typeof value === 'string' ? value : JSON.stringify(value);
+                        }
+                        if (field === 'allow_overtime') {
+                            value = value ? 1 : 0;
+                        }
+                        if (field === 'suspension_reason' && body.status !== 'suspended') {
+                            value = null;
+                        }
+                        values.push(value === undefined ? null : value);
+                    }
+                }
+
+                if (fields.length > 0) {
+                    values.push(id);
+                    db.prepare(`UPDATE profiles SET ${fields.join(', ')} WHERE user_id = ?`).run(...values);
+                }
             } else {
                 db.prepare(`
                     INSERT INTO profiles (
@@ -390,25 +371,25 @@ export const updateUserProfile = (req: Request, res: Response): void => {
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `).run(
                     id, 
-                    age || null, 
-                    gender || null, 
-                    profile_picture_url || null, 
-                    status || 'active',
-                    status === 'suspended' ? suspension_reason : null,
-                    weekly_schedule ? (typeof weekly_schedule === 'string' ? weekly_schedule : JSON.stringify(weekly_schedule)) : null,
-                    hourly_rate || 0,
-                    lunch_break_minutes || 0,
-                    emergency_contact_name || null,
-                    emergency_contact_phone || null,
-                    leave_balance || 21,
-                    job_id || null,
-                    allow_overtime ? 1 : 0,
-                    max_overtime_hours || 0,
-                    bio || null,
-                    personal_phone || null,
-                    legal_name || null,
-                    id_photo_url || null,
-                    hire_date || null
+                    body.age || null, 
+                    body.gender || null, 
+                    body.profile_picture_url || null, 
+                    body.status || 'active',
+                    body.status === 'suspended' ? body.suspension_reason : null,
+                    body.weekly_schedule ? (typeof body.weekly_schedule === 'string' ? body.weekly_schedule : JSON.stringify(body.weekly_schedule)) : null,
+                    body.hourly_rate || 0,
+                    body.lunch_break_minutes || 0,
+                    body.emergency_contact_name || null,
+                    body.emergency_contact_phone || null,
+                    body.leave_balance || 21,
+                    body.job_id || null,
+                    body.allow_overtime ? 1 : 0,
+                    body.max_overtime_hours || 0,
+                    body.bio || null,
+                    body.personal_phone || null,
+                    body.legal_name || null,
+                    body.id_photo_url || null,
+                    body.hire_date || null
                 );
             }
 

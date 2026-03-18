@@ -312,14 +312,7 @@ export default function DashboardScreen() {
       <View style={styles.header}>
         <View style={styles.headerMain}>
           <Text style={styles.title}>{user?.name}</Text>
-          <View style={styles.roleBadge}>
-            <Briefcase size={12} color="#71717a" style={{ marginRight: 4 }} />
-            <Text style={styles.roleText}>{userProfile?.job_title || 'Unassigned Role'}</Text>
-          </View>
-          <View style={styles.tenureContainer}>
-            <Calendar size={12} color="#71717a" style={{ marginRight: 4 }} />
-            <Text style={styles.tenureText}>Tenure: {calculateTenure(userProfile?.hire_date)}</Text>
-          </View>
+          <Text style={styles.subtitle}>Welcome back to your dashboard</Text>
         </View>
         <TouchableOpacity
           onPress={logout}
@@ -331,59 +324,6 @@ export default function DashboardScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Job Details Section */}
-      <View style={styles.detailsCard}>
-        <View style={styles.cardHeader}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Info size={18} color="#18181b" style={{ marginRight: 8 }} />
-            <Text style={styles.cardTitle}>Job Details</Text>
-          </View>
-          <View style={[styles.statusBadge, userProfile?.status === 'active' ? styles.workingBadge : styles.awayBadge]}>
-            <Text style={styles.statusBadgeText}>{userProfile?.status?.toUpperCase() || 'ACTIVE'}</Text>
-          </View>
-        </View>
-        
-        <View style={styles.detailsGrid}>
-          <View style={styles.detailItem}>
-            <DollarSign size={14} color="#71717a" />
-            <View style={styles.detailContent}>
-              <Text style={styles.detailLabel}>Hourly Rate</Text>
-              <Text style={styles.detailValue}>${userProfile?.hourly_rate || 0}/hr</Text>
-            </View>
-          </View>
-          
-          <View style={styles.detailItem}>
-            <Calendar size={14} color="#71717a" />
-            <View style={styles.detailContent}>
-              <Text style={styles.detailLabel}>Leave Balance</Text>
-              <Text style={styles.detailValue}>{userProfile?.leave_balance || 0} days</Text>
-            </View>
-          </View>
-
-          <View style={styles.detailItem}>
-            <Clock size={14} color="#71717a" />
-            <View style={styles.detailContent}>
-              <Text style={styles.detailLabel}>Max OT Hours</Text>
-              <Text style={styles.detailValue}>{userProfile?.max_overtime_hours || 0}h/wk</Text>
-            </View>
-          </View>
-
-          <View style={styles.detailItem}>
-            <Shield size={14} color="#71717a" />
-            <View style={styles.detailContent}>
-              <Text style={styles.detailLabel}>Lunch Break</Text>
-              <Text style={styles.detailValue}>{userProfile?.lunch_break_minutes || 0} mins</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.scheduleSummary}>
-          <LayoutDashboard size={14} color="#71717a" />
-          <Text style={styles.scheduleLabel}>Schedule:</Text>
-          <Text style={styles.scheduleValue}>{formatSchedule(userProfile?.weekly_schedule)}</Text>
-        </View>
-      </View>
-      
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <Text style={styles.cardTitle}>Attendance</Text>

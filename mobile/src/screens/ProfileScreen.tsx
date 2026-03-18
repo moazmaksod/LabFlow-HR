@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { User, Camera, Save, LogOut, Mail, UserCircle, Lock } from 'lucide-react-native';
+import { User, Camera, Save, LogOut, Mail, UserCircle, Lock, Info, DollarSign, Calendar, Clock, Shield, LayoutDashboard } from 'lucide-react-native';
 import api from '../lib/axios';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNetworkStore } from '../store/useNetworkStore';
@@ -12,6 +12,7 @@ const BASE_URL = API_URL.replace('/api', '');
 
 export default function ProfileScreen() {
   const { user, logout, login } = useAuthStore();
+  const [userProfile, setUserProfile] = useState<any>(null);
   const [name, setName] = useState(user?.name || '');
   const [bio, setBio] = useState('');
   const [personalPhone, setPersonalPhone] = useState('');
@@ -37,6 +38,7 @@ export default function ProfileScreen() {
     try {
       const response = await api.get('/users/profile');
       const data = response.data;
+      setUserProfile(data);
       setName(data.name);
       setBio(data.bio || '');
       setPersonalPhone(data.personal_phone || '');
@@ -135,6 +137,7 @@ export default function ProfileScreen() {
         gender: gender || null,
       });
 
+      setUserProfile(response.data);
       // Update local user state if name changed
       if (user) {
         login({ ...user, name: response.data.name }, useAuthStore.getState().token!);
@@ -149,6 +152,68 @@ export default function ProfileScreen() {
       Alert.alert('Profile Update', message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const calculateTenure = (hireDate: string | null) => {
+    if (!hireDate) return 'Not set';
+    const start = new Date(hireDate);
+    const now = new Date();
+    
+    let years = now.getFullYear() - start.getFullYear();
+    let months = now.getMonth() - start.getMonth();
+    
+    if (months < 0) {
+      years--;
+      months += 12;
+    }
+    
+    const parts = [];
+    if (years > 0) parts.push(`${years} year${years > 1 ? 's' : ''}`);
+    if (months > 0) parts.push(`${months} month${months > 1 ? 's' : ''}`);
+    
+    return parts.length > 0 ? parts.join(', ') : 'Less than a month';
+  };
+
+  const renderScheduleTable = (scheduleStr: string | null) => {
+    if (!scheduleStr) return <Text style={styles.noData}>No schedule set</Text>;
+    try {
+      const schedule = JSON.parse(scheduleStr);
+      const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+      
+      return (
+        <View style={styles.scheduleTable}>
+          <View style={styles.tableHeader}>
+            <Text style={[styles.tableHeaderText, { flex: 1 }]}>Day</Text>
+            <Text style={[styles.tableHeaderText, { flex: 2 }]}>Working Hours</Text>
+          </View>
+          {days.map((day) => {
+            const shifts = schedule[day];
+            const isActive = Array.isArray(shifts) && shifts.length > 0;
+            
+            let shiftText = 'Off';
+            if (isActive) {
+              shiftText = shifts.map((s: any) => {
+                if (typeof s === 'string') return s;
+                return `${s.start} - ${s.end}`;
+              }).join(', ');
+            }
+
+            return (
+              <View key={day} style={styles.tableRow}>
+                <Text style={[styles.tableCell, { flex: 1, textTransform: 'capitalize', fontWeight: isActive ? '600' : '400' }]}>
+                  {day.substring(0, 3)}
+                </Text>
+                <Text style={[styles.tableCell, { flex: 2, color: isActive ? '#18181b' : '#a1a1aa' }]}>
+                  {shiftText}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      );
+    } catch (e) {
+      return <Text style={styles.noData}>Invalid schedule format</Text>;
     }
   };
 
@@ -184,7 +249,11 @@ export default function ProfileScreen() {
           </View>
         </TouchableOpacity>
         <Text style={styles.userName}>{name}</Text>
-        <Text style={styles.userRole}>{user?.role.toUpperCase()}</Text>
+        <Text style={styles.userRole}>{userProfile?.job_title || user?.role.toUpperCase()}</Text>
+        <View style={styles.tenureHeader}>
+          <Calendar size={12} color="#71717a" style={{ marginRight: 4 }} />
+          <Text style={styles.tenureHeaderText}>Tenure: {calculateTenure(userProfile?.hire_date)}</Text>
+        </View>
       </View>
 
       <View style={styles.form}>
@@ -263,13 +332,9 @@ export default function ProfileScreen() {
               />
             </View>
           </View>
-        </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Emergency Contact</Text>
-          
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Contact Name</Text>
+            <Text style={styles.label}>Emergency Contact Name</Text>
             <View style={styles.inputWrapper}>
               <TextInput
                 style={styles.input}
@@ -281,7 +346,7 @@ export default function ProfileScreen() {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Contact Phone</Text>
+            <Text style={styles.label}>Emergency Contact Phone</Text>
             <View style={styles.inputWrapper}>
               <TextInput
                 style={styles.input}
@@ -290,6 +355,54 @@ export default function ProfileScreen() {
                 placeholder="+1 234 567 890"
                 keyboardType="phone-pad"
               />
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Job Details</Text>
+          
+          <View style={styles.detailsCard}>
+            <View style={styles.detailsGrid}>
+              <View style={styles.detailItem}>
+                <DollarSign size={16} color="#71717a" />
+                <View style={styles.detailContent}>
+                  <Text style={styles.detailLabel}>Hourly Rate</Text>
+                  <Text style={styles.detailValue}>${userProfile?.hourly_rate || 0}/hr</Text>
+                </View>
+              </View>
+              
+              <View style={styles.detailItem}>
+                <Calendar size={16} color="#71717a" />
+                <View style={styles.detailContent}>
+                  <Text style={styles.detailLabel}>Leave Balance</Text>
+                  <Text style={styles.detailValue}>{userProfile?.leave_balance || 0} days</Text>
+                </View>
+              </View>
+
+              <View style={styles.detailItem}>
+                <Clock size={16} color="#71717a" />
+                <View style={styles.detailContent}>
+                  <Text style={styles.detailLabel}>Max OT Hours</Text>
+                  <Text style={styles.detailValue}>{userProfile?.max_overtime_hours || 0}h/wk</Text>
+                </View>
+              </View>
+
+              <View style={styles.detailItem}>
+                <Shield size={16} color="#71717a" />
+                <View style={styles.detailContent}>
+                  <Text style={styles.detailLabel}>Lunch Break</Text>
+                  <Text style={styles.detailValue}>{userProfile?.lunch_break_minutes || 0} mins</Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.scheduleSection}>
+              <View style={styles.scheduleHeader}>
+                <LayoutDashboard size={16} color="#71717a" style={{ marginRight: 8 }} />
+                <Text style={styles.scheduleTitle}>Working Hours Schedule</Text>
+              </View>
+              {renderScheduleTable(userProfile?.weekly_schedule)}
             </View>
           </View>
         </View>
@@ -336,6 +449,8 @@ const styles = StyleSheet.create({
   cameraIcon: { position: 'absolute', bottom: 4, right: 4, backgroundColor: '#18181b', padding: 8, borderRadius: 20, borderWidth: 3, borderColor: '#fff' },
   userName: { fontSize: 24, fontWeight: 'bold', color: '#18181b' },
   userRole: { fontSize: 14, color: '#71717a', marginTop: 4, letterSpacing: 1 },
+  tenureHeader: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+  tenureHeaderText: { fontSize: 12, color: '#a1a1aa', fontWeight: '500' },
   section: { gap: 16, marginBottom: 8 },
   sectionTitle: { fontSize: 12, fontWeight: '800', color: '#71717a', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 4 },
   form: { gap: 24 },
@@ -351,4 +466,19 @@ const styles = StyleSheet.create({
   saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   logoutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 8, gap: 8, marginTop: 8, borderWidth: 1, borderColor: '#fee2e2' },
   logoutButtonText: { color: '#ef4444', fontSize: 16, fontWeight: '600' },
+  noData: { color: '#71717a', fontSize: 14, fontStyle: 'italic' },
+  detailsCard: { backgroundColor: '#fafafa', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#e4e4e7' },
+  detailsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, marginBottom: 16 },
+  detailItem: { flexDirection: 'row', alignItems: 'center', gap: 8, width: '45%' },
+  detailContent: { flex: 1 },
+  detailLabel: { fontSize: 10, color: '#71717a', fontWeight: '600', textTransform: 'uppercase' },
+  detailValue: { fontSize: 14, color: '#18181b', fontWeight: '500' },
+  scheduleSection: { borderTopWidth: 1, borderTopColor: '#e4e4e7', paddingTop: 16 },
+  scheduleHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  scheduleTitle: { fontSize: 14, fontWeight: '600', color: '#18181b' },
+  scheduleTable: { backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#e4e4e7', overflow: 'hidden' },
+  tableHeader: { flexDirection: 'row', backgroundColor: '#f4f4f5', padding: 8, borderBottomWidth: 1, borderBottomColor: '#e4e4e7' },
+  tableHeaderText: { fontSize: 12, fontWeight: '700', color: '#71717a' },
+  tableRow: { flexDirection: 'row', padding: 8, borderBottomWidth: 1, borderBottomColor: '#f4f4f5' },
+  tableCell: { fontSize: 12, color: '#18181b' },
 });
