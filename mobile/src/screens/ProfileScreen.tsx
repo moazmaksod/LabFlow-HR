@@ -193,6 +193,14 @@ export default function ProfileScreen() {
     return parts.length > 0 ? parts.join(', ') : 'Less than a month';
   };
 
+  const formatTime = (timeStr: string) => {
+    if (!timeStr) return '';
+    const [h, m] = timeStr.split(':').map(Number);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 || 12;
+    return `${h12}:${m.toString().padStart(2, '0')} ${ampm}`;
+  };
+
   const renderScheduleTable = (scheduleStr: string | null) => {
     if (!scheduleStr) return <Text style={styles.noData}>No schedule set</Text>;
     try {
@@ -213,7 +221,7 @@ export default function ProfileScreen() {
             if (isActive) {
               shiftText = shifts.map((s: any) => {
                 if (typeof s === 'string') return s;
-                return `${s.start} - ${s.end}`;
+                return `${formatTime(s.start)} - ${formatTime(s.end)}`;
               }).join(', ');
             }
 
