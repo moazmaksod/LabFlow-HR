@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Dimensions } from 'react-native';
-import { Clock, Calendar, ArrowRight, Play, Pause } from 'lucide-react-native';
+import { Clock, Calendar, Play, Pause } from 'lucide-react-native';
 
 interface ShiftTimelineWidgetProps {
   currentShift: any | null;
-  nextShift: any | null;
   currentStatus: 'working' | 'away' | 'none';
   consumedBreakMinutes: number;
   activeSession: any | null;
@@ -35,7 +34,6 @@ const formatTime = (timeStr: string) => {
 
 export default function ShiftTimelineWidget({
   currentShift,
-  nextShift,
   currentStatus,
   consumedBreakMinutes,
   activeSession
@@ -55,7 +53,7 @@ export default function ShiftTimelineWidget({
 
   const todayShift = currentShift;
 
-  if (!todayShift && currentStatus === 'none') {
+  if (!todayShift) {
     return (
       <View style={styles.container}>
         <View style={styles.noShiftCard}>
@@ -63,49 +61,24 @@ export default function ShiftTimelineWidget({
           <Text style={styles.noShiftTitle}>No Shift Today</Text>
           <Text style={styles.noShiftText}>Enjoy your day off!</Text>
         </View>
-        {nextShift && (
-          <View style={styles.nextShiftCard}>
-            <View style={styles.nextShiftIconBg}>
-              <Calendar color="#3b82f6" size={20} />
-            </View>
-            <View style={styles.nextShiftContent}>
-              <Text style={styles.nextShiftLabel}>Next Shift • {nextShift.dayName.charAt(0).toUpperCase() + nextShift.dayName.slice(1)}</Text>
-              <Text style={styles.nextShiftDate}>
-                {(() => {
-                  const [y, m, d] = nextShift.date.split('-');
-                  const dateObj = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
-                  return dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-                })()}
-              </Text>
-            </View>
-            <View style={styles.nextShiftTime}>
-              <Text style={styles.nextShiftTimeText}>{formatTime(nextShift.start)}</Text>
-              <ArrowRight color="#94a3b8" size={14} style={{ marginHorizontal: 4 }} />
-              <Text style={styles.nextShiftTimeText}>{formatTime(nextShift.end)}</Text>
-            </View>
-          </View>
-        )}
       </View>
     );
   }
 
-  // If there is an active session but no scheduled shift, we still want to show a timeline based on the session
-  const effectiveShift = todayShift || {
-    start: activeSession?.check_in ? new Date(activeSession.check_in).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '00:00',
-    end: '23:59' // Fallback end time if no schedule
-  };
-
-  const startMins = timeToMinutes(effectiveShift.start);
-  let endMins = timeToMinutes(effectiveShift.end);
+  const startMins = timeToMinutes(todayShift.start);
+  let endMins = timeToMinutes(todayShift.end);
   if (endMins < startMins) {
     endMins += 24 * 60; // Handle night shifts crossing midnight
   }
   const totalMins = endMins - startMins;
 
-  let currentNowMins = nowMins;
-  if (currentNowMins < startMins && endMins > 24 * 60) {
-      currentNowMins += 24 * 60;
-  }
+  const today = new Date();
+  const [y, m, d] = todayShift.date.split('-');
+  const shiftDate = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+  const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const dayDiff = Math.round((todayDate.getTime() - shiftDate.getTime()) / (1000 * 60 * 60 * 24));
+
+  let currentNowMins = nowMins + (dayDiff * 24 * 60);
 
   // Calculations
   let workedMins = 0;
@@ -128,7 +101,7 @@ export default function ShiftTimelineWidget({
   const remainingPct = Math.min(100, Math.max(0, (remainingMins / totalMins) * 100));
   
   // "Now" indicator position
-  let nowPct = ((nowMins - startMins) / totalMins) * 100;
+  let nowPct = ((currentNowMins - startMins) / totalMins) * 100;
   if (nowPct < 0) nowPct = 0;
   if (nowPct > 100) nowPct = 100;
 
@@ -138,8 +111,10 @@ export default function ShiftTimelineWidget({
       <View style={styles.timelineCard}>
         <View style={styles.timelineHeader}>
           <View>
-            <Text style={styles.timelineTitle}>Today's Shift</Text>
-            <Text style={styles.timelineSubtitle}>{formatTime(effectiveShift.start)} - {formatTime(effectiveShift.end)}</Text>
+            <Text style={styles.timelineTitle}>
+              Scheduled Shift {dayDiff !== 0 ? `(${shiftDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })})` : ''}
+            </Text>
+            <Text style={styles.timelineSubtitle}>{formatTime(todayShift.start)} - {formatTime(todayShift.end)}</Text>
           </View>
           <View style={[styles.statusBadge, currentStatus === 'working' ? styles.statusWorking : currentStatus === 'away' ? styles.statusAway : styles.statusNone]}>
             {currentStatus === 'working' && <Play size={12} color="#10b981" style={{ marginRight: 4 }} />}
@@ -170,8 +145,8 @@ export default function ShiftTimelineWidget({
 
         {/* Timeline Labels */}
         <View style={styles.timelineLabels}>
-          <Text style={styles.timelineLabelText}>{formatTime(effectiveShift.start)}</Text>
-          <Text style={styles.timelineLabelText}>{formatTime(effectiveShift.end)}</Text>
+          <Text style={styles.timelineLabelText}>{formatTime(todayShift.start)}</Text>
+          <Text style={styles.timelineLabelText}>{formatTime(todayShift.end)}</Text>
         </View>
 
         {/* Stats Row */}
@@ -200,29 +175,6 @@ export default function ShiftTimelineWidget({
         </View>
       </View>
 
-      {/* Next Shift Predictor */}
-      {nextShift && (
-        <View style={styles.nextShiftCard}>
-          <View style={styles.nextShiftIconBg}>
-            <Calendar color="#3b82f6" size={20} />
-          </View>
-          <View style={styles.nextShiftContent}>
-            <Text style={styles.nextShiftLabel}>Next Shift • {nextShift.dayName.charAt(0).toUpperCase() + nextShift.dayName.slice(1)}</Text>
-            <Text style={styles.nextShiftDate}>
-              {(() => {
-                const [y, m, d] = nextShift.date.split('-');
-                const dateObj = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
-                return dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-              })()}
-            </Text>
-          </View>
-          <View style={styles.nextShiftTime}>
-            <Text style={styles.nextShiftTimeText}>{formatTime(nextShift.start)}</Text>
-            <ArrowRight color="#94a3b8" size={14} style={{ marginHorizontal: 4 }} />
-            <Text style={styles.nextShiftTimeText}>{formatTime(nextShift.end)}</Text>
-          </View>
-        </View>
-      )}
     </View>
   );
 }
@@ -385,55 +337,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#0f172a',
-  },
-  nextShiftCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f8fafc',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  nextShiftIconBg: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: '#eff6ff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  nextShiftContent: {
-    flex: 1,
-  },
-  nextShiftLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748b',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 2,
-  },
-  nextShiftDate: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  nextShiftTime: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  nextShiftTimeText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#334155',
   },
   noShiftCard: {
     backgroundColor: '#f8fafc',

@@ -3,7 +3,7 @@ import db from '../db/index.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
 import { logAudit } from '../services/auditService.js';
 
-import { getLogicalShiftDetails, getDashboardShifts } from '../utils/shiftUtils.js';
+import { getLogicalShiftDetails } from '../utils/shiftUtils.js';
 
 export const getUsers = (req: Request, res: Response): void => {
     try {
@@ -168,9 +168,13 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
             console.error('Error parsing weekly_schedule', e);
         }
 
-        const { currentShift, nextShift } = getDashboardShifts(parsedSchedule, currentServerTime, timezone);
-        user.current_shift = currentShift;
-        user.next_shift = nextShift;
+        const shiftDetails = getLogicalShiftDetails(parsedSchedule, currentServerTime, timezone, 'check_in');
+        user.current_shift = shiftDetails.shift ? {
+            start: shiftDetails.shift.start,
+            end: shiftDetails.shift.end,
+            date: shiftDetails.logicalDate
+        } : null;
+        user.next_shift = null; // We don't need next_shift anymore, current_shift handles the nearest shift
 
         res.json(user);
     } catch (error) {

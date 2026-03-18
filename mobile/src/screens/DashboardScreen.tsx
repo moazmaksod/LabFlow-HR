@@ -329,7 +329,6 @@ export default function DashboardScreen() {
       {userProfile && (
         <ShiftTimelineWidget
           currentShift={userProfile.current_shift}
-          nextShift={userProfile.next_shift}
           currentStatus={currentStatus}
           consumedBreakMinutes={consumedBreakMinutes}
           activeSession={activeSession}
