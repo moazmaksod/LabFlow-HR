@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Dimensions, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Clock, Calendar, Play, Pause } from 'lucide-react-native';
+import { useAttendanceStore } from '../store/useAttendanceStore';
 
 interface SmartAttendanceCardProps {
   currentShift: any | null;
   currentStatus: 'working' | 'away' | 'none';
   consumedBreakMinutes: number;
-  activeSession: any | null;
   loading: boolean;
   handleClock: (type: 'check_in' | 'check_out') => void;
   handleStepAway: () => void;
@@ -41,23 +41,21 @@ export default function SmartAttendanceCard({
   currentShift,
   currentStatus,
   consumedBreakMinutes,
-  activeSession,
   loading,
   handleClock,
   handleStepAway,
   handleResumeWork,
   lunchBreakMinutes
 }: SmartAttendanceCardProps) {
-  const [nowMins, setNowMins] = useState(() => {
-    const d = new Date();
-    return d.getHours() * 60 + d.getMinutes();
-  });
+  const activeSession = useAttendanceStore((state) => state.activeSession);
+
+  const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
+    // Real-Time Tick (The Engine) - update every 30 seconds
     const interval = setInterval(() => {
-      const d = new Date();
-      setNowMins(d.getHours() * 60 + d.getMinutes());
-    }, 60000);
+      setNow(new Date());
+    }, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -97,12 +95,12 @@ export default function SmartAttendanceCard({
   }
   const totalMins = endMins - startMins;
 
-  const today = new Date();
   const [y, m, d] = todayShift.date.split('-');
   const shiftDate = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
-  const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const dayDiff = Math.round((todayDate.getTime() - shiftDate.getTime()) / (1000 * 60 * 60 * 24));
 
+  const nowMins = now.getHours() * 60 + now.getMinutes();
   let currentNowMins = nowMins + (dayDiff * 24 * 60);
 
   // Calculations
@@ -117,7 +115,6 @@ export default function SmartAttendanceCard({
 
   if (isClockedIn && activeSession) {
     const checkInDate = new Date(activeSession.check_in);
-    const now = new Date();
     const totalElapsed = (now.getTime() - checkInDate.getTime()) / (1000 * 60);
     workedMins = Math.max(0, totalElapsed - breakMins);
     

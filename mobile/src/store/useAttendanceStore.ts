@@ -9,12 +9,14 @@ interface AttendanceState {
   consumedBreakMinutes: number;
   lastActionTimestamp: string | null;
   userProfile: any | null;
+  activeSession: any | null;
   
   // Actions
   setStatus: (status: AttendanceStatus) => void;
   setConsumedBreakMinutes: (minutes: number) => void;
   setLastActionTimestamp: (timestamp: string | null) => void;
   setUserProfile: (profile: any) => void;
+  setActiveSession: (session: any | null) => void;
   reset: () => void;
 }
 
@@ -51,12 +53,14 @@ export const useAttendanceStore = create<AttendanceState>()(
       consumedBreakMinutes: 0,
       lastActionTimestamp: null,
       userProfile: null,
+      activeSession: null,
 
       setStatus: (status) => set({ currentStatus: status }),
       setConsumedBreakMinutes: (minutes) => set({ consumedBreakMinutes: minutes }),
       setLastActionTimestamp: (timestamp) => set({ lastActionTimestamp: timestamp }),
       setUserProfile: (profile) => set({ userProfile: profile }),
-      reset: () => set({ currentStatus: 'none', consumedBreakMinutes: 0, lastActionTimestamp: null, userProfile: null }),
+      setActiveSession: (session) => set({ activeSession: session }),
+      reset: () => set({ currentStatus: 'none', consumedBreakMinutes: 0, lastActionTimestamp: null, userProfile: null, activeSession: null }),
     }),
     {
       name: 'labflow-attendance-state',

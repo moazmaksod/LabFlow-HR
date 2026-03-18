@@ -15,7 +15,6 @@ export default function DashboardScreen() {
   const { user, logout } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [unsyncedCount, setUnsyncedCount] = useState(0);
-  const [activeSession, setActiveSession] = useState<any>(null);
   const { isSyncing, syncOfflineRecords, isConnected } = useNetworkStore();
   
   const { 
@@ -25,7 +24,9 @@ export default function DashboardScreen() {
     setUserProfile, 
     consumedBreakMinutes, 
     setConsumedBreakMinutes,
-    setLastActionTimestamp
+    setLastActionTimestamp,
+    activeSession,
+    setActiveSession
   } = useAttendanceStore();
 
   useEffect(() => {
@@ -33,15 +34,7 @@ export default function DashboardScreen() {
     initLocalDb();
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      checkUnsyncedLogs();
-      fetchStatus();
-      fetchProfile();
-    }, [])
-  );
-
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     if (!isConnected) return;
     try {
       const response = await api.get('/users/profile');
@@ -51,9 +44,9 @@ export default function DashboardScreen() {
         console.error('Error fetching profile:', error);
       }
     }
-  };
+  }, [isConnected, setUserProfile]);
 
-  const fetchStatus = async () => {
+  const fetchStatus = useCallback(async () => {
     if (!isConnected) return;
     try {
       const response = await api.get('/attendance/my-logs');
@@ -82,13 +75,21 @@ export default function DashboardScreen() {
         console.error('Error fetching status:', error);
       }
     }
-  };
+  }, [isConnected, setActiveSession, setStatus, setConsumedBreakMinutes]);
 
-  const checkUnsyncedLogs = () => {
+  const checkUnsyncedLogs = useCallback(() => {
     const logs = getUnsyncedLogs();
     const requests = getUnsyncedRequests();
     setUnsyncedCount(logs.length + requests.length);
-  };
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      checkUnsyncedLogs();
+      fetchStatus();
+      fetchProfile();
+    }, [checkUnsyncedLogs, fetchStatus, fetchProfile])
+  );
 
   const executeClock = async (type: 'check_in' | 'check_out') => {
     setLoading(true);
@@ -134,6 +135,7 @@ export default function DashboardScreen() {
         Alert.alert('Success', `Successfully clocked ${type === 'check_in' ? 'in' : 'out'}!`);
         setStatus(type === 'check_in' ? 'working' : 'none');
         setLastActionTimestamp(timestamp);
+        fetchStatus(); // Refresh to get the latest session data
       } catch (apiError: any) {
         const errorMessage = apiError.response?.data?.error || apiError.message;
 
@@ -331,7 +333,6 @@ export default function DashboardScreen() {
           currentShift={userProfile.current_shift}
           currentStatus={currentStatus}
           consumedBreakMinutes={consumedBreakMinutes}
-          activeSession={activeSession}
           loading={loading}
           handleClock={handleClock}
           handleStepAway={handleStepAway}
