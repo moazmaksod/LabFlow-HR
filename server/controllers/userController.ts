@@ -138,7 +138,7 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
         const user = db.prepare(`
             SELECT 
                 u.id, u.name, u.email, u.role,
-                p.age, p.gender, p.profile_picture_url,
+                p.age, p.gender, p.profile_picture_url, p.status,
                 p.weekly_schedule, p.hourly_rate, p.lunch_break_minutes,
                 p.emergency_contact_name, p.emergency_contact_phone, p.leave_balance
             FROM users u

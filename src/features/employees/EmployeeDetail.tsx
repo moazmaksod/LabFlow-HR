@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/axios';
-import { X, Save, User, Phone, Mail, Clock, Shield, DollarSign, Calendar, FileText, ChevronRight, Plus, Smartphone, RefreshCcw } from 'lucide-react';
+import { X, Save, User, Phone, Mail, Clock, Shield, DollarSign, Calendar, FileText, ChevronRight, Plus, Smartphone, RefreshCcw, XCircle } from 'lucide-react';
 import { WeeklyScheduleBuilder } from '../../components/WeeklyScheduleBuilder';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -296,6 +296,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                     }`}
                   >
                     <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
                     <option value="suspended">Suspended</option>
                   </select>
                 </div>

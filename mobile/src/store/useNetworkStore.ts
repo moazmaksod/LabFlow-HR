@@ -1,9 +1,11 @@
 import { create } from 'zustand';
 import NetInfo from '@react-native-community/netinfo';
+import { Alert } from 'react-native';
 import { getUnsyncedLogs, markLogsAsSynced, getUnsyncedRequests, markRequestsAsSynced } from '../lib/db';
 import api from '../lib/axios';
 
 import { useAttendanceStore } from './useAttendanceStore';
+import { useAuthStore } from './useAuthStore';
 
 interface NetworkState {
   isConnected: boolean;
@@ -31,11 +33,24 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
         }));
 
         const response = await api.post('/attendance/sync', { logs: logsWithDelay });
-        const syncedIds = response.data.results.map((r: any) => r.logId);
+        const results = response.data.results;
+        const syncedIds = results.map((r: any) => r.logId);
         
         if (syncedIds.length > 0) {
           markLogsAsSynced(syncedIds);
           hasSyncedAny = true;
+        }
+
+        const hasSuspended = results.some((r: any) => r.reason === 'REASON: SUSPENDED');
+        const hasInactive = results.some((r: any) => r.reason === 'REASON: INACTIVE');
+
+        if (hasSuspended) {
+          Alert.alert('Account Suspended', 'Your account has been suspended. Please contact HR.');
+          await useAuthStore.getState().logout();
+          set({ isSyncing: false });
+          return;
+        } else if (hasInactive) {
+          Alert.alert('Sync Rejected', 'Offline attendance rejected. Your account is currently inactive.');
         }
       }
 

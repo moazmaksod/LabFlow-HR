@@ -320,11 +320,19 @@ export const syncOfflineLogs = (req: AuthRequest, res: Response): void => {
             const timezone = settingsForTz?.timezone || 'UTC';
 
             const userProfile = db.prepare(`
-                SELECT p.weekly_schedule, j.grace_period, p.max_overtime_hours
+                SELECT p.status, p.weekly_schedule, j.grace_period, p.max_overtime_hours
                 FROM profiles p
                 LEFT JOIN jobs j ON p.job_id = j.id
                 WHERE p.user_id = ?
             `).get(userId) as any;
+
+            if (userProfile?.status === 'inactive') {
+                return logsToSync.map((log: any) => ({ logId: log.id, status: 'skipped', reason: 'REASON: INACTIVE' }));
+            }
+
+            if (userProfile?.status === 'suspended') {
+                return logsToSync.map((log: any) => ({ logId: log.id, status: 'skipped', reason: 'REASON: SUSPENDED' }));
+            }
 
             let schedule = null;
             if (userProfile && userProfile.weekly_schedule) {
