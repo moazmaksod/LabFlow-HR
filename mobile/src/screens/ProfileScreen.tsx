@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { useFocusEffect } from '@react-navigation/native';
 import { User, Camera, Save, LogOut, Mail, UserCircle, Lock, Info, DollarSign, Calendar, Clock, Shield, LayoutDashboard } from 'lucide-react-native';
 import api from '../lib/axios';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNetworkStore } from '../store/useNetworkStore';
+import { useAttendanceStore } from '../store/useAttendanceStore';
 
 // Base URL for images derived from API URL
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://ais-dev-dt5wflxz22iihcij747x5r-137896224739.europe-west1.run.app/api';
@@ -12,7 +14,7 @@ const BASE_URL = API_URL.replace('/api', '');
 
 export default function ProfileScreen() {
   const { user, logout, login } = useAuthStore();
-  const [userProfile, setUserProfile] = useState<any>(null);
+  const { userProfile, setUserProfile } = useAttendanceStore();
   const [name, setName] = useState(user?.name || '');
   const [bio, setBio] = useState('');
   const [personalPhone, setPersonalPhone] = useState('');
@@ -26,9 +28,21 @@ export default function ProfileScreen() {
 
   const { isConnected } = useNetworkStore();
 
-  useEffect(() => {
-    fetchProfile();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      if (userProfile) {
+        setName(userProfile.name || user?.name || '');
+        setBio(userProfile.bio || '');
+        setPersonalPhone(userProfile.personal_phone || '');
+        setEmergencyContactName(userProfile.emergency_contact_name || '');
+        setEmergencyContactPhone(userProfile.emergency_contact_phone || '');
+        setAge(userProfile.age?.toString() || '');
+        setGender(userProfile.gender || '');
+        setAvatar(userProfile.profile_picture_url || null);
+      }
+      fetchProfile();
+    }, [userProfile, user])
+  );
 
   const fetchProfile = async () => {
     if (!isConnected) {
@@ -102,7 +116,8 @@ export default function ProfileScreen() {
       setAvatar(newAvatarUrl);
       
       // Update profile with new avatar URL
-      await api.put('/users/profile', { profile_picture_url: newAvatarUrl });
+      const updateRes = await api.put('/users/profile', { profile_picture_url: newAvatarUrl });
+      setUserProfile(updateRes.data);
       Alert.alert('Success', 'Avatar updated successfully');
     } catch (error: any) {
       // Graceful error catching to avoid redbox
