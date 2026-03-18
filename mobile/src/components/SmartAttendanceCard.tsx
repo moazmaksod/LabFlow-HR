@@ -57,6 +57,9 @@ export default function SmartAttendanceCard({
   const [isTampered, setIsTampered] = useState(false);
 
   useEffect(() => {
+    // Re-sync shadow ref when dependency updates (e.g. app wakes up and syncs)
+    shadowTimeRef.current = Date.now() + serverTimeOffset;
+
     const interval = setInterval(() => {
       // A) The Shadow Tick
       shadowTimeRef.current += 1000;

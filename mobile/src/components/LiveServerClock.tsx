@@ -13,6 +13,9 @@ export default function LiveServerClock() {
   const shadowTimeRef = useRef(Date.now() + serverTimeOffset);
 
   useEffect(() => {
+    // Re-sync shadow ref when dependency updates (e.g. app wakes up and syncs)
+    shadowTimeRef.current = Date.now() + serverTimeOffset;
+
     const formatter = new Intl.DateTimeFormat('en-US', {
       timeZone: timezone,
       hour: '2-digit',
