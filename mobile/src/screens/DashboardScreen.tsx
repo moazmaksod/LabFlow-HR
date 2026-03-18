@@ -58,9 +58,8 @@ export default function DashboardScreen() {
     try {
       const response = await api.get('/attendance/my-logs');
       const logs = response.data;
-      const today = new Date().toISOString().split('T')[0];
-      // Check if there is an active session (today and check_out is null)
-      const session = logs.find((l: any) => l.date === today && !l.check_out);
+      // Check if there is an active session (check_out is null)
+      const session = logs.find((l: any) => !l.check_out);
       setActiveSession(session || null);
       if (session) {
         setStatus(session.current_status || 'working');
@@ -327,9 +326,10 @@ export default function DashboardScreen() {
         </TouchableOpacity>
       </View>
 
-      {userProfile?.weekly_schedule && (
+      {userProfile && (
         <ShiftTimelineWidget
-          schedule={userProfile.weekly_schedule}
+          currentShift={userProfile.current_shift}
+          nextShift={userProfile.next_shift}
           currentStatus={currentStatus}
           consumedBreakMinutes={consumedBreakMinutes}
           activeSession={activeSession}

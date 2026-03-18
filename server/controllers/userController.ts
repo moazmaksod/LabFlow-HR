@@ -3,7 +3,7 @@ import db from '../db/index.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
 import { logAudit } from '../services/auditService.js';
 
-import { getLogicalShiftDetails } from '../utils/shiftUtils.js';
+import { getLogicalShiftDetails, getDashboardShifts } from '../utils/shiftUtils.js';
 
 export const getUsers = (req: Request, res: Response): void => {
     try {
@@ -148,12 +148,29 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
             LEFT JOIN profiles p ON u.id = p.user_id
             LEFT JOIN jobs j ON p.job_id = j.id
             WHERE u.id = ?
-        `).get(userId);
+        `).get(userId) as any;
 
         if (!user) {
             res.status(404).json({ error: 'User not found' });
             return;
         }
+
+        const settingsForTz = db.prepare('SELECT timezone FROM settings WHERE id = 1').get() as any;
+        const timezone = settingsForTz?.timezone || 'UTC';
+        const currentServerTime = new Date().toISOString();
+
+        let parsedSchedule = null;
+        try {
+            if (user.weekly_schedule) {
+                parsedSchedule = JSON.parse(user.weekly_schedule);
+            }
+        } catch (e) {
+            console.error('Error parsing weekly_schedule', e);
+        }
+
+        const { currentShift, nextShift } = getDashboardShifts(parsedSchedule, currentServerTime, timezone);
+        user.current_shift = currentShift;
+        user.next_shift = nextShift;
 
         res.json(user);
     } catch (error) {

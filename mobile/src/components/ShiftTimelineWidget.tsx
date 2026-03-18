@@ -3,7 +3,8 @@ import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import { Clock, Calendar, ArrowRight, Play, Pause } from 'lucide-react-native';
 
 interface ShiftTimelineWidgetProps {
-  schedule: any;
+  currentShift: any | null;
+  nextShift: any | null;
   currentStatus: 'working' | 'away' | 'none';
   consumedBreakMinutes: number;
   activeSession: any | null;
@@ -33,7 +34,8 @@ const formatTime = (timeStr: string) => {
 };
 
 export default function ShiftTimelineWidget({
-  schedule,
+  currentShift,
+  nextShift,
   currentStatus,
   consumedBreakMinutes,
   activeSession
@@ -51,43 +53,9 @@ export default function ShiftTimelineWidget({
     return () => clearInterval(interval);
   }, []);
 
-  const parsedSchedule = typeof schedule === 'string' ? JSON.parse(schedule) : schedule;
+  const todayShift = currentShift;
 
-  const getTodayShift = () => {
-    if (!parsedSchedule) return null;
-    const todayName = DAYS[new Date().getDay()];
-    const shift = parsedSchedule[todayName];
-    if (shift && shift.length === 2) {
-      return { start: shift[0], end: shift[1] };
-    }
-    return null;
-  };
-
-  const getNextShift = () => {
-    if (!parsedSchedule) return null;
-    const todayIdx = new Date().getDay();
-    for (let i = 1; i <= 7; i++) {
-      const nextIdx = (todayIdx + i) % 7;
-      const dayName = DAYS[nextIdx];
-      const shift = parsedSchedule[dayName];
-      if (shift && shift.length === 2) {
-        const nextDate = new Date();
-        nextDate.setDate(nextDate.getDate() + i);
-        return {
-          dayName,
-          date: nextDate,
-          start: shift[0],
-          end: shift[1]
-        };
-      }
-    }
-    return null;
-  };
-
-  const todayShift = getTodayShift();
-  const nextShift = getNextShift();
-
-  if (!todayShift) {
+  if (!todayShift && currentStatus === 'none') {
     return (
       <View style={styles.container}>
         <View style={styles.noShiftCard}>
@@ -102,7 +70,13 @@ export default function ShiftTimelineWidget({
             </View>
             <View style={styles.nextShiftContent}>
               <Text style={styles.nextShiftLabel}>Next Shift • {nextShift.dayName.charAt(0).toUpperCase() + nextShift.dayName.slice(1)}</Text>
-              <Text style={styles.nextShiftDate}>{nextShift.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</Text>
+              <Text style={styles.nextShiftDate}>
+                {(() => {
+                  const [y, m, d] = nextShift.date.split('-');
+                  const dateObj = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+                  return dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                })()}
+              </Text>
             </View>
             <View style={styles.nextShiftTime}>
               <Text style={styles.nextShiftTimeText}>{formatTime(nextShift.start)}</Text>
@@ -115,23 +89,37 @@ export default function ShiftTimelineWidget({
     );
   }
 
-  const startMins = timeToMinutes(todayShift.start);
-  const endMins = timeToMinutes(todayShift.end);
+  // If there is an active session but no scheduled shift, we still want to show a timeline based on the session
+  const effectiveShift = todayShift || {
+    start: activeSession?.check_in ? new Date(activeSession.check_in).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '00:00',
+    end: '23:59' // Fallback end time if no schedule
+  };
+
+  const startMins = timeToMinutes(effectiveShift.start);
+  let endMins = timeToMinutes(effectiveShift.end);
+  if (endMins < startMins) {
+    endMins += 24 * 60; // Handle night shifts crossing midnight
+  }
   const totalMins = endMins - startMins;
+
+  let currentNowMins = nowMins;
+  if (currentNowMins < startMins && endMins > 24 * 60) {
+      currentNowMins += 24 * 60;
+  }
 
   // Calculations
   let workedMins = 0;
   let remainingMins = 0;
   let breakMins = consumedBreakMinutes;
 
-  if (nowMins < startMins) {
+  if (currentNowMins < startMins) {
     remainingMins = totalMins;
-  } else if (nowMins > endMins) {
+  } else if (currentNowMins > endMins) {
     workedMins = totalMins - breakMins;
     remainingMins = 0;
   } else {
-    workedMins = Math.max(0, (nowMins - startMins) - breakMins);
-    remainingMins = Math.max(0, endMins - nowMins);
+    workedMins = Math.max(0, (currentNowMins - startMins) - breakMins);
+    remainingMins = Math.max(0, endMins - currentNowMins);
   }
 
   // Percentages for the bar
@@ -151,7 +139,7 @@ export default function ShiftTimelineWidget({
         <View style={styles.timelineHeader}>
           <View>
             <Text style={styles.timelineTitle}>Today's Shift</Text>
-            <Text style={styles.timelineSubtitle}>{formatTime(todayShift.start)} - {formatTime(todayShift.end)}</Text>
+            <Text style={styles.timelineSubtitle}>{formatTime(effectiveShift.start)} - {formatTime(effectiveShift.end)}</Text>
           </View>
           <View style={[styles.statusBadge, currentStatus === 'working' ? styles.statusWorking : currentStatus === 'away' ? styles.statusAway : styles.statusNone]}>
             {currentStatus === 'working' && <Play size={12} color="#10b981" style={{ marginRight: 4 }} />}
@@ -182,8 +170,8 @@ export default function ShiftTimelineWidget({
 
         {/* Timeline Labels */}
         <View style={styles.timelineLabels}>
-          <Text style={styles.timelineLabelText}>{formatTime(todayShift.start)}</Text>
-          <Text style={styles.timelineLabelText}>{formatTime(todayShift.end)}</Text>
+          <Text style={styles.timelineLabelText}>{formatTime(effectiveShift.start)}</Text>
+          <Text style={styles.timelineLabelText}>{formatTime(effectiveShift.end)}</Text>
         </View>
 
         {/* Stats Row */}
@@ -220,7 +208,13 @@ export default function ShiftTimelineWidget({
           </View>
           <View style={styles.nextShiftContent}>
             <Text style={styles.nextShiftLabel}>Next Shift • {nextShift.dayName.charAt(0).toUpperCase() + nextShift.dayName.slice(1)}</Text>
-            <Text style={styles.nextShiftDate}>{nextShift.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</Text>
+            <Text style={styles.nextShiftDate}>
+              {(() => {
+                const [y, m, d] = nextShift.date.split('-');
+                const dateObj = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+                return dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+              })()}
+            </Text>
           </View>
           <View style={styles.nextShiftTime}>
             <Text style={styles.nextShiftTimeText}>{formatTime(nextShift.start)}</Text>

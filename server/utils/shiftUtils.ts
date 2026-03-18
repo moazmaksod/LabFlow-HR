@@ -179,3 +179,109 @@ export const getLogicalShiftDetails = (
 
     return { shift: matchedShift, scheduledTime: scheduledTimeUTC, logicalDate };
 };
+
+export const getDashboardShifts = (schedule: any, timestamp: string, timezone: string) => {
+    if (!schedule) return { currentShift: null, nextShift: null };
+
+    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const punchTime = new Date(timestamp);
+
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        hour12: false
+    });
+
+    const getLocalTime = (date: Date) => {
+        const parts = formatter.formatToParts(date);
+        const getPart = (type: string) => parts.find(p => p.type === type)?.value || '00';
+        return new Date(
+            parseInt(getPart('year')),
+            parseInt(getPart('month')) - 1,
+            parseInt(getPart('day')),
+            parseInt(getPart('hour')),
+            parseInt(getPart('minute')),
+            parseInt(getPart('second'))
+        );
+    };
+
+    const localPunchTime = getLocalTime(punchTime);
+
+    let allShifts: {
+        dayName: string;
+        shift: any;
+        start: Date;
+        end: Date;
+        logicalDateStr: string;
+    }[] = [];
+
+    for (let offset = -1; offset <= 7; offset++) {
+        const d = new Date(localPunchTime.getFullYear(), localPunchTime.getMonth(), localPunchTime.getDate() + offset);
+        const dayName = days[d.getDay()];
+        const logicalDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+        const daySchedule = schedule[dayName];
+        if (Array.isArray(daySchedule)) {
+            daySchedule.forEach(shift => {
+                const [startH, startM] = shift.start.split(':').map(Number);
+                const [endH, endM] = shift.end.split(':').map(Number);
+
+                const shiftStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), startH, startM, 0);
+                const shiftEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), endH, endM, 0);
+
+                if (endH < startH || (endH === startH && endM < startM)) {
+                    shiftEnd.setDate(shiftEnd.getDate() + 1);
+                }
+
+                allShifts.push({
+                    dayName,
+                    shift,
+                    start: shiftStart,
+                    end: shiftEnd,
+                    logicalDateStr
+                });
+            });
+        }
+    }
+
+    allShifts.sort((a, b) => a.start.getTime() - b.start.getTime());
+
+    let currentShift = null;
+    let nextShift = null;
+
+    for (let i = 0; i < allShifts.length; i++) {
+        const s = allShifts[i];
+        // If we are currently inside the shift, or we are within 4 hours of it starting
+        const fourHoursBefore = new Date(s.start.getTime() - 4 * 60 * 60 * 1000);
+        if (localPunchTime >= fourHoursBefore && localPunchTime <= s.end) {
+            currentShift = {
+                dayName: s.dayName,
+                start: s.shift.start,
+                end: s.shift.end,
+                date: s.logicalDateStr
+            };
+            if (i + 1 < allShifts.length) {
+                const ns = allShifts[i + 1];
+                nextShift = {
+                    dayName: ns.dayName,
+                    start: ns.shift.start,
+                    end: ns.shift.end,
+                    date: ns.logicalDateStr
+                };
+            }
+            break;
+        } else if (localPunchTime < fourHoursBefore) {
+            // We haven't reached the next shift yet
+            nextShift = {
+                dayName: s.dayName,
+                start: s.shift.start,
+                end: s.shift.end,
+                date: s.logicalDateStr
+            };
+            break;
+        }
+    }
+
+    return { currentShift, nextShift };
+};

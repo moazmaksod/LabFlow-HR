@@ -28,23 +28,7 @@ export default function ProfileScreen() {
 
   const { isConnected } = useNetworkStore();
 
-  useFocusEffect(
-    useCallback(() => {
-      if (userProfile) {
-        setName(userProfile.name || user?.name || '');
-        setBio(userProfile.bio || '');
-        setPersonalPhone(userProfile.personal_phone || '');
-        setEmergencyContactName(userProfile.emergency_contact_name || '');
-        setEmergencyContactPhone(userProfile.emergency_contact_phone || '');
-        setAge(userProfile.age?.toString() || '');
-        setGender(userProfile.gender || '');
-        setAvatar(userProfile.profile_picture_url || null);
-      }
-      fetchProfile();
-    }, [userProfile, user])
-  );
-
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     if (!isConnected) {
       setFetching(false);
       return;
@@ -69,7 +53,26 @@ export default function ProfileScreen() {
     } finally {
       setFetching(false);
     }
-  };
+  }, [isConnected, setUserProfile]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchProfile();
+    }, [fetchProfile])
+  );
+
+  useEffect(() => {
+    if (userProfile) {
+      setName(userProfile.name || user?.name || '');
+      setBio(userProfile.bio || '');
+      setPersonalPhone(userProfile.personal_phone || '');
+      setEmergencyContactName(userProfile.emergency_contact_name || '');
+      setEmergencyContactPhone(userProfile.emergency_contact_phone || '');
+      setAge(userProfile.age?.toString() || '');
+      setGender(userProfile.gender || '');
+      setAvatar(userProfile.profile_picture_url || null);
+    }
+  }, [userProfile, user]);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
