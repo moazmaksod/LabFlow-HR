@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Dimensions, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Clock, Calendar, Play, Pause, AlertCircle } from 'lucide-react-native';
 import { useAttendanceStore } from '../store/useAttendanceStore';
@@ -52,21 +52,27 @@ export default function SmartAttendanceCard({
   const serverTimeOffset = useNetworkStore((state) => state.serverTimeOffset);
   const lastLocalSyncTime = useNetworkStore((state) => state.lastLocalSyncTime);
 
-  const getTrueTime = () => new Date(Date.now() + serverTimeOffset);
-  const [now, setNow] = useState(getTrueTime);
+  const shadowTimeRef = useRef(Date.now() + serverTimeOffset);
+  const [now, setNow] = useState(new Date(shadowTimeRef.current));
+  const [isTampered, setIsTampered] = useState(false);
 
   useEffect(() => {
-    // Real-Time Tick (The Engine) - update every 30 seconds
     const interval = setInterval(() => {
-      setNow(getTrueTime());
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [serverTimeOffset]);
+      // A) The Shadow Tick
+      shadowTimeRef.current += 1000;
+      setNow(new Date(shadowTimeRef.current));
 
-  // Check if clock is tampered
-  // Threshold: If serverTimeOffset is more than 2 minutes, meaning the phone is not using Automatic Network Time.
-  // Or if Date.now() moved backwards before the lastLocalSyncTime.
-  const isTimeTampered = Math.abs(serverTimeOffset) > 120000 || Date.now() < lastLocalSyncTime;
+      // B) The Drift Check
+      const expectedOsTime = Date.now() + serverTimeOffset;
+      if (Math.abs(expectedOsTime - shadowTimeRef.current) > 60000 || Date.now() < lastLocalSyncTime) {
+        setIsTampered(true);
+      } else {
+        setIsTampered(false);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [serverTimeOffset, lastLocalSyncTime]);
 
   const todayShift = currentShift;
 
@@ -84,7 +90,7 @@ export default function SmartAttendanceCard({
             </View>
           </View>
           <View style={styles.buttonRow}>
-          {isTimeTampered ? (
+          {isTampered ? (
             <View style={styles.tamperContainer}>
               <AlertCircle color="#ef4444" size={24} style={{ marginBottom: 8 }} />
               <Text style={styles.tamperTitle}>Device Time Out of Sync</Text>
@@ -326,7 +332,7 @@ export default function SmartAttendanceCard({
         </Text>
 
         <View style={styles.buttonRow}>
-          {isTimeTampered ? (
+          {isTampered ? (
             <View style={styles.tamperContainer}>
               <AlertCircle color="#ef4444" size={24} style={{ marginBottom: 8 }} />
               <Text style={styles.tamperTitle}>Device Time Out of Sync</Text>

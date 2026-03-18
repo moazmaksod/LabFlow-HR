@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Globe } from 'lucide-react-native';
 import { useNetworkStore } from '../store/useNetworkStore';
@@ -10,8 +10,9 @@ export default function LiveServerClock() {
 
   const [displayTime, setDisplayTime] = useState('');
 
+  const shadowTimeRef = useRef(Date.now() + serverTimeOffset);
+
   useEffect(() => {
-    // Cache the formatter outside the interval to avoid high instantiation overhead
     const formatter = new Intl.DateTimeFormat('en-US', {
       timeZone: timezone,
       hour: '2-digit',
@@ -20,13 +21,13 @@ export default function LiveServerClock() {
       hour12: true
     });
 
-    const updateTime = () => {
-      const trueTime = new Date(Date.now() + serverTimeOffset);
-      setDisplayTime(formatter.format(trueTime));
-    };
+    // Initial setting
+    setDisplayTime(formatter.format(new Date(shadowTimeRef.current)));
 
-    updateTime();
-    const interval = setInterval(updateTime, 1000);
+    const interval = setInterval(() => {
+      shadowTimeRef.current += 1000;
+      setDisplayTime(formatter.format(new Date(shadowTimeRef.current)));
+    }, 1000);
     return () => clearInterval(interval);
   }, [serverTimeOffset, timezone]);
 
