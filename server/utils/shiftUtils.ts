@@ -23,20 +23,20 @@ export const getLogicalShiftDetails = (
         hour12: false
     });
 
-    const getLocalTime = (date: Date) => {
+    const getLocalTimeUTC = (date: Date) => {
         const parts = formatter.formatToParts(date);
         const getPart = (type: string) => parts.find(p => p.type === type)?.value || '00';
-        return new Date(
+        return new Date(Date.UTC(
             parseInt(getPart('year')),
             parseInt(getPart('month')) - 1,
             parseInt(getPart('day')),
             parseInt(getPart('hour')),
             parseInt(getPart('minute')),
             parseInt(getPart('second'))
-        );
+        ));
     };
 
-    const localPunchTime = getLocalTime(punchTime);
+    const localPunchTime = getLocalTimeUTC(punchTime);
 
     let allShifts: {
         dayName: string;
@@ -48,9 +48,9 @@ export const getLogicalShiftDetails = (
 
     // Look at a 7-day window around the local punch time to find the nearest upcoming shift
     for (let offset = -1; offset <= 7; offset++) {
-        const d = new Date(localPunchTime.getFullYear(), localPunchTime.getMonth(), localPunchTime.getDate() + offset);
-        const dayName = days[d.getDay()];
-        const logicalDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const d = new Date(Date.UTC(localPunchTime.getUTCFullYear(), localPunchTime.getUTCMonth(), localPunchTime.getUTCDate() + offset));
+        const dayName = days[d.getUTCDay()];
+        const logicalDateStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 
         const daySchedule = schedule[dayName];
         if (Array.isArray(daySchedule)) {
@@ -58,12 +58,12 @@ export const getLogicalShiftDetails = (
                 const [startH, startM] = shift.start.split(':').map(Number);
                 const [endH, endM] = shift.end.split(':').map(Number);
 
-                const shiftStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), startH, startM, 0);
-                const shiftEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), endH, endM, 0);
+                const shiftStart = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), startH, startM, 0));
+                const shiftEnd = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), endH, endM, 0));
 
                 // If end time is before start time, it crosses midnight into the next day
                 if (endH < startH || (endH === startH && endM < startM)) {
-                    shiftEnd.setDate(shiftEnd.getDate() + 1);
+                    shiftEnd.setUTCDate(shiftEnd.getUTCDate() + 1);
                 }
 
                 allShifts.push({
@@ -111,7 +111,7 @@ export const getLogicalShiftDetails = (
     } else { // check_out
         if (referenceDate) {
             const refPunchTime = new Date(referenceDate);
-            const refLocalTime = getLocalTime(refPunchTime);
+            const refLocalTime = getLocalTimeUTC(refPunchTime);
 
             for (let i = 0; i < allShifts.length; i++) {
                 const currentShift = allShifts[i];
@@ -160,17 +160,17 @@ export const getLogicalShiftDetails = (
     if (scheduledTime) {
         // Create an initial guess in UTC
         const guessUTC = new Date(Date.UTC(
-            scheduledTime.getFullYear(),
-            scheduledTime.getMonth(),
-            scheduledTime.getDate(),
-            scheduledTime.getHours(),
-            scheduledTime.getMinutes(),
-            scheduledTime.getSeconds()
+            scheduledTime.getUTCFullYear(),
+            scheduledTime.getUTCMonth(),
+            scheduledTime.getUTCDate(),
+            scheduledTime.getUTCHours(),
+            scheduledTime.getUTCMinutes(),
+            scheduledTime.getUTCSeconds()
         ));
 
         // Iteratively adjust the guess until its local time matches the target scheduledTime
         for (let i = 0; i < 4; i++) {
-            const gLocal = getLocalTime(guessUTC);
+            const gLocal = getLocalTimeUTC(guessUTC);
             const diff = scheduledTime.getTime() - gLocal.getTime();
             guessUTC.setTime(guessUTC.getTime() + diff);
         }

@@ -1,1 +1,1 @@
-sed -i 's/import { getDateStringInTimezone } from '\''..\/utils\/dateUtils.js'\'';/import { getDateStringInTimezone } from '\''..\/utils\/dateUtils.js'\'';\nimport { getLogicalShiftDetails } from '\''..\/utils\/shiftUtils.js'\'';/' server/controllers/attendanceController.ts
+sed -i 's/interface NetworkState {/interface NetworkState {\n  serverTimeOffset: number;\n  lastLocalSyncTime: number;\n  setServerTimeOffset: (offset: number) => void;\n  setLastLocalSyncTime: (time: number) => void;\n  syncServerTime: () => Promise<void>;/g' mobile/src/store/useNetworkStore.ts

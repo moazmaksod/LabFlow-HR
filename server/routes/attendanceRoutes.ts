@@ -4,6 +4,8 @@ import { authenticate, requireRole } from '../middlewares/authMiddleware.js';
 
 const router = Router();
 
+router.get('/server-time', (req, res) => { res.json({ serverTime: new Date().toISOString() }); });
+
 router.use(authenticate);
 
 // Employee & Manager routes

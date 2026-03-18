@@ -107,7 +107,18 @@ export default function DashboardScreen() {
       const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       const { latitude, longitude } = location.coords;
 
-      const timestamp = new Date().toISOString();
+
+      // 3. Calculate True Time using server offset
+      const localNow = Date.now();
+      const { serverTimeOffset, lastLocalSyncTime } = useNetworkStore.getState();
+
+      if (localNow < lastLocalSyncTime) {
+        Alert.alert('Security Alert', 'Device clock tampering detected. Time appears to have moved backwards.');
+        setLoading(false);
+        return;
+      }
+
+      const timestamp = new Date(localNow + serverTimeOffset).toISOString();
 
       // Optimistic Update if offline
       if (!isConnected) {
@@ -194,7 +205,18 @@ export default function DashboardScreen() {
           setLoading(true);
           try {
             const deviceId = await getUniqueDeviceId();
-            const timestamp = new Date().toISOString();
+
+      // 3. Calculate True Time using server offset
+      const localNow = Date.now();
+      const { serverTimeOffset, lastLocalSyncTime } = useNetworkStore.getState();
+
+      if (localNow < lastLocalSyncTime) {
+        Alert.alert('Security Alert', 'Device clock tampering detected. Time appears to have moved backwards.');
+        setLoading(false);
+        return;
+      }
+
+      const timestamp = new Date(localNow + serverTimeOffset).toISOString();
 
             // Optimistic Update if offline
             if (!isConnected) {
@@ -221,7 +243,18 @@ export default function DashboardScreen() {
           } catch (error: any) {
             if (!error.response) {
               const deviceId = await getUniqueDeviceId();
-              const timestamp = new Date().toISOString();
+
+      // 3. Calculate True Time using server offset
+      const localNow = Date.now();
+      const { serverTimeOffset, lastLocalSyncTime } = useNetworkStore.getState();
+
+      if (localNow < lastLocalSyncTime) {
+        Alert.alert('Security Alert', 'Device clock tampering detected. Time appears to have moved backwards.');
+        setLoading(false);
+        return;
+      }
+
+      const timestamp = new Date(localNow + serverTimeOffset).toISOString();
               saveOfflineRequest('POST', '/attendance/step-away', { timestamp, deviceId });
               Alert.alert('Offline Mode', 'Network error. Your request was saved locally and will be synced later.');
               setStatus('away');
@@ -242,7 +275,18 @@ export default function DashboardScreen() {
     setLoading(true);
     try {
       const deviceId = await getUniqueDeviceId();
-      const timestamp = new Date().toISOString();
+
+      // 3. Calculate True Time using server offset
+      const localNow = Date.now();
+      const { serverTimeOffset, lastLocalSyncTime } = useNetworkStore.getState();
+
+      if (localNow < lastLocalSyncTime) {
+        Alert.alert('Security Alert', 'Device clock tampering detected. Time appears to have moved backwards.');
+        setLoading(false);
+        return;
+      }
+
+      const timestamp = new Date(localNow + serverTimeOffset).toISOString();
 
       // Optimistic Update if offline
       if (!isConnected) {
@@ -263,7 +307,18 @@ export default function DashboardScreen() {
     } catch (error: any) {
       if (!error.response) {
         const deviceId = await getUniqueDeviceId();
-        const timestamp = new Date().toISOString();
+
+      // 3. Calculate True Time using server offset
+      const localNow = Date.now();
+      const { serverTimeOffset, lastLocalSyncTime } = useNetworkStore.getState();
+
+      if (localNow < lastLocalSyncTime) {
+        Alert.alert('Security Alert', 'Device clock tampering detected. Time appears to have moved backwards.');
+        setLoading(false);
+        return;
+      }
+
+      const timestamp = new Date(localNow + serverTimeOffset).toISOString();
         saveOfflineRequest('POST', '/attendance/resume-work', { timestamp, deviceId });
         Alert.alert('Offline Mode', 'Network error. Your request was saved locally and will be synced later.');
         setStatus('working');

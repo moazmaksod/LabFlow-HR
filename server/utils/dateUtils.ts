@@ -13,8 +13,8 @@ export const getDateStringInTimezone = (timestamp: string | Date | number, timez
         return formatter.format(date);
     } catch (error) {
         console.error(`Error formatting date for timezone ${timezone}:`, error);
-        // Fallback to local date if timezone is invalid
+        // Fallback to UTC if timezone is invalid
         const d = new Date(timestamp);
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
     }
 };

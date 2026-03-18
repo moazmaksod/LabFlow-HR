@@ -1,0 +1,1 @@
+sed -i "s|router.use(authenticate);|router.get('/server-time', (req, res) => { res.json({ serverTime: new Date().toISOString() }); });\n\nrouter.use(authenticate);|g" server/routes/attendanceRoutes.ts

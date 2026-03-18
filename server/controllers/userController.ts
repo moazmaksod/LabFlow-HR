@@ -169,11 +169,28 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
         }
 
         const shiftDetails = getLogicalShiftDetails(parsedSchedule, currentServerTime, timezone, 'check_in');
-        user.current_shift = shiftDetails.shift ? {
-            start: shiftDetails.shift.start,
-            end: shiftDetails.shift.end,
-            date: shiftDetails.logicalDate
-        } : null;
+
+        let current_shift = null;
+        if (shiftDetails.shift && shiftDetails.scheduledTime) {
+            const shiftStartUtc = shiftDetails.scheduledTime.toISOString();
+
+            // Calculate end time
+            const [startH, startM] = shiftDetails.shift.start.split(':').map(Number);
+            const [endH, endM] = shiftDetails.shift.end.split(':').map(Number);
+            let durationMins = (endH * 60 + endM) - (startH * 60 + startM);
+            if (durationMins < 0) durationMins += 24 * 60; // night shift
+
+            const shiftEndUtc = new Date(shiftDetails.scheduledTime.getTime() + durationMins * 60 * 1000).toISOString();
+
+            current_shift = {
+                start: shiftDetails.shift.start,
+                end: shiftDetails.shift.end,
+                date: shiftDetails.logicalDate,
+                start_utc: shiftStartUtc,
+                end_utc: shiftEndUtc
+            };
+        }
+        user.current_shift = current_shift;
         user.next_shift = null; // We don't need next_shift anymore, current_shift handles the nearest shift
 
         res.json(user);

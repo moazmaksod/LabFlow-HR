@@ -88,20 +88,17 @@ export default function SmartAttendanceCard({
     );
   }
 
-  const startMins = timeToMinutes(todayShift.start);
-  let endMins = timeToMinutes(todayShift.end);
-  if (endMins < startMins) {
-    endMins += 24 * 60; // Handle night shifts crossing midnight
-  }
-  const totalMins = endMins - startMins;
 
-  const [y, m, d] = todayShift.date.split('-');
-  const shiftDate = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
-  const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const dayDiff = Math.round((todayDate.getTime() - shiftDate.getTime()) / (1000 * 60 * 60 * 24));
 
-  const nowMins = now.getHours() * 60 + now.getMinutes();
-  let currentNowMins = nowMins + (dayDiff * 24 * 60);
+
+  const shiftStartUtc = new Date(todayShift.start_utc);
+  const shiftEndUtc = new Date(todayShift.end_utc);
+  const totalMins = (shiftEndUtc.getTime() - shiftStartUtc.getTime()) / (1000 * 60);
+  const currentNowMins = (now.getTime() - shiftStartUtc.getTime()) / (1000 * 60);
+
+  const dayDiff = now.getDate() !== shiftStartUtc.getDate() ? 1 : 0; // Simplified for display logic
+  const shiftDate = shiftStartUtc;
+  const startMins = 0; // Everything is relative to start now
 
   // Calculations
   let workedMins = 0;
@@ -118,17 +115,11 @@ export default function SmartAttendanceCard({
     const totalElapsed = (now.getTime() - checkInDate.getTime()) / (1000 * 60);
     workedMins = Math.max(0, totalElapsed - breakMins);
     
-    const shiftStartAbsolute = new Date(shiftDate);
-    const [startH, startM] = todayShift.start.split(':').map(Number);
-    shiftStartAbsolute.setHours(startH, startM, 0, 0);
-    const shiftEndAbsolute = new Date(shiftStartAbsolute);
-    shiftEndAbsolute.setMinutes(shiftEndAbsolute.getMinutes() + totalMins);
-    
-    remainingMins = Math.max(0, (shiftEndAbsolute.getTime() - now.getTime()) / (1000 * 60));
+    remainingMins = Math.max(0, (shiftEndUtc.getTime() - now.getTime()) / (1000 * 60));
 
     const getMinsFromShiftStart = (dateStr: string | Date) => {
       const d = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
-      return (d.getTime() - shiftStartAbsolute.getTime()) / (1000 * 60);
+      return (d.getTime() - shiftStartUtc.getTime()) / (1000 * 60);
     };
 
     let checkInMins = getMinsFromShiftStart(activeSession.check_in);
@@ -187,7 +178,7 @@ export default function SmartAttendanceCard({
   }
 
   // "Now" indicator position
-  let nowPct = ((currentNowMins - startMins) / totalMins) * 100;
+  let nowPct = (currentNowMins / totalMins) * 100;
   if (nowPct < 0) nowPct = 0;
   if (nowPct > 100) nowPct = 100;
 

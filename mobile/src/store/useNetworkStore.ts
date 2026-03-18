@@ -8,31 +8,58 @@ import { useAttendanceStore } from './useAttendanceStore';
 import { useAuthStore } from './useAuthStore';
 
 interface NetworkState {
+  serverTimeOffset: number;
+  lastLocalSyncTime: number;
+  setServerTimeOffset: (offset: number) => void;
+  setLastLocalSyncTime: (time: number) => void;
+  syncServerTime: () => Promise<void>;
   isConnected: boolean;
   isSyncing: boolean;
   setConnected: (connected: boolean) => void;
   syncOfflineRecords: () => Promise<void>;
 }
 
-export const useNetworkStore = create<NetworkState>((set, get) => ({
-  isConnected: true,
-  isSyncing: false,
-  setConnected: (connected) => set({ isConnected: connected }),
-  syncOfflineRecords: async () => {
-    if (get().isSyncing) return;
+import * as SecureStore from 'expo-secure-store';
+import { persist, createJSONStorage } from 'zustand/middleware';
+
+export const useNetworkStore = create<NetworkState>()(
+  persist(
+    (set, get) => ({
+      serverTimeOffset: 0,
+      lastLocalSyncTime: 0,
+      isConnected: true,
+      isSyncing: false,
+      setServerTimeOffset: (offset) => set({ serverTimeOffset: offset }),
+      setLastLocalSyncTime: (time) => set({ lastLocalSyncTime: time }),
+      syncServerTime: async () => {
+        if (!get().isConnected) return;
+        try {
+          const response = await api.get('/attendance/server-time');
+          const serverTime = new Date(response.data.serverTime).getTime();
+          const localTime = Date.now();
+          set({
+            serverTimeOffset: serverTime - localTime,
+            lastLocalSyncTime: localTime
+          });
+        } catch (error) {
+          console.error('Failed to sync server time:', error);
+        }
+      },
+      setConnected: (connected) => set({ isConnected: connected }),
+      syncOfflineRecords: async () => {
+        if (get().isSyncing) return;
     set({ isSyncing: true });
     try {
       let hasSyncedAny = false;
       // Sync Attendance Logs
       const logs = getUnsyncedLogs() as any[];
       if (logs.length > 0) {
-        const currentTimestamp = Date.now();
-        const logsWithDelay = logs.map(log => ({
+        const logsToSend = logs.map(log => ({
           ...log,
-          delay_in_milliseconds: currentTimestamp - new Date(log.timestamp).getTime()
+          // We no longer send delay_in_milliseconds. We just send the calculated offline timestamp.
         }));
 
-        const response = await api.post('/attendance/sync', { logs: logsWithDelay });
+        const response = await api.post('/attendance/sync', { logs: logsToSend });
         const results = response.data.results as any[];
         
         // Mark all processed logs as synced (even if skipped due to business logic)
@@ -138,7 +165,21 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
       set({ isSyncing: false });
     }
   }
-}));
+}),
+    {
+      name: 'labflow-network-state',
+      storage: createJSONStorage(() => ({
+        getItem: async (name) => (await SecureStore.getItemAsync(name)) || null,
+        setItem: async (name, value) => await SecureStore.setItemAsync(name, value),
+        removeItem: async (name) => await SecureStore.deleteItemAsync(name),
+      })),
+      partialize: (state) => ({
+        serverTimeOffset: state.serverTimeOffset,
+        lastLocalSyncTime: state.lastLocalSyncTime
+      }), // only persist time offsets
+    }
+  )
+);
 
 // Initialize network listener
 NetInfo.addEventListener(state => {
@@ -149,6 +190,7 @@ NetInfo.addEventListener(state => {
   
   // Trigger sync when coming back online
   if (isConnected && !wasConnected) {
+    useNetworkStore.getState().syncServerTime();
     useNetworkStore.getState().syncOfflineRecords();
   }
 });
