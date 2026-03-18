@@ -228,6 +228,26 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                     </div>
                   </div>
                 </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Personal Phone</label>
+                  <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">
+                    {formData.personal_phone || '-'}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Emergency Contact</label>
+                    <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">
+                      {formData.emergency_contact_name || '-'}
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Emergency Phone</label>
+                    <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">
+                      {formData.emergency_contact_phone || '-'}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
