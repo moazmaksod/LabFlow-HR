@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Dimensions, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { Clock, Calendar, Play, Pause } from 'lucide-react-native';
+import { Clock, Calendar, Play, Pause, AlertCircle } from 'lucide-react-native';
 import { useAttendanceStore } from '../store/useAttendanceStore';
+import { useNetworkStore } from '../store/useNetworkStore';
 
 interface SmartAttendanceCardProps {
   currentShift: any | null;
@@ -48,16 +49,24 @@ export default function SmartAttendanceCard({
   lunchBreakMinutes
 }: SmartAttendanceCardProps) {
   const activeSession = useAttendanceStore((state) => state.activeSession);
+  const serverTimeOffset = useNetworkStore((state) => state.serverTimeOffset);
+  const lastLocalSyncTime = useNetworkStore((state) => state.lastLocalSyncTime);
 
-  const [now, setNow] = useState(() => new Date());
+  const getTrueTime = () => new Date(Date.now() + serverTimeOffset);
+  const [now, setNow] = useState(getTrueTime);
 
   useEffect(() => {
     // Real-Time Tick (The Engine) - update every 30 seconds
     const interval = setInterval(() => {
-      setNow(new Date());
+      setNow(getTrueTime());
     }, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [serverTimeOffset]);
+
+  // Check if clock is tampered
+  // Threshold: If serverTimeOffset is more than 2 minutes, meaning the phone is not using Automatic Network Time.
+  // Or if Date.now() moved backwards before the lastLocalSyncTime.
+  const isTimeTampered = Math.abs(serverTimeOffset) > 120000 || Date.now() < lastLocalSyncTime;
 
   const todayShift = currentShift;
 
@@ -75,14 +84,54 @@ export default function SmartAttendanceCard({
             </View>
           </View>
           <View style={styles.buttonRow}>
+          {isTimeTampered ? (
+            <View style={styles.tamperContainer}>
+              <AlertCircle color="#ef4444" size={24} style={{ marginBottom: 8 }} />
+              <Text style={styles.tamperTitle}>Device Time Out of Sync</Text>
+              <Text style={styles.tamperText}>
+                Please set your phone's Date & Time to 'Automatic' to log attendance.
+              </Text>
+            </View>
+          ) : !isClockedIn ? (
             <TouchableOpacity 
-              style={[styles.clockButton, styles.clockInButton]} 
+              style={[styles.clockButton, styles.clockInButton, loading && styles.disabledButton]}
               onPress={() => handleClock('check_in')}
               disabled={loading}
             >
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Clock In Anyway</Text>}
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Clock In</Text>}
             </TouchableOpacity>
-          </View>
+          ) : (
+            <>
+              {currentStatus === 'working' ? (
+                <TouchableOpacity
+                  style={[styles.clockButton, styles.stepAwayButton, loading && styles.disabledButton]}
+                  onPress={handleStepAway}
+                  disabled={loading}
+                >
+                  <Pause color="#fff" size={20} style={{ marginRight: 8 }} />
+                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Step Away</Text>}
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.clockButton, styles.resumeButton, loading && styles.disabledButton]}
+                  onPress={handleResumeWork}
+                  disabled={loading}
+                >
+                  <Play color="#fff" size={20} style={{ marginRight: 8 }} />
+                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Resume Work</Text>}
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
+                style={[styles.clockButton, styles.clockOutButton, loading && styles.disabledButton]}
+                onPress={() => handleClock('check_out')}
+                disabled={loading}
+              >
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Clock Out</Text>}
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
         </View>
       </View>
     );
@@ -277,9 +326,17 @@ export default function SmartAttendanceCard({
         </Text>
 
         <View style={styles.buttonRow}>
-          {!isClockedIn ? (
+          {isTimeTampered ? (
+            <View style={styles.tamperContainer}>
+              <AlertCircle color="#ef4444" size={24} style={{ marginBottom: 8 }} />
+              <Text style={styles.tamperTitle}>Device Time Out of Sync</Text>
+              <Text style={styles.tamperText}>
+                Please set your phone's Date & Time to 'Automatic' to log attendance.
+              </Text>
+            </View>
+          ) : !isClockedIn ? (
             <TouchableOpacity 
-              style={[styles.clockButton, styles.clockInButton]} 
+              style={[styles.clockButton, styles.clockInButton, loading && styles.disabledButton]}
               onPress={() => handleClock('check_in')}
               disabled={loading}
             >
@@ -289,7 +346,7 @@ export default function SmartAttendanceCard({
             <>
               {currentStatus === 'working' ? (
                 <TouchableOpacity 
-                  style={[styles.clockButton, styles.stepAwayButton]} 
+                  style={[styles.clockButton, styles.stepAwayButton, loading && styles.disabledButton]}
                   onPress={handleStepAway}
                   disabled={loading}
                 >
@@ -298,7 +355,7 @@ export default function SmartAttendanceCard({
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity 
-                  style={[styles.clockButton, styles.resumeButton]} 
+                  style={[styles.clockButton, styles.resumeButton, loading && styles.disabledButton]}
                   onPress={handleResumeWork}
                   disabled={loading}
                 >
@@ -308,7 +365,7 @@ export default function SmartAttendanceCard({
               )}
               
               <TouchableOpacity 
-                style={[styles.clockButton, styles.clockOutButton]} 
+                style={[styles.clockButton, styles.clockOutButton, loading && styles.disabledButton]}
                 onPress={() => handleClock('check_out')}
                 disabled={loading}
               >
@@ -530,6 +587,29 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 16,
     marginBottom: 12,
+  },
+  tamperContainer: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#fca5a5',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    width: '100%',
+  },
+  tamperTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#ef4444',
+    marginBottom: 4,
+  },
+  tamperText: {
+    fontSize: 13,
+    color: '#991b1b',
+    textAlign: 'center',
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
   buttonRow: {
     flexDirection: 'row',

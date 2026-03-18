@@ -10,6 +10,7 @@ import { useNetworkStore } from '../store/useNetworkStore';
 import { getUniqueDeviceId } from '../utils/device';
 import { useAttendanceStore } from '../store/useAttendanceStore';
 import SmartAttendanceCard from '../components/SmartAttendanceCard';
+import LiveServerClock from '../components/LiveServerClock';
 
 export default function DashboardScreen() {
   const { user, logout } = useAuthStore();
@@ -382,6 +383,8 @@ export default function DashboardScreen() {
           <LogOut color="#ef4444" size={24} />
         </TouchableOpacity>
       </View>
+
+      <LiveServerClock />
 
       {userProfile && (
         <SmartAttendanceCard
