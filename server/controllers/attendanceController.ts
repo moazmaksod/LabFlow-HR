@@ -52,13 +52,13 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                 // 1. Void the Old Request (early_leave_approval)
                 const oldRequest = db.prepare(`
                     SELECT id FROM requests 
-                    WHERE attendance_id = ? AND type = 'early_leave_approval' AND status != 'canceled'
+                    WHERE attendance_id = ? AND type = 'early_leave_approval' AND status != 'rejected'
                 `).get(existingAttendance.id) as any;
 
                 if (oldRequest) {
                     db.prepare(`
                         UPDATE requests 
-                        SET status = 'canceled', 
+                        SET status = 'rejected', 
                             manager_note = COALESCE(manager_note, '') || '\nSYSTEM: Auto-canceled because the employee returned. Replaced by a shift interruption request.'
                         WHERE id = ?
                     `).run(oldRequest.id);
