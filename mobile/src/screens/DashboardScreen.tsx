@@ -108,7 +108,7 @@ export default function DashboardScreen() {
 
       // Optimistic Update if offline
       if (!isConnected) {
-        saveOfflineLog(type, timestamp, latitude, longitude);
+        saveOfflineLog(type, timestamp, latitude, longitude, deviceId);
         setStatus(type === 'check_in' ? 'working' : 'none');
         setLastActionTimestamp(timestamp);
         checkUnsyncedLogs();
@@ -141,7 +141,7 @@ export default function DashboardScreen() {
         } else {
           // Network error, save to local SQLite for later sync
           console.log('Network Error, saving offline:', apiError.message);
-          saveOfflineLog(type, timestamp, latitude, longitude);
+          saveOfflineLog(type, timestamp, latitude, longitude, deviceId);
           setStatus(type === 'check_in' ? 'working' : 'none');
           setLastActionTimestamp(timestamp);
           Alert.alert(

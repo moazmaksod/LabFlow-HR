@@ -225,6 +225,64 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
     return { status: 400, error: 'Invalid type' };
 }
 
+function handleClockAction(userId: number, type: string, lat: number, lng: number, deviceId: string, timestamp: string) {
+    // Fetch user profile and status
+    const userProfile = db.prepare(`
+        SELECT p.status, p.device_id, p.weekly_schedule, j.grace_period, p.allow_overtime, p.max_overtime_hours
+        FROM profiles p
+        LEFT JOIN jobs j ON p.job_id = j.id
+        WHERE p.user_id = ?
+    `).get(userId) as any;
+
+    if (!userProfile) {
+        return { status: 404, error: 'User profile not found' };
+    }
+
+    // 1. Inactive Status Check
+    if (userProfile.status === 'inactive') {
+        return { status: 403, error: 'REASON: INACTIVE' };
+    }
+
+    // 2. Suspended Status Check
+    if (userProfile.status === 'suspended') {
+        return { status: 403, error: 'REASON: SUSPENDED' };
+    }
+
+    // 3. Device Binding Security Check
+    if (!userProfile.device_id) {
+        // First time clocking in, bind device
+        const existingDevice = db.prepare('SELECT user_id FROM profiles WHERE device_id = ?').get(deviceId) as any;
+        if (existingDevice && existingDevice.user_id !== userId) {
+            return { status: 403, error: 'Security Alert: This device is already registered to another employee.' };
+        }
+        db.prepare('UPDATE profiles SET device_id = ? WHERE user_id = ?').run(deviceId, userId);
+    } else if (userProfile.device_id !== deviceId) {
+        return { status: 403, error: 'Security Alert: Unauthorized device.' };
+    }
+
+    // Fetch company settings for geofence validation
+    const settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+    if (settings) {
+        const distance = calculateDistance(lat, lng, settings.office_lat, settings.office_lng);
+        if (distance > settings.radius_meters) {
+            return { status: 403, error: 'Away from job: You are outside the allowed geofence area' };
+        }
+    }
+
+    const timezone = settings?.timezone || 'UTC';
+
+    let schedule = null;
+    if (userProfile.weekly_schedule) {
+        try {
+            schedule = JSON.parse(userProfile.weekly_schedule);
+        } catch (e) {
+            console.error('Error parsing weekly schedule:', e);
+        }
+    }
+
+    return processAttendanceEvent(userId, type, timestamp, lat, lng, userProfile, timezone, schedule);
+}
+
 export const clockAttendance = (req: AuthRequest, res: Response): void => {
     try {
         const userId = req.user!.id;
@@ -236,65 +294,17 @@ export const clockAttendance = (req: AuthRequest, res: Response): void => {
             return;
         }
 
-        // Fetch user profile and status
-        const userProfile = db.prepare(`
-            SELECT p.status, p.device_id, p.weekly_schedule, j.grace_period, p.allow_overtime, p.max_overtime_hours
-            FROM profiles p
-            LEFT JOIN jobs j ON p.job_id = j.id
-            WHERE p.user_id = ?
-        `).get(userId) as any;
-
-        if (!userProfile) {
-            res.status(404).json({ error: 'User profile not found' });
-            return;
-        }
-
-        // 1. Inactive Status Check
-        if (userProfile.status === 'inactive') {
-            res.status(403).json({ error: 'Action Blocked: Your account status is "Inactive". You can login but cannot clock in or out. Please contact HR.' });
-            return;
-        }
-
-        // 2. Device Binding Security Check
-        if (!userProfile.device_id) {
-            // First time clocking in, bind device
-            // Check if this device is already registered to someone else
-            const existingDevice = db.prepare('SELECT user_id FROM profiles WHERE device_id = ?').get(deviceId) as any;
-            if (existingDevice && existingDevice.user_id !== userId) {
-                res.status(403).json({ error: 'Security Alert: This device is already registered to another employee. One device per employee is allowed.' });
-                return;
-            }
-            db.prepare('UPDATE profiles SET device_id = ? WHERE user_id = ?').run(deviceId, userId);
-        } else if (userProfile.device_id !== deviceId) {
-            res.status(403).json({ error: 'Security Alert: You are trying to clock in from an unauthorized device. Please use your registered phone or contact the manager.' });
-            return;
-        }
-
-        // Fetch company settings for geofence validation
-        const settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
-        if (settings) {
-            const distance = calculateDistance(lat, lng, settings.office_lat, settings.office_lng);
-            if (distance > settings.radius_meters) {
-                res.status(403).json({ error: 'Away from job: You are outside the allowed geofence area' });
-                return;
-            }
-        }
-
-        const timezone = settings?.timezone || 'UTC';
-
-        let schedule = null;
-        if (userProfile.weekly_schedule) {
-            try {
-                schedule = JSON.parse(userProfile.weekly_schedule);
-            } catch (e) {
-                console.error('Error parsing weekly schedule:', e);
-            }
-        }
-
-        const result = processAttendanceEvent(userId, type, timestamp, lat, lng, userProfile, timezone, schedule);
+        const result = handleClockAction(userId, type, lat, lng, deviceId, timestamp);
         
         if (result.error) {
-            res.status(result.status).json({ error: result.error });
+            // Map internal reasons to user-friendly messages for real-time
+            let userMessage = result.error;
+            if (result.error === 'REASON: INACTIVE') {
+                userMessage = 'Action Blocked: Your account status is "Inactive". Please contact HR.';
+            } else if (result.error === 'REASON: SUSPENDED') {
+                userMessage = 'Action Blocked: Your account status is "Suspended". Please contact HR.';
+            }
+            res.status(result.status).json({ error: userMessage });
             return;
         }
         
@@ -316,44 +326,17 @@ export const syncOfflineLogs = (req: AuthRequest, res: Response): void => {
         }
 
         const syncTransaction = db.transaction((logsToSync) => {
-            const settingsForTz = db.prepare('SELECT timezone FROM settings WHERE id = 1').get() as any;
-            const timezone = settingsForTz?.timezone || 'UTC';
-
-            const userProfile = db.prepare(`
-                SELECT p.status, p.weekly_schedule, j.grace_period, p.max_overtime_hours
-                FROM profiles p
-                LEFT JOIN jobs j ON p.job_id = j.id
-                WHERE p.user_id = ?
-            `).get(userId) as any;
-
-            if (userProfile?.status === 'inactive') {
-                return logsToSync.map((log: any) => ({ logId: log.id, status: 'skipped', reason: 'REASON: INACTIVE' }));
-            }
-
-            if (userProfile?.status === 'suspended') {
-                return logsToSync.map((log: any) => ({ logId: log.id, status: 'skipped', reason: 'REASON: SUSPENDED' }));
-            }
-
-            let schedule = null;
-            if (userProfile && userProfile.weekly_schedule) {
-                try {
-                    schedule = JSON.parse(userProfile.weekly_schedule);
-                } catch (e) {
-                    console.error('Error parsing weekly schedule:', e);
-                }
-            }
-
             const results = [];
             const currentServerTime = Date.now();
             
             for (const log of logsToSync) {
-                const { type, delay_in_milliseconds, lat, lng } = log;
+                const { type, delay_in_milliseconds, lat, lng, deviceId } = log;
                 
                 // Calculate true historical time securely
                 const delay = typeof delay_in_milliseconds === 'number' ? delay_in_milliseconds : 0;
                 const timestamp = new Date(currentServerTime - delay).toISOString();
                 
-                const result = processAttendanceEvent(userId, type, timestamp, lat, lng, userProfile, timezone, schedule);
+                const result = handleClockAction(userId, type, lat, lng, deviceId, timestamp);
                 
                 if (result.error) {
                     results.push({ logId: log.id, status: 'skipped', reason: result.error });

@@ -12,6 +12,7 @@ export const initLocalDb = () => {
       timestamp TEXT NOT NULL,
       lat REAL NOT NULL,
       lng REAL NOT NULL,
+      deviceId TEXT,
       synced INTEGER DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS local_requests (
@@ -25,10 +26,10 @@ export const initLocalDb = () => {
 };
 
 // Save an offline log
-export const saveOfflineLog = (type: 'check_in' | 'check_out', timestamp: string, lat: number, lng: number) => {
+export const saveOfflineLog = (type: 'check_in' | 'check_out', timestamp: string, lat: number, lng: number, deviceId: string) => {
   db.runSync(
-    'INSERT INTO local_logs (type, timestamp, lat, lng, synced) VALUES (?, ?, ?, ?, 0)',
-    [type, timestamp, lat, lng]
+    'INSERT INTO local_logs (type, timestamp, lat, lng, deviceId, synced) VALUES (?, ?, ?, ?, ?, 0)',
+    [type, timestamp, lat, lng, deviceId]
   );
 };
 

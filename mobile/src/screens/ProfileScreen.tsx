@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { User, Camera, Save, LogOut, Mail, UserCircle } from 'lucide-react-native';
+import { User, Camera, Save, LogOut, Mail, UserCircle, Lock } from 'lucide-react-native';
 import api from '../lib/axios';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNetworkStore } from '../store/useNetworkStore';
@@ -67,6 +67,10 @@ export default function ProfileScreen() {
   };
 
   const uploadAvatar = async (uri: string) => {
+    if (!isConnected) {
+      Alert.alert('Offline', 'Cannot update profile picture while offline');
+      return;
+    }
     setLoading(true);
     try {
       const formData = new FormData();
@@ -90,15 +94,22 @@ export default function ProfileScreen() {
       // Update profile with new avatar URL
       await api.put('/users/profile', { profile_picture_url: newAvatarUrl });
       Alert.alert('Success', 'Avatar updated successfully');
-    } catch (error) {
-      console.error('Error uploading avatar:', error);
-      Alert.alert('Error', 'Failed to upload avatar');
+    } catch (error: any) {
+      // Graceful error catching to avoid redbox
+      const message = error.isNetworkError 
+        ? 'Network unavailable. Please try again when online.' 
+        : (error.response?.data?.error || 'Failed to upload avatar');
+      Alert.alert('Avatar Update', message);
     } finally {
       setLoading(false);
     }
   };
 
   const handleUpdateProfile = async () => {
+    if (!isConnected) {
+      Alert.alert('Offline', 'Cannot update profile while offline');
+      return;
+    }
     if (!name.trim()) {
       Alert.alert('Error', 'Name cannot be empty');
       return;
@@ -119,9 +130,9 @@ export default function ProfileScreen() {
 
       Alert.alert('Success', 'Profile updated successfully');
     } catch (error: any) {
-      console.error('Error updating profile:', error);
+      // Graceful error catching to avoid redbox
       const message = error.isNetworkError 
-        ? 'Network unavailable. Update saved locally and will sync later.' 
+        ? 'Network unavailable. Please try again when online.' 
         : (error.response?.data?.error || 'Failed to update profile');
       Alert.alert('Profile Update', message);
     } finally {
@@ -212,11 +223,24 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        <TouchableOpacity style={styles.saveButton} onPress={handleUpdateProfile} disabled={loading}>
+        <TouchableOpacity 
+          style={[styles.saveButton, !isConnected && styles.disabledButton]} 
+          onPress={handleUpdateProfile} 
+          disabled={loading || !isConnected}
+        >
           {loading ? <ActivityIndicator color="#fff" /> : (
             <>
-              <Save size={20} color="#fff" />
-              <Text style={styles.saveButtonText}>Save Changes</Text>
+              {isConnected ? (
+                <>
+                  <Save size={20} color="#fff" />
+                  <Text style={styles.saveButtonText}>Save Changes</Text>
+                </>
+              ) : (
+                <>
+                  <Lock size={20} color="#fff" />
+                  <Text style={styles.saveButtonText}>Offline</Text>
+                </>
+              )}
             </>
           )}
         </TouchableOpacity>
@@ -249,6 +273,7 @@ const styles = StyleSheet.create({
   input: { flex: 1, padding: 12, fontSize: 16, color: '#18181b' },
   disabledInput: { backgroundColor: '#f4f4f5' },
   row: { flexDirection: 'row' },
+  disabledButton: { opacity: 0.5, backgroundColor: '#71717a' },
   saveButton: { backgroundColor: '#18181b', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 8, gap: 8, marginTop: 12 },
   saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   logoutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 8, gap: 8, marginTop: 8, borderWidth: 1, borderColor: '#fee2e2' },

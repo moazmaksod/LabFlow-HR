@@ -33,24 +33,35 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
         }));
 
         const response = await api.post('/attendance/sync', { logs: logsWithDelay });
-        const results = response.data.results;
-        const syncedIds = results.map((r: any) => r.logId);
+        const results = response.data.results as any[];
         
-        if (syncedIds.length > 0) {
-          markLogsAsSynced(syncedIds);
+        // Mark all processed logs as synced (even if skipped due to business logic)
+        const processedIds = results.map((r: any) => r.logId);
+        if (processedIds.length > 0) {
+          markLogsAsSynced(processedIds);
           hasSyncedAny = true;
         }
 
-        const hasSuspended = results.some((r: any) => r.reason === 'REASON: SUSPENDED');
-        const hasInactive = results.some((r: any) => r.reason === 'REASON: INACTIVE');
+        // Handle specific rejections
+        const suspendedResult = results.find((r: any) => r.reason === 'REASON: SUSPENDED');
+        const inactiveResult = results.find((r: any) => r.reason === 'REASON: INACTIVE');
+        const otherSkipped = results.filter((r: any) => r.status === 'skipped' && r.reason !== 'REASON: SUSPENDED' && r.reason !== 'REASON: INACTIVE');
 
-        if (hasSuspended) {
+        if (suspendedResult) {
           Alert.alert('Account Suspended', 'Your account has been suspended. Please contact HR.');
           await useAuthStore.getState().logout();
           set({ isSyncing: false });
-          return;
-        } else if (hasInactive) {
+          return; // Stop further syncing
+        } 
+        
+        if (inactiveResult) {
           Alert.alert('Sync Rejected', 'Offline attendance rejected. Your account is currently inactive.');
+        }
+
+        if (otherSkipped.length > 0) {
+          // Optional: Show a generic alert for other skipped reasons if needed
+          // For now, we just log them as they are likely business logic rejections (e.g. already clocked in)
+          console.log('Some offline logs were skipped by server:', otherSkipped);
         }
       }
 
