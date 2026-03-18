@@ -1,1 +1,0 @@
-sed -i 's/interface NetworkState {/interface NetworkState {\n  serverTimeOffset: number;\n  lastLocalSyncTime: number;\n  setServerTimeOffset: (offset: number) => void;\n  setLastLocalSyncTime: (time: number) => void;\n  syncServerTime: () => Promise<void>;/g' mobile/src/store/useNetworkStore.ts

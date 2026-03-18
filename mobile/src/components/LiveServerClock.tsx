@@ -6,25 +6,22 @@ import { useAttendanceStore } from '../store/useAttendanceStore';
 
 export default function LiveServerClock() {
   const serverTimeOffset = useNetworkStore((state) => state.serverTimeOffset);
-  const userProfile = useAttendanceStore((state) => state.userProfile);
-  // Assuming timezone comes from userProfile or a default like UTC
-  const timezone = userProfile?.timezone || 'UTC';
+  const timezone = useNetworkStore((state) => state.serverTimezone);
 
   const [displayTime, setDisplayTime] = useState('');
 
   useEffect(() => {
+    // Cache the formatter outside the interval to avoid high instantiation overhead
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true
+    });
+
     const updateTime = () => {
       const trueTime = new Date(Date.now() + serverTimeOffset);
-
-      // Format to hh:mm:ss A
-      const formatter = new Intl.DateTimeFormat('en-US', {
-        timeZone: timezone,
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: true
-      });
-
       setDisplayTime(formatter.format(trueTime));
     };
 

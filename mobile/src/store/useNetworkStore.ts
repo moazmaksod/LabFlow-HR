@@ -8,6 +8,7 @@ import { useAttendanceStore } from './useAttendanceStore';
 import { useAuthStore } from './useAuthStore';
 
 interface NetworkState {
+  serverTimezone: string;
   serverTimeOffset: number;
   lastLocalSyncTime: number;
   setServerTimeOffset: (offset: number) => void;
@@ -26,6 +27,7 @@ export const useNetworkStore = create<NetworkState>()(
   persist(
     (set, get) => ({
       serverTimeOffset: 0,
+      serverTimezone: 'UTC',
       lastLocalSyncTime: 0,
       isConnected: true,
       isSyncing: false,
@@ -39,7 +41,8 @@ export const useNetworkStore = create<NetworkState>()(
           const localTime = Date.now();
           set({
             serverTimeOffset: serverTime - localTime,
-            lastLocalSyncTime: localTime
+            lastLocalSyncTime: localTime,
+            serverTimezone: response.data.timezone || 'UTC'
           });
         } catch (error) {
           console.error('Failed to sync server time:', error);
@@ -175,7 +178,8 @@ export const useNetworkStore = create<NetworkState>()(
       })),
       partialize: (state) => ({
         serverTimeOffset: state.serverTimeOffset,
-        lastLocalSyncTime: state.lastLocalSyncTime
+        lastLocalSyncTime: state.lastLocalSyncTime,
+        serverTimezone: state.serverTimezone
       }), // only persist time offsets
     }
   )
