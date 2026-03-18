@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 
 export type AttendanceStatus = 'working' | 'away' | 'none';
 
@@ -18,6 +18,32 @@ interface AttendanceState {
   reset: () => void;
 }
 
+// Custom storage engine for Zustand using Expo SecureStore
+const secureStorage = {
+  getItem: async (name: string): Promise<string | null> => {
+    try {
+      return (await SecureStore.getItemAsync(name)) || null;
+    } catch (e) {
+      console.error('SecureStore getItem error:', e);
+      return null;
+    }
+  },
+  setItem: async (name: string, value: string): Promise<void> => {
+    try {
+      await SecureStore.setItemAsync(name, value);
+    } catch (e) {
+      console.error('SecureStore setItem error:', e);
+    }
+  },
+  removeItem: async (name: string): Promise<void> => {
+    try {
+      await SecureStore.deleteItemAsync(name);
+    } catch (e) {
+      console.error('SecureStore removeItem error:', e);
+    }
+  },
+};
+
 export const useAttendanceStore = create<AttendanceState>()(
   persist(
     (set) => ({
@@ -34,7 +60,7 @@ export const useAttendanceStore = create<AttendanceState>()(
     }),
     {
       name: 'labflow-attendance-state',
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => secureStorage),
     }
   )
 );
