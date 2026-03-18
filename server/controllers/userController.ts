@@ -140,7 +140,8 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
                 u.id, u.name, u.email, u.role,
                 p.age, p.gender, p.profile_picture_url, p.status,
                 p.weekly_schedule, p.hourly_rate, p.lunch_break_minutes,
-                p.emergency_contact_name, p.emergency_contact_phone, p.leave_balance
+                p.emergency_contact_name, p.emergency_contact_phone, p.leave_balance,
+                p.bio, p.personal_phone, p.legal_name, p.id_photo_url, p.hire_date
             FROM users u
             LEFT JOIN profiles p ON u.id = p.user_id
             WHERE u.id = ?
@@ -164,7 +165,8 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
         const { 
             name, age, gender, profile_picture_url,
             weekly_schedule, hourly_rate, lunch_break_minutes,
-            emergency_contact_name, emergency_contact_phone, leave_balance
+            emergency_contact_name, emergency_contact_phone, leave_balance,
+            bio, personal_phone, legal_name, id_photo_url, hire_date
         } = req.body;
 
         const updateTransaction = db.transaction(() => {
@@ -187,7 +189,12 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
                         lunch_break_minutes = COALESCE(?, lunch_break_minutes),
                         emergency_contact_name = COALESCE(?, emergency_contact_name),
                         emergency_contact_phone = COALESCE(?, emergency_contact_phone),
-                        leave_balance = COALESCE(?, leave_balance)
+                        leave_balance = COALESCE(?, leave_balance),
+                        bio = COALESCE(?, bio),
+                        personal_phone = COALESCE(?, personal_phone),
+                        legal_name = COALESCE(?, legal_name),
+                        id_photo_url = COALESCE(?, id_photo_url),
+                        hire_date = COALESCE(?, hire_date)
                     WHERE user_id = ?
                 `).run(
                     age || null, 
@@ -199,6 +206,11 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
                     emergency_contact_name || null,
                     emergency_contact_phone || null,
                     leave_balance !== undefined ? leave_balance : null,
+                    bio || null,
+                    personal_phone || null,
+                    legal_name || null,
+                    id_photo_url || null,
+                    hire_date || null,
                     userId
                 );
             } else {
@@ -206,8 +218,9 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
                     INSERT INTO profiles (
                         user_id, age, gender, profile_picture_url, status,
                         weekly_schedule, hourly_rate, lunch_break_minutes,
-                        emergency_contact_name, emergency_contact_phone, leave_balance
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        emergency_contact_name, emergency_contact_phone, leave_balance,
+                        bio, personal_phone, legal_name, id_photo_url, hire_date
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `).run(
                     userId, 
                     age || null, 
@@ -219,7 +232,12 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
                     lunch_break_minutes || 0,
                     emergency_contact_name || null,
                     emergency_contact_phone || null,
-                    leave_balance || 21
+                    leave_balance || 21,
+                    bio || null,
+                    personal_phone || null,
+                    legal_name || null,
+                    id_photo_url || null,
+                    hire_date || null
                 );
             }
 
@@ -263,6 +281,7 @@ export const getUserById = (req: Request, res: Response): void => {
                 p.age, p.gender, p.profile_picture_url,
                 p.weekly_schedule, p.hourly_rate, p.lunch_break_minutes,
                 p.emergency_contact_name, p.emergency_contact_phone, p.leave_balance,
+                p.bio, p.personal_phone, p.legal_name, p.id_photo_url, p.hire_date,
                 p.job_id, j.title as job_title,
                 p.status, p.suspension_reason,
                 p.allow_overtime, p.max_overtime_hours,
@@ -293,7 +312,8 @@ export const updateUserProfile = (req: Request, res: Response): void => {
             weekly_schedule, hourly_rate, lunch_break_minutes,
             emergency_contact_name, emergency_contact_phone, leave_balance,
             job_id, status, suspension_reason,
-            allow_overtime, max_overtime_hours
+            allow_overtime, max_overtime_hours,
+            bio, personal_phone, legal_name, id_photo_url, hire_date
         } = req.body;
 
         const updateTransaction = db.transaction(() => {
@@ -330,7 +350,12 @@ export const updateUserProfile = (req: Request, res: Response): void => {
                         status = COALESCE(?, status),
                         suspension_reason = COALESCE(?, suspension_reason),
                         allow_overtime = COALESCE(?, allow_overtime),
-                        max_overtime_hours = COALESCE(?, max_overtime_hours)
+                        max_overtime_hours = COALESCE(?, max_overtime_hours),
+                        bio = COALESCE(?, bio),
+                        personal_phone = COALESCE(?, personal_phone),
+                        legal_name = COALESCE(?, legal_name),
+                        id_photo_url = COALESCE(?, id_photo_url),
+                        hire_date = COALESCE(?, hire_date)
                     WHERE user_id = ?
                 `).run(
                     age || null, 
@@ -347,6 +372,11 @@ export const updateUserProfile = (req: Request, res: Response): void => {
                     status === 'suspended' ? suspension_reason : null,
                     allow_overtime !== undefined ? (allow_overtime ? 1 : 0) : null,
                     max_overtime_hours !== undefined ? max_overtime_hours : null,
+                    bio || null,
+                    personal_phone || null,
+                    legal_name || null,
+                    id_photo_url || null,
+                    hire_date || null,
                     id
                 );
             } else {
@@ -355,8 +385,9 @@ export const updateUserProfile = (req: Request, res: Response): void => {
                         user_id, age, gender, profile_picture_url, status, suspension_reason,
                         weekly_schedule, hourly_rate, lunch_break_minutes,
                         emergency_contact_name, emergency_contact_phone, leave_balance, job_id,
-                        allow_overtime, max_overtime_hours
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        allow_overtime, max_overtime_hours,
+                        bio, personal_phone, legal_name, id_photo_url, hire_date
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `).run(
                     id, 
                     age || null, 
@@ -372,7 +403,12 @@ export const updateUserProfile = (req: Request, res: Response): void => {
                     leave_balance || 21,
                     job_id || null,
                     allow_overtime ? 1 : 0,
-                    max_overtime_hours || 0
+                    max_overtime_hours || 0,
+                    bio || null,
+                    personal_phone || null,
+                    legal_name || null,
+                    id_photo_url || null,
+                    hire_date || null
                 );
             }
 
@@ -395,6 +431,7 @@ export const updateUserProfile = (req: Request, res: Response): void => {
                 p.age, p.gender, p.profile_picture_url,
                 p.weekly_schedule, p.hourly_rate, p.lunch_break_minutes,
                 p.emergency_contact_name, p.emergency_contact_phone, p.leave_balance,
+                p.bio, p.personal_phone, p.legal_name, p.id_photo_url, p.hire_date,
                 p.job_id, j.title as job_title,
                 p.status, p.suspension_reason,
                 p.allow_overtime, p.max_overtime_hours

@@ -74,6 +74,9 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
         lunch_break_minutes: employee.lunch_break_minutes || 0,
         emergency_contact_name: employee.emergency_contact_name || '',
         emergency_contact_phone: employee.emergency_contact_phone || '',
+        legal_name: employee.legal_name || '',
+        id_photo_url: employee.id_photo_url || '',
+        hire_date: employee.hire_date || '',
         age: employee.age || '',
         gender: employee.gender || '',
         allow_overtime: employee.allow_overtime || false,
@@ -196,13 +199,19 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
             {/* Personal Info */}
             <div className="bg-card border border-border rounded-2xl p-6 space-y-6">
               <h4 className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-muted-foreground">
-                <User className="w-4 h-4" /> Personal Information
+                <User className="w-4 h-4" /> Personal Information (Read-Only)
               </h4>
               <div className="grid grid-cols-1 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Full Name</label>
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Display Name</label>
                   <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">
                     {formData.name}
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Bio</label>
+                  <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground min-h-[60px]">
+                    {formData.bio || 'No bio provided'}
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -217,6 +226,65 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                     <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground capitalize">
                       {formData.gender || '-'}
                     </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* HR Administration */}
+            <div className="bg-card border border-border rounded-2xl p-6 space-y-6">
+              <h4 className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-muted-foreground">
+                <Shield className="w-4 h-4" /> HR Administration
+              </h4>
+              <div className="grid grid-cols-1 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Legal Name</label>
+                  <input 
+                    type="text" 
+                    value={formData.legal_name} 
+                    onChange={(e) => setFormData({...formData, legal_name: e.target.value})}
+                    placeholder="Official legal name"
+                    className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Hire Date</label>
+                  <input 
+                    type="date" 
+                    value={formData.hire_date} 
+                    onChange={(e) => setFormData({...formData, hire_date: e.target.value})}
+                    className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">ID Photo</label>
+                  <div className="flex items-center gap-4">
+                    {formData.id_photo_url && (
+                      <img 
+                        src={formData.id_photo_url.startsWith('http') ? formData.id_photo_url : `${window.location.origin}${formData.id_photo_url}`} 
+                        alt="ID Photo"
+                        className="w-12 h-12 rounded-lg object-cover border border-border"
+                        referrerPolicy="no-referrer"
+                      />
+                    )}
+                    <input 
+                      type="file"
+                      accept="image/*"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const uploadData = new FormData();
+                          uploadData.append('avatar', file);
+                          try {
+                            const res = await api.post('/users/upload-avatar', uploadData);
+                            setFormData({ ...formData, id_photo_url: res.data.url });
+                          } catch (err) {
+                            alert('Failed to upload ID photo');
+                          }
+                        }
+                      }}
+                      className="text-xs text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-black file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
+                    />
                   </div>
                 </div>
               </div>
@@ -389,48 +457,6 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                   onChange={(newSchedule) => setFormData({ ...formData, weekly_schedule: newSchedule })}
                   onError={setHasScheduleError}
                 />
-              </div>
-            </div>
-
-            {/* Bottom Row: Emergency & Documents */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="bg-card border border-border rounded-2xl p-6 space-y-6">
-                <h4 className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-muted-foreground">
-                  <Phone className="w-4 h-4" /> Emergency Contact
-                </h4>
-                <div className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Contact Name</label>
-                    <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">
-                      {formData.emergency_contact_name || 'Not provided'}
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Phone Number</label>
-                    <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">
-                      {formData.emergency_contact_phone || 'Not provided'}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-card border border-border rounded-2xl p-6 space-y-6">
-                <h4 className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-muted-foreground">
-                  <FileText className="w-4 h-4" /> Compliance Documents
-                </h4>
-                <div className="space-y-3">
-                  {['Employment Contract', 'ID Verification'].map((doc) => (
-                    <div key={doc} className="flex items-center justify-between p-3 border border-border rounded-xl bg-muted/10 group hover:bg-muted/20 transition-all">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-background rounded-lg border border-border">
-                          <FileText className="w-4 h-4 text-primary" />
-                        </div>
-                        <span className="text-xs font-bold">{doc}</span>
-                      </div>
-                      <button className="text-[10px] font-black uppercase tracking-tighter text-primary hover:underline">View</button>
-                    </div>
-                  ))}
-                </div>
               </div>
             </div>
           </div>

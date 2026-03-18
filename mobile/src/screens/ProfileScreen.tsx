@@ -13,6 +13,10 @@ const BASE_URL = API_URL.replace('/api', '');
 export default function ProfileScreen() {
   const { user, logout, login } = useAuthStore();
   const [name, setName] = useState(user?.name || '');
+  const [bio, setBio] = useState('');
+  const [personalPhone, setPersonalPhone] = useState('');
+  const [emergencyContactName, setEmergencyContactName] = useState('');
+  const [emergencyContactPhone, setEmergencyContactPhone] = useState('');
   const [age, setAge] = useState('');
   const [gender, setGender] = useState('');
   const [avatar, setAvatar] = useState<string | null>(null);
@@ -34,6 +38,10 @@ export default function ProfileScreen() {
       const response = await api.get('/users/profile');
       const data = response.data;
       setName(data.name);
+      setBio(data.bio || '');
+      setPersonalPhone(data.personal_phone || '');
+      setEmergencyContactName(data.emergency_contact_name || '');
+      setEmergencyContactPhone(data.emergency_contact_phone || '');
       setAge(data.age?.toString() || '');
       setGender(data.gender || '');
       setAvatar(data.profile_picture_url || null);
@@ -119,6 +127,10 @@ export default function ProfileScreen() {
     try {
       const response = await api.put('/users/profile', {
         name,
+        bio,
+        personal_phone: personalPhone,
+        emergency_contact_name: emergencyContactName,
+        emergency_contact_phone: emergencyContactPhone,
         age: age ? parseInt(age) : null,
         gender: gender || null,
       });
@@ -176,50 +188,109 @@ export default function ProfileScreen() {
       </View>
 
       <View style={styles.form}>
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Full Name</Text>
-          <View style={styles.inputWrapper}>
-            <User size={18} color="#71717a" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              value={name}
-              onChangeText={setName}
-              placeholder="John Doe"
-            />
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Personal Information</Text>
+          
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Full Name</Text>
+            <View style={styles.inputWrapper}>
+              <User size={18} color="#71717a" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                value={name}
+                onChangeText={setName}
+                placeholder="John Doe"
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Bio</Text>
+            <View style={[styles.inputWrapper, { alignItems: 'flex-start' }]}>
+              <TextInput
+                style={[styles.input, { minHeight: 80, textAlignVertical: 'top' }]}
+                value={bio}
+                onChangeText={setBio}
+                placeholder="Tell us about yourself..."
+                multiline
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Personal Phone</Text>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                value={personalPhone}
+                onChangeText={setPersonalPhone}
+                placeholder="+1 234 567 890"
+                keyboardType="phone-pad"
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Email Address</Text>
+            <View style={[styles.inputWrapper, styles.disabledInput]}>
+              <Mail size={18} color="#a1a1aa" style={styles.inputIcon} />
+              <TextInput
+                style={[styles.input, { color: '#a1a1aa' }]}
+                value={user?.email}
+                editable={false}
+              />
+            </View>
+          </View>
+
+          <View style={styles.row}>
+            <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
+              <Text style={styles.label}>Age</Text>
+              <TextInput
+                style={styles.input}
+                value={age}
+                onChangeText={setAge}
+                placeholder="e.g. 25"
+                keyboardType="numeric"
+              />
+            </View>
+            <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
+              <Text style={styles.label}>Gender</Text>
+              <TextInput
+                style={styles.input}
+                value={gender}
+                onChangeText={setGender}
+                placeholder="e.g. Male"
+              />
+            </View>
           </View>
         </View>
 
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Email Address</Text>
-          <View style={[styles.inputWrapper, styles.disabledInput]}>
-            <Mail size={18} color="#a1a1aa" style={styles.inputIcon} />
-            <TextInput
-              style={[styles.input, { color: '#a1a1aa' }]}
-              value={user?.email}
-              editable={false}
-            />
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Emergency Contact</Text>
+          
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Contact Name</Text>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                value={emergencyContactName}
+                onChangeText={setEmergencyContactName}
+                placeholder="Full Name"
+              />
+            </View>
           </View>
-        </View>
 
-        <View style={styles.row}>
-          <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-            <Text style={styles.label}>Age</Text>
-            <TextInput
-              style={styles.input}
-              value={age}
-              onChangeText={setAge}
-              placeholder="e.g. 25"
-              keyboardType="numeric"
-            />
-          </View>
-          <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
-            <Text style={styles.label}>Gender</Text>
-            <TextInput
-              style={styles.input}
-              value={gender}
-              onChangeText={setGender}
-              placeholder="e.g. Male"
-            />
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Contact Phone</Text>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                value={emergencyContactPhone}
+                onChangeText={setEmergencyContactPhone}
+                placeholder="+1 234 567 890"
+                keyboardType="phone-pad"
+              />
+            </View>
           </View>
         </View>
 
@@ -265,7 +336,9 @@ const styles = StyleSheet.create({
   cameraIcon: { position: 'absolute', bottom: 4, right: 4, backgroundColor: '#18181b', padding: 8, borderRadius: 20, borderWidth: 3, borderColor: '#fff' },
   userName: { fontSize: 24, fontWeight: 'bold', color: '#18181b' },
   userRole: { fontSize: 14, color: '#71717a', marginTop: 4, letterSpacing: 1 },
-  form: { gap: 20 },
+  section: { gap: 16, marginBottom: 8 },
+  sectionTitle: { fontSize: 12, fontWeight: '800', color: '#71717a', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 4 },
+  form: { gap: 24 },
   inputGroup: { gap: 8 },
   label: { fontSize: 14, fontWeight: '600', color: '#18181b' },
   inputWrapper: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#e4e4e7', borderRadius: 8, backgroundColor: '#fafafa' },

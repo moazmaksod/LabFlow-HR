@@ -82,6 +82,21 @@ export function initDb() {
     if (!profileColumns.some(c => c.name === 'suspension_reason')) {
       db.exec("ALTER TABLE profiles ADD COLUMN suspension_reason TEXT;");
     }
+    if (!profileColumns.some(c => c.name === 'bio')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN bio TEXT;");
+    }
+    if (!profileColumns.some(c => c.name === 'personal_phone')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN personal_phone TEXT;");
+    }
+    if (!profileColumns.some(c => c.name === 'legal_name')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN legal_name TEXT;");
+    }
+    if (!profileColumns.some(c => c.name === 'id_photo_url')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN id_photo_url TEXT;");
+    }
+    if (!profileColumns.some(c => c.name === 'hire_date')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN hire_date DATE;");
+    }
 
     // Attendance migrations
     const attendanceSql = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='attendance'").get() as any;

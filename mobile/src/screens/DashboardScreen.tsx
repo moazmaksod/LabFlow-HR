@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, ScrollView } from 'react-native';
 import * as Location from 'expo-location';
 import { useFocusEffect } from '@react-navigation/native';
-import { Pause, Play, LayoutDashboard, LogOut, RefreshCw } from 'lucide-react-native';
+import { Pause, Play, LayoutDashboard, LogOut, RefreshCw, Calendar, DollarSign, Clock, Shield, Briefcase, Info } from 'lucide-react-native';
 import { useAuthStore } from '../store/useAuthStore';
 import api from '../lib/axios';
 import { initLocalDb, saveOfflineLog, getUnsyncedLogs, markLogsAsSynced, getUnsyncedRequests, saveOfflineRequest } from '../lib/db';
@@ -273,12 +273,53 @@ export default function DashboardScreen() {
     }
   };
 
+  const calculateTenure = (hireDate: string | null) => {
+    if (!hireDate) return 'Not set';
+    const start = new Date(hireDate);
+    const now = new Date();
+    
+    let years = now.getFullYear() - start.getFullYear();
+    let months = now.getMonth() - start.getMonth();
+    
+    if (months < 0) {
+      years--;
+      months += 12;
+    }
+    
+    const parts = [];
+    if (years > 0) parts.push(`${years} year${years > 1 ? 's' : ''}`);
+    if (months > 0) parts.push(`${months} month${months > 1 ? 's' : ''}`);
+    
+    return parts.length > 0 ? parts.join(', ') : 'Less than a month';
+  };
+
+  const formatSchedule = (scheduleStr: string | null) => {
+    if (!scheduleStr) return 'Not set';
+    try {
+      const schedule = JSON.parse(scheduleStr);
+      const activeDays = Object.keys(schedule).filter(day => schedule[day] && schedule[day].length > 0);
+      if (activeDays.length === 0) return 'No active days';
+      if (activeDays.length === 7) return 'Daily';
+      if (activeDays.length === 5 && !activeDays.includes('saturday') && !activeDays.includes('sunday')) return 'Mon - Fri';
+      return `${activeDays.length} days / week`;
+    } catch (e) {
+      return 'Invalid format';
+    }
+  };
+
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
       <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>Dashboard</Text>
-          <Text style={styles.subtitle}>Welcome back, {user?.name}</Text>
+        <View style={styles.headerMain}>
+          <Text style={styles.title}>{user?.name}</Text>
+          <View style={styles.roleBadge}>
+            <Briefcase size={12} color="#71717a" style={{ marginRight: 4 }} />
+            <Text style={styles.roleText}>{userProfile?.job_title || 'Unassigned Role'}</Text>
+          </View>
+          <View style={styles.tenureContainer}>
+            <Calendar size={12} color="#71717a" style={{ marginRight: 4 }} />
+            <Text style={styles.tenureText}>Tenure: {calculateTenure(userProfile?.hire_date)}</Text>
+          </View>
         </View>
         <TouchableOpacity
           onPress={logout}
@@ -288,6 +329,59 @@ export default function DashboardScreen() {
         >
           <LogOut color="#ef4444" size={24} />
         </TouchableOpacity>
+      </View>
+
+      {/* Job Details Section */}
+      <View style={styles.detailsCard}>
+        <View style={styles.cardHeader}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Info size={18} color="#18181b" style={{ marginRight: 8 }} />
+            <Text style={styles.cardTitle}>Job Details</Text>
+          </View>
+          <View style={[styles.statusBadge, userProfile?.status === 'active' ? styles.workingBadge : styles.awayBadge]}>
+            <Text style={styles.statusBadgeText}>{userProfile?.status?.toUpperCase() || 'ACTIVE'}</Text>
+          </View>
+        </View>
+        
+        <View style={styles.detailsGrid}>
+          <View style={styles.detailItem}>
+            <DollarSign size={14} color="#71717a" />
+            <View style={styles.detailContent}>
+              <Text style={styles.detailLabel}>Hourly Rate</Text>
+              <Text style={styles.detailValue}>${userProfile?.hourly_rate || 0}/hr</Text>
+            </View>
+          </View>
+          
+          <View style={styles.detailItem}>
+            <Calendar size={14} color="#71717a" />
+            <View style={styles.detailContent}>
+              <Text style={styles.detailLabel}>Leave Balance</Text>
+              <Text style={styles.detailValue}>{userProfile?.leave_balance || 0} days</Text>
+            </View>
+          </View>
+
+          <View style={styles.detailItem}>
+            <Clock size={14} color="#71717a" />
+            <View style={styles.detailContent}>
+              <Text style={styles.detailLabel}>Max OT Hours</Text>
+              <Text style={styles.detailValue}>{userProfile?.max_overtime_hours || 0}h/wk</Text>
+            </View>
+          </View>
+
+          <View style={styles.detailItem}>
+            <Shield size={14} color="#71717a" />
+            <View style={styles.detailContent}>
+              <Text style={styles.detailLabel}>Lunch Break</Text>
+              <Text style={styles.detailValue}>{userProfile?.lunch_break_minutes || 0} mins</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.scheduleSummary}>
+          <LayoutDashboard size={14} color="#71717a" />
+          <Text style={styles.scheduleLabel}>Schedule:</Text>
+          <Text style={styles.scheduleValue}>{formatSchedule(userProfile?.weekly_schedule)}</Text>
+        </View>
       </View>
       
       <View style={styles.card}>
@@ -382,45 +476,102 @@ export default function DashboardScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f4f5', padding: 24, paddingTop: 60 },
+  container: { flex: 1, backgroundColor: '#f4f4f5' },
+  scrollContent: { padding: 24, paddingTop: 60, paddingBottom: 40 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },
-  title: { fontSize: 32, fontWeight: 'bold', color: '#18181b', marginBottom: 4 },
+  headerMain: { flex: 1 },
+  title: { fontSize: 28, fontWeight: '900', color: '#18181b', marginBottom: 6, letterSpacing: -0.5 },
+  roleBadge: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  roleText: { fontSize: 14, fontWeight: '600', color: '#71717a' },
+  tenureContainer: { flexDirection: 'row', alignItems: 'center' },
+  tenureText: { fontSize: 12, color: '#a1a1aa', fontWeight: '500' },
   subtitle: { fontSize: 16, color: '#71717a' },
   iconButton: { padding: 8, borderRadius: 12, backgroundColor: '#fff', elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
   card: { 
     backgroundColor: '#fff', 
     padding: 24, 
-    borderRadius: 16, 
+    borderRadius: 20, 
     marginBottom: 16, 
     shadowColor: '#000', 
     shadowOffset: { width: 0, height: 2 }, 
-    shadowOpacity: 0.1, 
-    shadowRadius: 8, 
-    elevation: 4 
+    shadowOpacity: 0.05, 
+    shadowRadius: 10, 
+    elevation: 2 
+  },
+  detailsCard: {
+    backgroundColor: '#fff',
+    padding: 24,
+    borderRadius: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#e4e4e7',
+  },
+  detailsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 16,
+    gap: 16,
+  },
+  detailItem: {
+    width: '47%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  detailContent: {
+    flex: 1,
+  },
+  detailLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#a1a1aa',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  detailValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#18181b',
+  },
+  scheduleSummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#f4f4f5',
+    gap: 8,
+  },
+  scheduleLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#71717a',
+  },
+  scheduleValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#18181b',
   },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   workingBadge: { backgroundColor: '#dcfce7' },
   awayBadge: { backgroundColor: '#fef3c7' },
-  statusBadgeText: { fontSize: 12, fontWeight: 'bold', color: '#166534' },
+  statusBadgeText: { fontSize: 10, fontWeight: '900', color: '#166534', letterSpacing: 0.5 },
   syncCard: {
     backgroundColor: '#fff', 
     padding: 24, 
-    borderRadius: 16, 
+    borderRadius: 20, 
     marginBottom: 24, 
-    shadowColor: '#000', 
-    shadowOffset: { width: 0, height: 2 }, 
-    shadowOpacity: 0.1, 
-    shadowRadius: 8, 
-    elevation: 4,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between'
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#e4e4e7',
   },
-  cardTitle: { fontSize: 18, fontWeight: 'bold', color: '#18181b' },
-  cardText: { fontSize: 14, color: '#71717a', lineHeight: 20, marginBottom: 16 },
+  cardTitle: { fontSize: 16, fontWeight: '800', color: '#18181b', textTransform: 'uppercase', letterSpacing: 1 },
+  cardText: { fontSize: 13, color: '#71717a', lineHeight: 18, marginBottom: 16 },
   buttonRow: { flexDirection: 'row', gap: 12 },
-  clockButton: { flex: 1, padding: 16, borderRadius: 8, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
+  clockButton: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
   clockInButton: { backgroundColor: '#10b981' }, // Emerald green
   clockOutButton: { backgroundColor: '#ef4444' }, // Red
   stepAwayButton: { backgroundColor: '#f59e0b' }, // Amber/Yellow
@@ -429,8 +580,8 @@ const styles = StyleSheet.create({
   syncButtonDisabled: { opacity: 0.5 },
   syncButtonText: { color: '#18181b', fontWeight: '600' },
   logoutButton: { backgroundColor: '#ef4444', padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 24 },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  breakInfoContainer: { backgroundColor: '#f3f4f6', padding: 12, borderRadius: 8, marginBottom: 16 },
-  breakInfoText: { fontSize: 14, color: '#374151', fontWeight: '500' },
-  breakWarningText: { fontSize: 12, color: '#ef4444', marginTop: 4, fontWeight: 'bold' },
+  buttonText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  breakInfoContainer: { backgroundColor: '#f4f4f5', padding: 12, borderRadius: 12, marginBottom: 16 },
+  breakInfoText: { fontSize: 13, color: '#3f3f46', fontWeight: '600' },
+  breakWarningText: { fontSize: 11, color: '#ef4444', marginTop: 4, fontWeight: '800', textTransform: 'uppercase' },
 });
