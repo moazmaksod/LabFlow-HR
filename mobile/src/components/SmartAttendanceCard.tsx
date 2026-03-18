@@ -110,27 +110,89 @@ export default function SmartAttendanceCard({
   let remainingMins = 0;
   let breakMins = consumedBreakMinutes;
 
-  if (currentNowMins < startMins) {
-    remainingMins = totalMins;
-  } else if (currentNowMins > endMins) {
-    workedMins = totalMins - breakMins;
-    remainingMins = 0;
+  const isClockedIn = currentStatus === 'working' || currentStatus === 'away';
+
+  type SegmentType = 'work' | 'break' | 'missed' | 'remaining';
+  const segments: { type: SegmentType, widthPct: number }[] = [];
+
+  if (isClockedIn && activeSession) {
+    const checkInDate = new Date(activeSession.check_in);
+    const now = new Date();
+    const totalElapsed = (now.getTime() - checkInDate.getTime()) / (1000 * 60);
+    workedMins = Math.max(0, totalElapsed - breakMins);
+    
+    const shiftStartAbsolute = new Date(shiftDate);
+    const [startH, startM] = todayShift.start.split(':').map(Number);
+    shiftStartAbsolute.setHours(startH, startM, 0, 0);
+    const shiftEndAbsolute = new Date(shiftStartAbsolute);
+    shiftEndAbsolute.setMinutes(shiftEndAbsolute.getMinutes() + totalMins);
+    
+    remainingMins = Math.max(0, (shiftEndAbsolute.getTime() - now.getTime()) / (1000 * 60));
+
+    const getMinsFromShiftStart = (dateStr: string | Date) => {
+      const d = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
+      return (d.getTime() - shiftStartAbsolute.getTime()) / (1000 * 60);
+    };
+
+    let checkInMins = getMinsFromShiftStart(activeSession.check_in);
+    let lastEnd = 0;
+
+    // If clocked in late, add a missed segment
+    if (checkInMins > 0) {
+      const missedWidth = Math.min(checkInMins, totalMins);
+      segments.push({ type: 'missed', widthPct: (missedWidth / totalMins) * 100 });
+      lastEnd = missedWidth;
+    } else if (checkInMins < 0) {
+      // Clocked in early, start from 0 for the timeline
+      checkInMins = 0;
+    }
+
+    if (activeSession.breaks && Array.isArray(activeSession.breaks)) {
+      activeSession.breaks.forEach((b: any) => {
+        const breakStartMins = Math.max(0, getMinsFromShiftStart(b.start_time));
+        const breakEndMins = b.end_time ? Math.max(0, getMinsFromShiftStart(b.end_time)) : Math.max(0, getMinsFromShiftStart(now));
+
+        // Add work segment before break
+        if (breakStartMins > lastEnd) {
+          const workWidth = Math.min(breakStartMins - lastEnd, totalMins - lastEnd);
+          if (workWidth > 0) {
+            segments.push({ type: 'work', widthPct: (workWidth / totalMins) * 100 });
+          }
+        }
+        
+        // Add break segment
+        const breakWidth = Math.min(breakEndMins - Math.max(lastEnd, breakStartMins), totalMins - Math.max(lastEnd, breakStartMins));
+        if (breakWidth > 0) {
+          segments.push({ type: 'break', widthPct: (breakWidth / totalMins) * 100 });
+        }
+        
+        lastEnd = Math.max(lastEnd, breakEndMins);
+      });
+    }
+
+    // Add final work segment if currently working
+    const nowMinsFromStart = Math.max(0, getMinsFromShiftStart(now));
+    if (currentStatus === 'working' && nowMinsFromStart > lastEnd) {
+      const workWidth = Math.min(nowMinsFromStart - lastEnd, totalMins - lastEnd);
+      if (workWidth > 0) {
+        segments.push({ type: 'work', widthPct: (workWidth / totalMins) * 100 });
+      }
+      lastEnd = Math.max(lastEnd, nowMinsFromStart);
+    }
+
+    // Add remaining segment
+    if (lastEnd < totalMins) {
+      segments.push({ type: 'remaining', widthPct: ((totalMins - lastEnd) / totalMins) * 100 });
+    }
   } else {
-    workedMins = Math.max(0, (currentNowMins - startMins) - breakMins);
-    remainingMins = Math.max(0, endMins - currentNowMins);
+    remainingMins = totalMins;
+    segments.push({ type: 'remaining', widthPct: 100 });
   }
 
-  // Percentages for the bar
-  const workedPct = Math.min(100, Math.max(0, (workedMins / totalMins) * 100));
-  const breakPct = Math.min(100, Math.max(0, (breakMins / totalMins) * 100));
-  const remainingPct = Math.min(100, Math.max(0, (remainingMins / totalMins) * 100));
-  
   // "Now" indicator position
   let nowPct = ((currentNowMins - startMins) / totalMins) * 100;
   if (nowPct < 0) nowPct = 0;
   if (nowPct > 100) nowPct = 100;
-
-  const isClockedIn = currentStatus === 'working' || currentStatus === 'away';
 
   return (
     <View style={styles.container}>
@@ -156,12 +218,20 @@ export default function SmartAttendanceCard({
             {/* The Visual Timeline */}
             <View style={styles.timelineWrapper}>
               <View style={styles.timelineTrack}>
-                {/* Worked Segment */}
-                <View style={[styles.timelineSegment, styles.segmentWorked, { width: `${workedPct}%` }]} />
-                {/* Break Segment */}
-                <View style={[styles.timelineSegment, styles.segmentBreak, { width: `${breakPct}%` }]} />
-                {/* Remaining Segment */}
-                <View style={[styles.timelineSegment, styles.segmentRemaining, { width: `${remainingPct}%` }]} />
+                {segments.map((seg, idx) => {
+                  let segStyle = {};
+                  if (seg.type === 'work') segStyle = styles.segmentWorked;
+                  else if (seg.type === 'break') segStyle = styles.segmentBreak;
+                  else if (seg.type === 'missed') segStyle = styles.segmentMissed;
+                  else if (seg.type === 'remaining') segStyle = styles.segmentRemaining;
+
+                  return (
+                    <View 
+                      key={idx} 
+                      style={[styles.timelineSegment, segStyle, { width: `${seg.widthPct}%` }]} 
+                    />
+                  );
+                })}
               </View>
               
               {/* "Now" Indicator */}
@@ -350,6 +420,9 @@ const styles = StyleSheet.create({
   },
   segmentBreak: {
     backgroundColor: '#f59e0b',
+  },
+  segmentMissed: {
+    backgroundColor: '#cbd5e1', // Distinct gray for missed time
   },
   segmentRemaining: {
     backgroundColor: '#e2e8f0',
