@@ -3,10 +3,13 @@ import jwt from 'jsonwebtoken';
 import db from '../db/index.js';
 
 // 🛡️ Sentinel: Enforce secure JWT Secret from environment variables.
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-    throw new Error('CRITICAL SECURITY CONFIGURATION: JWT_SECRET environment variable is missing.');
-}
+const getJwtSecret = (): string => {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+        throw new Error('CRITICAL SECURITY CONFIGURATION: JWT_SECRET environment variable is missing. Please set it in the environment.');
+    }
+    return secret;
+};
 
 export interface AuthRequest extends Request {
     user?: {
@@ -26,7 +29,7 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
     const token = authHeader.split(' ')[1];
     
     try {
-        const decoded = jwt.verify(token, JWT_SECRET) as { id: number; role: string };
+        const decoded = jwt.verify(token, getJwtSecret()) as { id: number; role: string };
         
         // Verify user still exists in DB
         const user = db.prepare('SELECT id FROM users WHERE id = ?').get(decoded.id);
