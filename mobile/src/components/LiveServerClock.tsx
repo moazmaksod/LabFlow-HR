@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Globe } from 'lucide-react-native';
 import { useNetworkStore } from '../store/useNetworkStore';
-import { useAttendanceStore } from '../store/useAttendanceStore';
+
 
 export default function LiveServerClock() {
   const serverTimeOffset = useNetworkStore((state) => state.serverTimeOffset);
