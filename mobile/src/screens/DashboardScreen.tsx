@@ -33,6 +33,10 @@ export default function DashboardScreen() {
   useEffect(() => {
     // Initialize local SQLite database
     initLocalDb();
+
+    // سطر المزامنة الفورية الذي يقرأ الوقت والمنطقة الزمنية من السيرفر
+    useNetworkStore.getState().syncServerTime();
+
   }, []);
 
   const fetchProfile = useCallback(async () => {
@@ -89,6 +93,7 @@ export default function DashboardScreen() {
       checkUnsyncedLogs();
       fetchStatus();
       fetchProfile();
+      useNetworkStore.getState().syncServerTime();
     }, [checkUnsyncedLogs, fetchStatus, fetchProfile])
   );
 
