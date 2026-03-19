@@ -7,13 +7,10 @@ import { AuthRequest } from '../middlewares/authMiddleware.js';
 
 // 🛡️ Sentinel: Enforce secure JWT Secret from environment variables.
 // Do not use hardcoded fallbacks that could be exploited if env vars are missing.
-const getJwtSecret = (): string => {
-    const secret = process.env.JWT_SECRET;
-    if (!secret) {
-        throw new Error('CRITICAL SECURITY CONFIGURATION: JWT_SECRET environment variable is missing. Please set it in the environment.');
-    }
-    return secret;
-};
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+    throw new Error('CRITICAL SECURITY CONFIGURATION: JWT_SECRET environment variable is missing.');
+}
 
 export const register = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -72,7 +69,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         // Generate JWT
         const token = jwt.sign(
             { id: userId, role: 'pending' },
-            getJwtSecret(),
+            JWT_SECRET,
             { expiresIn: '7d' }
         );
 
@@ -147,7 +144,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         // Generate JWT
         const token = jwt.sign(
             { id: user.id, role: user.role },
-            getJwtSecret(),
+            JWT_SECRET,
             { expiresIn: '7d' }
         );
 
