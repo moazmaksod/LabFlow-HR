@@ -246,9 +246,15 @@ export default function SmartAttendanceCard({
         <View style={styles.timelineHeader}>
           <View>
             <Text style={styles.timelineTitle}>
-              {dayDiff === 0 ? 'Current Shift' : 'Next Shift'} {dayDiff !== 0 ? `(${shiftDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })})` : ''}
+              {isClockedIn ? 'Active Shift' : 'Target Shift'}
             </Text>
-            <Text style={styles.timelineSubtitle}>{formatTime(todayShift.start)} - {formatTime(todayShift.end)}</Text>
+            <Text style={styles.timelineSubtitle}>
+              {shiftDate.toLocaleDateString('en-GB', { 
+                weekday: 'long', 
+                day: 'numeric', 
+                month: 'short' 
+              }).replace(/,/g, '')} {'\n'} {formatTime(todayShift.start)} - {formatTime(todayShift.end)}
+            </Text>
           </View>
           <View style={[styles.statusBadge, currentStatus === 'working' ? styles.statusWorking : currentStatus === 'away' ? styles.statusAway : styles.statusNone]}>
             {currentStatus === 'working' && <Play size={12} color="#10b981" style={{ marginRight: 4 }} />}
