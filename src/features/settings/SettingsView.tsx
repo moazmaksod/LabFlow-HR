@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MapPin, Save, AlertCircle, CheckCircle } from 'lucide-react';
+import { MapPin, Save, AlertCircle, CheckCircle, ShieldAlert } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -25,7 +25,7 @@ const TIMEZONE_GROUPS = {
 
 export default function SettingsView() {
   const { t } = useTranslation();
-  const { token } = useAuthStore();
+  const { user, token } = useAuthStore();
   const queryClient = useQueryClient();
   
   const [lat, setLat] = useState<string>('');
@@ -34,6 +34,7 @@ export default function SettingsView() {
   const [timezone, setTimezone] = useState<string>('UTC');
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['settings'],
@@ -71,6 +72,29 @@ export default function SettingsView() {
       setTimeout(() => setErrorMsg(''), 3000);
     }
   });
+
+  const resetDeviceMutation = useMutation({
+    mutationFn: async () => {
+      const res = await axios.post('/api/auth/reset-device', {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return res.data;
+    },
+    onSuccess: (data) => {
+      setSuccessMsg(data.message);
+      setTimeout(() => setSuccessMsg(''), 5000);
+    },
+    onError: (error: any) => {
+      setErrorMsg(error.response?.data?.error || 'Failed to reset device binding');
+      setTimeout(() => setErrorMsg(''), 5000);
+    }
+  });
+
+  const handleResetDevice = () => {
+    if (window.confirm('Are you sure? This will unbind your current mobile device. You will need to log in again from your phone to pair a new device.')) {
+      resetDeviceMutation.mutate();
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -229,6 +253,34 @@ export default function SettingsView() {
           </div>
         </form>
       </div>
+
+      {user?.role === 'manager' && (
+        <div className="mt-8 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-red-100 dark:border-red-900/30 overflow-hidden">
+          <div className="p-6 border-b border-red-50 dark:border-red-900/20 bg-red-50/30 dark:bg-red-900/10">
+            <h2 className="text-lg font-semibold text-red-900 dark:text-red-400 flex items-center gap-2">
+              <ShieldAlert className="w-5 h-5" />
+              Account Security
+            </h2>
+          </div>
+          <div className="p-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-medium text-gray-900 dark:text-white">Reset Mobile Device Binding</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  If you have lost your phone or need to switch to a new mobile device, use this to clear your current binding.
+                </p>
+              </div>
+              <button
+                onClick={handleResetDevice}
+                disabled={resetDeviceMutation.isPending}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-medium transition-colors disabled:opacity-50 whitespace-nowrap"
+              >
+                {resetDeviceMutation.isPending ? 'Resetting...' : 'Reset Device Binding'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

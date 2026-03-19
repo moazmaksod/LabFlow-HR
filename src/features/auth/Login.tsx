@@ -22,8 +22,7 @@ export default function Login() {
 
   const loginMutation = useMutation({
     mutationFn: async () => {
-      const deviceId = getWebDeviceId();
-      const response = await api.post('/auth/login', { email, password, deviceId });
+      const response = await api.post('/auth/login', { email, password });
       return response.data;
     },
     onSuccess: (data) => {

@@ -87,7 +87,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 export const login = async (req: Request, res: Response): Promise<void> => {
     try {
         const { email, password, deviceId } = req.body;
-
+ 
         if (!email || !password) {
             res.status(400).json({ error: 'Missing required fields: email, password' });
             return;
@@ -123,9 +123,15 @@ export const login = async (req: Request, res: Response): Promise<void> => {
             return;
         }
 
-        // Device Binding Security Check (at Login)
-        // Managers and Employees must be bound to their device
-        if (deviceId) {
+        // Platform Restriction: Web Login (No deviceId) vs Mobile Login (With deviceId)
+        if (!deviceId) {
+            // Web Login
+            if (user.role !== 'manager') {
+                res.status(403).json({ error: 'Access Denied: Only administrators are allowed to login from the web application.' });
+                return;
+            }
+        } else {
+            // Mobile Login - Device Binding Security Check
             if (!user.device_id) {
                 // First time login, bind device
                 // Check if this device is already registered to someone else
@@ -172,6 +178,31 @@ export const logout = async (req: AuthRequest, res: Response): Promise<void> => 
         res.json({ message: 'Logout successful' });
     } catch (error) {
         console.error('Logout error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const resetAdminDeviceID = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const userId = req.user!.id;
+        const userRole = req.user!.role;
+
+        if (userRole !== 'manager') {
+            res.status(403).json({ error: 'Access Denied: Only managers can reset their own device binding.' });
+            return;
+        }
+
+        const profile = db.prepare('SELECT device_id FROM profiles WHERE user_id = ?').get(userId) as any;
+        const oldDeviceId = profile?.device_id;
+
+        db.prepare('UPDATE profiles SET device_id = NULL WHERE user_id = ?').run(userId);
+
+        // Log Audit
+        logAudit('profiles', userId, 'RESET_DEVICE_BINDING', userId, { device_id: oldDeviceId }, { device_id: null });
+
+        res.json({ message: 'Mobile device binding reset successfully. You can now pair a new device from your phone.' });
+    } catch (error) {
+        console.error('Reset device error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
