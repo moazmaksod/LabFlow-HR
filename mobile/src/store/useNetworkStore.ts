@@ -90,8 +90,7 @@ export const useNetworkStore = create<NetworkState>()(
 
         if (otherSkipped.length > 0) {
           // Optional: Show a generic alert for other skipped reasons if needed
-          // For now, we just log them as they are likely business logic rejections (e.g. already clocked in)
-          console.log('Some offline logs were skipped by server:', otherSkipped);
+          // For now, we just ignore them as they are likely business logic rejections (e.g. already clocked in)
         }
       }
 
