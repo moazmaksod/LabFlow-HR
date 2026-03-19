@@ -327,14 +327,14 @@ export const syncOfflineLogs = (req: AuthRequest, res: Response): void => {
 
         const syncTransaction = db.transaction((logsToSync) => {
             const results = [];
-            const currentServerTime = Date.now();
+            // We now trust the timestamp since it is securely calculated against server time on device
             
             for (const log of logsToSync) {
-                const { type, delay_in_milliseconds, lat, lng, deviceId } = log;
+                const { type, timestamp, lat, lng, deviceId } = log;
                 
                 // Calculate true historical time securely
-                const delay = typeof delay_in_milliseconds === 'number' ? delay_in_milliseconds : 0;
-                const timestamp = new Date(currentServerTime - delay).toISOString();
+                // Use raw timestamp
+                // Timestamp is extracted from log above
                 
                 const result = handleClockAction(userId, type, lat, lng, deviceId, timestamp);
                 

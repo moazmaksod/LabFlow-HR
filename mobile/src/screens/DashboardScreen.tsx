@@ -10,6 +10,7 @@ import { useNetworkStore } from '../store/useNetworkStore';
 import { getUniqueDeviceId } from '../utils/device';
 import { useAttendanceStore } from '../store/useAttendanceStore';
 import SmartAttendanceCard from '../components/SmartAttendanceCard';
+import LiveServerClock from '../components/LiveServerClock';
 
 export default function DashboardScreen() {
   const { user, logout } = useAuthStore();
@@ -32,6 +33,10 @@ export default function DashboardScreen() {
   useEffect(() => {
     // Initialize local SQLite database
     initLocalDb();
+
+    // سطر المزامنة الفورية الذي يقرأ الوقت والمنطقة الزمنية من السيرفر
+    useNetworkStore.getState().syncServerTime();
+
   }, []);
 
   const fetchProfile = useCallback(async () => {
@@ -88,6 +93,7 @@ export default function DashboardScreen() {
       checkUnsyncedLogs();
       fetchStatus();
       fetchProfile();
+      useNetworkStore.getState().syncServerTime();
     }, [checkUnsyncedLogs, fetchStatus, fetchProfile])
   );
 
@@ -107,7 +113,18 @@ export default function DashboardScreen() {
       const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       const { latitude, longitude } = location.coords;
 
-      const timestamp = new Date().toISOString();
+
+      // 3. Calculate True Time using server offset
+      const localNow = Date.now();
+      const { serverTimeOffset, lastLocalSyncTime } = useNetworkStore.getState();
+
+      if (localNow < lastLocalSyncTime) {
+        Alert.alert('Security Alert', 'Device clock tampering detected. Time appears to have moved backwards.');
+        setLoading(false);
+        return;
+      }
+
+      const timestamp = new Date(localNow + serverTimeOffset).toISOString();
 
       // Optimistic Update if offline
       if (!isConnected) {
@@ -194,7 +211,18 @@ export default function DashboardScreen() {
           setLoading(true);
           try {
             const deviceId = await getUniqueDeviceId();
-            const timestamp = new Date().toISOString();
+
+      // 3. Calculate True Time using server offset
+      const localNow = Date.now();
+      const { serverTimeOffset, lastLocalSyncTime } = useNetworkStore.getState();
+
+      if (localNow < lastLocalSyncTime) {
+        Alert.alert('Security Alert', 'Device clock tampering detected. Time appears to have moved backwards.');
+        setLoading(false);
+        return;
+      }
+
+      const timestamp = new Date(localNow + serverTimeOffset).toISOString();
 
             // Optimistic Update if offline
             if (!isConnected) {
@@ -221,7 +249,18 @@ export default function DashboardScreen() {
           } catch (error: any) {
             if (!error.response) {
               const deviceId = await getUniqueDeviceId();
-              const timestamp = new Date().toISOString();
+
+      // 3. Calculate True Time using server offset
+      const localNow = Date.now();
+      const { serverTimeOffset, lastLocalSyncTime } = useNetworkStore.getState();
+
+      if (localNow < lastLocalSyncTime) {
+        Alert.alert('Security Alert', 'Device clock tampering detected. Time appears to have moved backwards.');
+        setLoading(false);
+        return;
+      }
+
+      const timestamp = new Date(localNow + serverTimeOffset).toISOString();
               saveOfflineRequest('POST', '/attendance/step-away', { timestamp, deviceId });
               Alert.alert('Offline Mode', 'Network error. Your request was saved locally and will be synced later.');
               setStatus('away');
@@ -242,7 +281,18 @@ export default function DashboardScreen() {
     setLoading(true);
     try {
       const deviceId = await getUniqueDeviceId();
-      const timestamp = new Date().toISOString();
+
+      // 3. Calculate True Time using server offset
+      const localNow = Date.now();
+      const { serverTimeOffset, lastLocalSyncTime } = useNetworkStore.getState();
+
+      if (localNow < lastLocalSyncTime) {
+        Alert.alert('Security Alert', 'Device clock tampering detected. Time appears to have moved backwards.');
+        setLoading(false);
+        return;
+      }
+
+      const timestamp = new Date(localNow + serverTimeOffset).toISOString();
 
       // Optimistic Update if offline
       if (!isConnected) {
@@ -263,7 +313,18 @@ export default function DashboardScreen() {
     } catch (error: any) {
       if (!error.response) {
         const deviceId = await getUniqueDeviceId();
-        const timestamp = new Date().toISOString();
+
+      // 3. Calculate True Time using server offset
+      const localNow = Date.now();
+      const { serverTimeOffset, lastLocalSyncTime } = useNetworkStore.getState();
+
+      if (localNow < lastLocalSyncTime) {
+        Alert.alert('Security Alert', 'Device clock tampering detected. Time appears to have moved backwards.');
+        setLoading(false);
+        return;
+      }
+
+      const timestamp = new Date(localNow + serverTimeOffset).toISOString();
         saveOfflineRequest('POST', '/attendance/resume-work', { timestamp, deviceId });
         Alert.alert('Offline Mode', 'Network error. Your request was saved locally and will be synced later.');
         setStatus('working');
@@ -327,6 +388,8 @@ export default function DashboardScreen() {
           <LogOut color="#ef4444" size={24} />
         </TouchableOpacity>
       </View>
+
+      <LiveServerClock />
 
       {userProfile && (
         <SmartAttendanceCard
