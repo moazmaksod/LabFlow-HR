@@ -326,10 +326,11 @@ export default function SmartAttendanceCard({
 
             {/* Break Info */}
             <View style={styles.breakInfoContainer}>
-              <Text style={styles.breakInfoText}>
-                Break Time: {consumedBreakMinutes} / {lunchBreakMinutes} mins
-              </Text>
-              {consumedBreakMinutes >= lunchBreakMinutes && (
+              {consumedBreakMinutes < lunchBreakMinutes ? (
+                <Text style={styles.breakInfoText}>
+                  Remaining Break Time : {lunchBreakMinutes - consumedBreakMinutes} min
+                </Text>
+              ) : (
                 <Text style={styles.breakWarningText}>Break time exhausted</Text>
               )}
             </View>
