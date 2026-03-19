@@ -48,7 +48,7 @@ const calculateUserPayroll = (user: any, start_date: string, end_date: string) =
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const dayName = days[d.getDay()];
         const dayShifts = schedule[dayName] || [];
-        
+
         dayShifts.forEach((shift: any) => {
             const [startH, startM] = shift.start.split(':').map(Number);
             const [endH, endM] = shift.end.split(':').map(Number);
@@ -72,7 +72,7 @@ const calculateUserPayroll = (user: any, start_date: string, end_date: string) =
             const checkIn = new Date(log.check_in);
             const checkOut = new Date(log.check_out);
             workedMinutes = (checkOut.getTime() - checkIn.getTime()) / (1000 * 60);
-            
+
             const breaks = breaksMap.get(log.id) || [];
             breaks.forEach(b => {
                 if (b.start_time && b.end_time) {
@@ -111,7 +111,7 @@ const calculateUserPayroll = (user: any, start_date: string, end_date: string) =
     const unpaidMinutes = Math.max(0, totalMissingMinutes - totalPaidPermissionMinutes);
     const netWorkedMinutes = Math.max(0, totalActualWorkedMinutes - unpaidMinutes);
     const finalNetSalary = (netWorkedMinutes / 60) * hourlyRate;
-    
+
     const grossBasePay = (totalActualWorkedMinutes / 60) * hourlyRate;
     const totalDeductions = (unpaidMinutes / 60) * hourlyRate;
     const overtimeBonus = (totalApprovedOvertimeMinutes / 60) * (hourlyRate * 1.5);
@@ -211,14 +211,14 @@ export function getOrCreateDraftPayroll(userId: number, dateStr: string, actorId
     const date = new Date(dateStr);
     const year = date.getFullYear();
     const month = date.getMonth();
-    
+
     // Start and end of month
     const startDate = new Date(year, month, 1).toISOString().split('T')[0];
     const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
 
     // Check if draft payroll exists
     const existing = db.prepare(`
-        SELECT id FROM payrolls 
+        SELECT id FROM payrolls
         WHERE user_id = ? AND start_date = ? AND end_date = ? AND status = 'draft'
     `).get(userId, startDate, endDate) as any;
 
@@ -233,7 +233,7 @@ export function getOrCreateDraftPayroll(userId: number, dateStr: string, actorId
 
     const newPayrollId = result.lastInsertRowid as number;
     const newPayroll = db.prepare('SELECT * FROM payrolls WHERE id = ?').get(newPayrollId);
-    
+
     if (actorId) {
         logAudit('payrolls', newPayrollId, 'CREATE', actorId, null, newPayroll);
     }
@@ -245,7 +245,7 @@ export const generateDraftPayroll = (req: AuthRequest, res: Response) => {
     try {
         const { month, year } = req.query;
         const actorId = req.user!.id;
-        
+
         if (!month || !year) {
             return res.status(400).json({ error: 'Month and year are required' });
         }
@@ -255,21 +255,76 @@ export const generateDraftPayroll = (req: AuthRequest, res: Response) => {
 
         // Fetch all users
         const users = db.prepare("SELECT id FROM users WHERE role = 'employee' OR role = 'manager'").all() as any[];
+        const userIds = users.map(u => u.id);
 
-        const generatedPayrolls = [];
+        if (userIds.length === 0) {
+            return res.json({ message: 'No eligible users for payroll generation', payrolls: [] });
+        }
+
+        const generatedPayrolls: any[] = [];
 
         const generateTransaction = db.transaction(() => {
+            const placeholders = userIds.map(() => '?').join(',');
+
+            // 1. Bulk get or create draft payrolls
+            // First, find existing drafts for the period
+            const existingPayrolls = db.prepare(`
+                SELECT id, user_id FROM payrolls
+                WHERE user_id IN (${placeholders}) AND start_date = ? AND end_date = ? AND status = 'draft'
+            `).all(...userIds, startDate, endDate) as any[];
+
+            const payrollMap = new Map<number, number>(existingPayrolls.map(p => [p.user_id, p.id]));
+
+            // For users without a draft, create one
             for (const user of users) {
-                const payrollId = getOrCreateDraftPayroll(user.id, startDate, actorId);
-                const oldPayroll = db.prepare('SELECT * FROM payrolls WHERE id = ?').get(payrollId);
-                
-                // Calculate base salary based on profile/job
-                const profile = db.prepare(`
-                    SELECT p.hourly_rate, j.required_hours_per_week 
-                    FROM profiles p 
-                    LEFT JOIN jobs j ON p.job_id = j.id 
-                    WHERE p.user_id = ?
-                `).get(user.id) as any;
+                if (!payrollMap.has(user.id)) {
+                    const pid = getOrCreateDraftPayroll(user.id, startDate, actorId);
+                    payrollMap.set(user.id, pid);
+                }
+            }
+
+            const allPayrollIds = Array.from(payrollMap.values());
+            const payrollPlaceholders = allPayrollIds.map(() => '?').join(',');
+
+            // 2. Bulk fetch profiles and jobs
+            const profiles = db.prepare(`
+                SELECT p.user_id, p.hourly_rate, j.required_hours_per_week
+                FROM profiles p
+                LEFT JOIN jobs j ON p.job_id = j.id
+                WHERE p.user_id IN (${placeholders})
+            `).all(...userIds) as any[];
+            const profileMap = new Map(profiles.map(p => [p.user_id, p]));
+
+            // 3. Bulk fetch applied transactions
+            const allTransactions = db.prepare(`
+                SELECT payroll_id, type, amount, status
+                FROM payroll_transactions
+                WHERE payroll_id IN (${payrollPlaceholders}) AND status = 'applied'
+            `).all(...allPayrollIds) as any[];
+
+            const transactionMap = new Map<number, any[]>();
+            for (const tx of allTransactions) {
+                if (!transactionMap.has(tx.payroll_id)) transactionMap.set(tx.payroll_id, []);
+                transactionMap.get(tx.payroll_id)!.push(tx);
+            }
+
+            // 4. Bulk fetch old payroll states for audit logging
+            const oldPayrolls = db.prepare(`
+                SELECT * FROM payrolls WHERE id IN (${payrollPlaceholders})
+            `).all(...allPayrollIds) as any[];
+            const oldPayrollMap = new Map(oldPayrolls.map(p => [p.id, p]));
+
+            // Prepared statements for loop
+            const updateStmt = db.prepare(`
+                UPDATE payrolls
+                SET base_salary = ?, total_additions = ?, total_deductions = ?, net_salary = ?
+                WHERE id = ?
+            `);
+
+            for (const user of users) {
+                const payrollId = payrollMap.get(user.id)!;
+                const oldPayroll = oldPayrollMap.get(payrollId);
+                const profile = profileMap.get(user.id);
 
                 let baseSalary = 0;
                 if (profile && profile.hourly_rate && profile.required_hours_per_week) {
@@ -277,13 +332,8 @@ export const generateDraftPayroll = (req: AuthRequest, res: Response) => {
                     baseSalary = profile.required_hours_per_week * 4 * profile.hourly_rate;
                 }
 
-                // Aggregate transactions
-                const transactions = db.prepare(`
-                    SELECT type, amount, status 
-                    FROM payroll_transactions 
-                    WHERE payroll_id = ? AND status = 'applied'
-                `).all(payrollId) as any[];
-
+                // Aggregate transactions from map
+                const transactions = transactionMap.get(payrollId) || [];
                 let totalAdditions = 0;
                 let totalDeductions = 0;
 
@@ -297,14 +347,19 @@ export const generateDraftPayroll = (req: AuthRequest, res: Response) => {
 
                 const netSalary = baseSalary + totalAdditions - totalDeductions;
 
-                // Update payroll
-                db.prepare(`
-                    UPDATE payrolls 
-                    SET base_salary = ?, total_additions = ?, total_deductions = ?, net_salary = ?
-                    WHERE id = ?
-                `).run(baseSalary, totalAdditions, totalDeductions, netSalary, payrollId);
+                // Update payroll using prepared statement
+                updateStmt.run(baseSalary, totalAdditions, totalDeductions, netSalary, payrollId);
 
-                const updatedPayroll = db.prepare('SELECT * FROM payrolls WHERE id = ?').get(payrollId);
+                // Use the updated data for generatedPayrolls and audit log
+                // Since we're in a transaction, we can just construct the "updated" state
+                const updatedPayroll = {
+                    ...oldPayroll,
+                    base_salary: baseSalary,
+                    total_additions: totalAdditions,
+                    total_deductions: totalDeductions,
+                    net_salary: netSalary
+                };
+
                 logAudit('payrolls', payrollId, 'UPDATE', actorId, oldPayroll, updatedPayroll);
 
                 generatedPayrolls.push({
@@ -330,9 +385,9 @@ export const generateDraftPayroll = (req: AuthRequest, res: Response) => {
 export const getPayrolls = (req: Request, res: Response) => {
     try {
         const { month, year, user_id } = req.query;
-        
+
         let query = `
-            SELECT p.*, u.name as user_name, u.email as user_email 
+            SELECT p.*, u.name as user_name, u.email as user_email
             FROM payrolls p
             JOIN users u ON p.user_id = u.id
             WHERE 1=1
@@ -376,9 +431,9 @@ export const getMyPayrolls = (req: AuthRequest, res: Response) => {
     try {
         const userId = req.user!.id;
         const { month, year } = req.query;
-        
+
         let query = `
-            SELECT p.*, u.name as user_name, u.email as user_email 
+            SELECT p.*, u.name as user_name, u.email as user_email
             FROM payrolls p
             JOIN users u ON p.user_id = u.id
             WHERE p.user_id = ?
@@ -439,7 +494,7 @@ export const updatePayrollStatus = (req: AuthRequest, res: Response): void => {
             }
 
             db.prepare('UPDATE payrolls SET status = ? WHERE id = ?').run(status, id);
-            
+
             const updatedPayroll = db.prepare('SELECT * FROM payrolls WHERE id = ?').get(id);
             logAudit('payrolls', Number(id), 'UPDATE', actorId, oldPayroll, updatedPayroll);
 
