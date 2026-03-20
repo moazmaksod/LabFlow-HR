@@ -78,8 +78,9 @@ export default function SettingsView() {
       });
       return res.data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
+      setFormData(data); // Sync local form state with updated backend response
       setSuccessMsg('Settings updated successfully!');
       setTimeout(() => setSuccessMsg(''), 3000);
     },
@@ -119,7 +120,7 @@ export default function SettingsView() {
     if (type === 'checkbox') {
       finalValue = (e.target as HTMLInputElement).checked ? 1 : 0;
     } else if (type === 'number') {
-      finalValue = parseFloat(value);
+      finalValue = value === '' ? '' : parseFloat(value);
     }
 
     setFormData(prev => ({ ...prev, [name]: finalValue }));
@@ -328,6 +329,9 @@ export default function SettingsView() {
                         <option value="fixed_30">Fixed 30 Days</option>
                         <option value="custom">Custom</option>
                       </select>
+                      {formData.payroll_cycle_type === 'custom' && (
+                        <p className="text-xs text-amber-600 mt-2 font-medium">Custom cycle logic must be manually configured in payroll controller.</p>
+                      )}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Overtime Rate (%)</label>
