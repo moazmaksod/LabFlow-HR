@@ -78,6 +78,7 @@ export default function SmartAttendanceCard({
   }, [serverTimeOffset, lastLocalSyncTime]);
 
   const todayShift = currentShift;
+  const isClockedIn = currentStatus === 'working' || currentStatus === 'away';
 
   if (!todayShift) {
     return (
@@ -162,8 +163,6 @@ export default function SmartAttendanceCard({
   let workedMins = 0;
   let remainingMins = 0;
   let breakMins = consumedBreakMinutes;
-
-  const isClockedIn = currentStatus === 'working' || currentStatus === 'away';
 
   type SegmentType = 'work' | 'break' | 'missed' | 'remaining';
   const segments: { type: SegmentType, widthPct: number }[] = [];
