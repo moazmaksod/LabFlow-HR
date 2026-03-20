@@ -121,10 +121,40 @@ CREATE TABLE IF NOT EXISTS notifications (
 
 CREATE TABLE IF NOT EXISTS settings (
     id INTEGER PRIMARY KEY CHECK (id = 1), -- Ensure only one row exists
-    office_lat REAL NOT NULL,
-    office_lng REAL NOT NULL,
-    radius_meters INTEGER NOT NULL DEFAULT 50,
-    timezone TEXT NOT NULL DEFAULT 'UTC',
+
+    -- Identity
+    company_name TEXT NOT NULL DEFAULT 'LabFlow',
+    company_logo_url TEXT,
+    brand_primary_color TEXT NOT NULL DEFAULT '#4f46e5',
+    company_timezone TEXT NOT NULL DEFAULT 'UTC',
+    support_contact TEXT,
+
+    -- Payroll
+    payroll_cycle_type TEXT NOT NULL DEFAULT 'calendar_month',
+    overtime_rate_percent REAL NOT NULL DEFAULT 150.0,
+    weekend_rate_percent REAL NOT NULL DEFAULT 200.0,
+    attendance_bonus_amount REAL NOT NULL DEFAULT 0.0,
+    show_salary_estimate BOOLEAN NOT NULL DEFAULT 1,
+
+    -- Security
+    geofence_toggle BOOLEAN NOT NULL DEFAULT 1,
+    office_lat REAL NOT NULL DEFAULT 0,
+    office_lng REAL NOT NULL DEFAULT 0,
+    geofence_radius REAL NOT NULL DEFAULT 50,
+    time_sync_interval INTEGER NOT NULL DEFAULT 300, -- seconds
+    max_drift_threshold INTEGER NOT NULL DEFAULT 10, -- seconds
+    accuracy_meters INTEGER NOT NULL DEFAULT 100,
+    device_binding_enforced BOOLEAN NOT NULL DEFAULT 1,
+
+    -- Policy
+    auto_checkout BOOLEAN NOT NULL DEFAULT 0,
+    step_away_grace_period INTEGER NOT NULL DEFAULT 5,
+    late_grace_period INTEGER NOT NULL DEFAULT 15,
+    max_monthly_permissions INTEGER NOT NULL DEFAULT 3,
+    enable_reminders BOOLEAN NOT NULL DEFAULT 1,
+    send_daily_report BOOLEAN NOT NULL DEFAULT 0,
+    maintenance_mode BOOLEAN NOT NULL DEFAULT 0,
+
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
