@@ -116,8 +116,8 @@ export const createAttendanceCorrection = (req: AuthRequest, res: Response): voi
             WHERE p.user_id = ?
         `).get(userId) as any;
 
-        const settingsForTz = db.prepare('SELECT timezone FROM settings WHERE id = 1').get() as any;
-        const timezone = settingsForTz?.timezone || 'UTC';
+        const settingsForTz = db.prepare('SELECT company_timezone FROM settings WHERE id = 1').get() as any;
+        const timezone = settingsForTz?.company_timezone || 'UTC';
 
         let missingMinutes = 0;
         if (userProfile && userProfile.weekly_schedule) {
@@ -274,8 +274,8 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                             WHERE p.user_id = ?
                         `).get(requestRecord.user_id) as any;
 
-                        const settingsForTz = db.prepare('SELECT timezone FROM settings WHERE id = 1').get() as any;
-                        const timezone = settingsForTz?.timezone || 'UTC';
+                        const settingsForTz = db.prepare('SELECT company_timezone FROM settings WHERE id = 1').get() as any;
+                        const timezone = settingsForTz?.company_timezone || 'UTC';
 
                         if (userProfile && userProfile.weekly_schedule) {
                             try {
@@ -347,8 +347,8 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                                 WHERE p.user_id = ?
                             `).get(requestRecord.user_id) as any;
 
-                            const settingsForTz = db.prepare('SELECT timezone FROM settings WHERE id = 1').get() as any;
-                            const timezone = settingsForTz?.timezone || 'UTC';
+                            const settingsForTz = db.prepare('SELECT company_timezone FROM settings WHERE id = 1').get() as any;
+                            const timezone = settingsForTz?.company_timezone || 'UTC';
 
                             if (userProfile && userProfile.weekly_schedule) {
                                 try {
@@ -401,8 +401,8 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                                 WHERE p.user_id = ?
                             `).get(requestRecord.user_id) as any;
 
-                            const settingsForTz = db.prepare('SELECT timezone FROM settings WHERE id = 1').get() as any;
-                            const timezone = settingsForTz?.timezone || 'UTC';
+                            const settingsForTz = db.prepare('SELECT company_timezone FROM settings WHERE id = 1').get() as any;
+                            const timezone = settingsForTz?.company_timezone || 'UTC';
 
                             if (userProfile && userProfile.weekly_schedule) {
                                 try {

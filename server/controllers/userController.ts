@@ -7,8 +7,8 @@ import { getLogicalShiftDetails } from '../utils/shiftUtils.js';
 
 export const getUsers = (req: Request, res: Response): void => {
     try {
-        const settingsForTz = db.prepare('SELECT timezone FROM settings WHERE id = 1').get() as any;
-        const timezone = settingsForTz?.timezone || 'UTC';
+        const settingsForTz = db.prepare('SELECT company_timezone FROM settings WHERE id = 1').get() as any;
+        const timezone = settingsForTz?.company_timezone || 'UTC';
         const currentServerTime = new Date().toISOString();
 
         // Get users with their profile and job info, excluding managers
@@ -155,8 +155,8 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
             return;
         }
 
-        const settingsForTz = db.prepare('SELECT timezone FROM settings WHERE id = 1').get() as any;
-        const timezone = settingsForTz?.timezone || 'UTC';
+        const settingsForTz = db.prepare('SELECT company_timezone FROM settings WHERE id = 1').get() as any;
+        const timezone = settingsForTz?.company_timezone || 'UTC';
         const currentServerTime = new Date().toISOString();
 
         let parsedSchedule = null;

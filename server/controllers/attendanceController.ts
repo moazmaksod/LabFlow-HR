@@ -428,7 +428,7 @@ export const getAttendanceStats = (req: Request, res: Response): void => {
             LIMIT 7
         `).all();
 
-        const settingsForTz = db.prepare('SELECT timezone FROM settings WHERE id = 1').get() as any;
+        const settingsForTz = db.prepare('SELECT company_timezone FROM settings WHERE id = 1').get() as any;
         const timezone = settingsForTz?.company_timezone || 'UTC';
         const todayDateStr = getDateStringInTimezone(new Date(), timezone);
 

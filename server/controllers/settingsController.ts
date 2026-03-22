@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import db from '../db/index.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
 import { logAudit } from '../services/auditService.js';
+import fs from 'fs';
+import path from 'path';
 
 export const getSettings = (req: Request, res: Response): void => {
     try {
@@ -58,6 +60,61 @@ export const updateSettings = (req: AuthRequest, res: Response): void => {
         res.json(updatedSettings);
     } catch (error) {
         console.error('Error updating settings:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const uploadLogo = (req: AuthRequest, res: Response): void => {
+    try {
+        if (!req.file) {
+            res.status(400).json({ error: 'No file uploaded' });
+            return;
+        }
+
+        const logoUrl = `/uploads/logos/${req.file.filename}`;
+
+        const updateTransaction = db.transaction(() => {
+            const oldSettings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+
+            if (!oldSettings) {
+                // Should never happen since settings row is guaranteed, but handle gracefully
+                return null;
+            }
+
+            // If there's an old logo, we could delete it here to save space
+            if (oldSettings.company_logo_url && oldSettings.company_logo_url.startsWith('/uploads/logos/')) {
+                const oldPath = path.join(process.cwd(), 'public', oldSettings.company_logo_url);
+                if (fs.existsSync(oldPath)) {
+                    try {
+                        fs.unlinkSync(oldPath);
+                    } catch (e) {
+                        console.error('Failed to delete old logo:', e);
+                    }
+                }
+            }
+
+            const update = db.prepare(`
+                UPDATE settings
+                SET company_logo_url = ?
+                WHERE id = 1
+            `);
+
+            update.run(logoUrl);
+
+            const updatedSettings = db.prepare('SELECT * FROM settings WHERE id = 1').get();
+            logAudit('settings', 1, 'UPDATE', req.user!.id, oldSettings, updatedSettings);
+            return updatedSettings;
+        });
+
+        const updatedSettings = updateTransaction();
+        if (!updatedSettings) {
+             res.status(404).json({ error: 'Settings not found' });
+             return;
+        }
+
+        res.json({ message: 'Logo uploaded successfully', settings: updatedSettings });
+    } catch (error) {
+        console.error('Error uploading logo:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

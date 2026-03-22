@@ -54,6 +54,46 @@ export default function DashboardLayout() {
                 </NavLink>
               </li>
             ))}
+            {user?.role === 'manager' && (
+              <li>
+                <button
+                  onClick={() => navigate('/settings')}
+                  className={cn(
+                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left",
+                    isSettingsActive
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  <Settings className="w-5 h-5" />
+                  {t('app.settings')}
+                </button>
+                {/* Expand Settings children when active */}
+                {isSettingsActive && (
+                  <ul className="mt-2 space-y-1 px-3 ml-4 border-l-2 border-border/50 rtl:border-l-0 rtl:border-r-2 rtl:ml-0 rtl:mr-4">
+                    {settingsSubNav.map((sub, sIdx) => {
+                      const isActiveSub = location.search === sub.query || (sIdx === 0 && !location.search);
+                      return (
+                        <li key={`sub-${sIdx}`}>
+                          <button
+                            onClick={() => navigate(`/settings${sub.query}`)}
+                            className={cn(
+                              "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-colors text-left",
+                              isActiveSub
+                                ? "text-primary bg-primary/10"
+                                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                            )}
+                          >
+                            <sub.icon className="w-4 h-4" />
+                            {sub.label}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </li>
+            )}
           </ul>
         </nav>
 

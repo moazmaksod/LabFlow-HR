@@ -4,6 +4,7 @@ import { Settings as SettingsIcon, Save, AlertCircle, CheckCircle, ShieldAlert, 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { useAuthStore } from '../../store/useAuthStore';
+import { useLocation } from 'react-router-dom';
 
 interface Settings {
   id: number;
@@ -13,6 +14,7 @@ interface Settings {
   company_timezone: string;
   support_contact: string;
   payroll_cycle_type: string;
+  custom_payroll_cycle_days: number;
   overtime_rate_percent: number;
   weekend_rate_percent: number;
   attendance_bonus_amount: number;
@@ -48,12 +50,19 @@ export default function SettingsView() {
   const { t } = useTranslation();
   const { user, token } = useAuthStore();
   const queryClient = useQueryClient();
+  const location = useLocation();
 
+  const tabQuery = new URLSearchParams(location.search).get('tab') as 'identity' | 'payroll' | 'security' | 'policy';
   const [activeTab, setActiveTab] = useState<'identity' | 'payroll' | 'security' | 'policy'>('identity');
+
+  useEffect(() => {
+    if (tabQuery) setActiveTab(tabQuery);
+  }, [tabQuery]);
 
   const [formData, setFormData] = useState<Partial<Settings>>({});
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['settings'],
@@ -70,6 +79,40 @@ export default function SettingsView() {
       setFormData(settings);
     }
   }, [settings]);
+
+  const uploadLogoMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const form = new FormData();
+      form.append('logo', file);
+      const res = await axios.post('/api/settings/logo', form, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return res.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      setFormData(data.settings);
+      setSuccessMsg('Logo uploaded successfully!');
+      setTimeout(() => setSuccessMsg(''), 3000);
+    },
+    onError: (error: any) => {
+      setErrorMsg(error.response?.data?.error || 'Failed to upload logo');
+      setTimeout(() => setErrorMsg(''), 3000);
+    },
+    onSettled: () => {
+      setUploadingLogo(false);
+    }
+  });
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setUploadingLogo(true);
+      uploadLogoMutation.mutate(e.target.files[0]);
+    }
+  };
 
   const updateMutation = useMutation({
     mutationFn: async (newSettings: Partial<Settings>) => {
@@ -136,7 +179,7 @@ export default function SettingsView() {
 
     // Convert to float/int where necessary to ensure type safety in backend
     const numericFields = [
-      'overtime_rate_percent', 'weekend_rate_percent', 'attendance_bonus_amount',
+      'custom_payroll_cycle_days', 'overtime_rate_percent', 'weekend_rate_percent', 'attendance_bonus_amount',
       'office_lat', 'office_lng', 'geofence_radius', 'time_sync_interval',
       'max_drift_threshold', 'accuracy_meters', 'step_away_grace_period',
       'late_grace_period', 'max_monthly_permissions'
@@ -257,14 +300,22 @@ export default function SettingsView() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Company Logo URL</label>
-                      <input
-                        type="text"
-                        name="company_logo_url"
-                        value={formData.company_logo_url || ''}
-                        onChange={handleChange}
-                        className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                      />
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Company Logo</label>
+                      <div className="flex items-center gap-4">
+                        {formData.company_logo_url && (
+                          <img src={formData.company_logo_url} alt="Company Logo" className="h-12 w-12 object-contain bg-gray-50 rounded" />
+                        )}
+                        <label className="cursor-pointer px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-sm font-medium">
+                          {uploadingLogo ? 'Uploading...' : 'Choose File'}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleLogoUpload}
+                            disabled={uploadingLogo}
+                          />
+                        </label>
+                      </div>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Brand Primary Color</label>
@@ -330,7 +381,16 @@ export default function SettingsView() {
                         <option value="custom">Custom</option>
                       </select>
                       {formData.payroll_cycle_type === 'custom' && (
-                        <p className="text-xs text-amber-600 mt-2 font-medium">Custom cycle logic must be manually configured in payroll controller.</p>
+                        <div className="mt-4">
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Custom Cycle Days</label>
+                          <input
+                            type="number"
+                            name="custom_payroll_cycle_days"
+                            value={formData.custom_payroll_cycle_days ?? 0}
+                            onChange={handleChange}
+                            className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                          />
+                        </div>
                       )}
                     </div>
                     <div>

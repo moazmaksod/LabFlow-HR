@@ -131,6 +131,7 @@ CREATE TABLE IF NOT EXISTS settings (
 
     -- Payroll
     payroll_cycle_type TEXT NOT NULL DEFAULT 'calendar_month',
+    custom_payroll_cycle_days INTEGER NOT NULL DEFAULT 0,
     overtime_rate_percent REAL NOT NULL DEFAULT 150.0,
     weekend_rate_percent REAL NOT NULL DEFAULT 200.0,
     attendance_bonus_amount REAL NOT NULL DEFAULT 0.0,
