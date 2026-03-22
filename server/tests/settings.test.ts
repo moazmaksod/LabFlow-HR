@@ -11,7 +11,7 @@ beforeAll(async () => {
   initDb();
   
   // Seed settings
-  db.prepare(`INSERT INTO settings (id, office_lat, office_lng, radius_meters) VALUES (1, 37.7749, -122.4194, 50)`).run();
+  db.prepare(`INSERT INTO settings (id, office_lat, office_lng, geofence_radius) VALUES (1, 37.7749, -122.4194, 50)`).run();
 
   // Create manager
   const salt = await bcrypt.genSalt(10);
@@ -37,26 +37,26 @@ describe('Settings API', () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('office_lat', 37.7749);
     expect(res.body).toHaveProperty('office_lng', -122.4194);
-    expect(res.body).toHaveProperty('radius_meters', 50);
+    expect(res.body).toHaveProperty('geofence_radius', 50);
   });
 
   it('should allow manager to update settings', async () => {
     const res = await request(app)
       .put('/api/settings')
       .set('Authorization', `Bearer ${managerToken}`)
-      .send({ office_lat: 40.7128, office_lng: -74.0060, radius_meters: 100 });
+      .send({ office_lat: 40.7128, office_lng: -74.0060, geofence_radius: 100 });
     
     expect(res.status).toBe(200);
     expect(res.body.office_lat).toBe(40.7128);
     expect(res.body.office_lng).toBe(-74.0060);
-    expect(res.body.radius_meters).toBe(100);
+    expect(res.body.geofence_radius).toBe(100);
   });
 
   it('should deny employee from updating settings', async () => {
     const res = await request(app)
       .put('/api/settings')
       .set('Authorization', `Bearer ${employeeToken}`)
-      .send({ office_lat: 51.5074, office_lng: -0.1278, radius_meters: 200 });
+      .send({ office_lat: 51.5074, office_lng: -0.1278, geofence_radius: 200 });
     
     expect(res.status).toBe(403);
     expect(res.body).toHaveProperty('error', 'Forbidden: Insufficient permissions');

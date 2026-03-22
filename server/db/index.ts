@@ -30,8 +30,13 @@ export function initDb() {
     const settingsColumns = db.prepare("PRAGMA table_info(settings)").all() as any[];
 
     // Settings migrations
-    if (!settingsColumns.some(c => c.name === 'timezone')) {
-      db.exec("ALTER TABLE settings ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC';");
+    if (!settingsColumns.some(c => c.name === 'company_name')) {
+      db.exec(`
+        -- Backup current settings
+        CREATE TABLE IF NOT EXISTS settings_backup AS SELECT * FROM settings;
+        DROP TABLE settings;
+      `);
+      db.exec(schema);
     }
 
     // Jobs migrations

@@ -10,7 +10,7 @@ let employeeId: number | bigint;
 beforeAll(async () => {
   initDb();
   
-  db.prepare(`INSERT INTO settings (id, office_lat, office_lng, radius_meters, timezone) VALUES (1, 37.7749, -122.4194, 50, 'America/New_York')`).run();
+  db.prepare(`INSERT INTO settings (id, office_lat, office_lng, geofence_radius, timezone) VALUES (1, 37.7749, -122.4194, 50, 'America/New_York')`).run();
 
   db.prepare(`INSERT INTO jobs (id, title, hourly_rate, required_hours, grace_period) VALUES (1, 'Night Worker', 20, 8, 15)`).run();
 

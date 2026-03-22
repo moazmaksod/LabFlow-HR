@@ -19,30 +19,42 @@ export const getSettings = (req: Request, res: Response): void => {
 
 export const updateSettings = (req: AuthRequest, res: Response): void => {
     try {
-        const { office_lat, office_lng, radius_meters, timezone } = req.body;
-
-        if (office_lat === undefined || office_lng === undefined || radius_meters === undefined) {
-            res.status(400).json({ error: 'Missing required fields' });
-            return;
-        }
+        const body = req.body;
 
         const updateTransaction = db.transaction(() => {
-            const oldSettings = db.prepare('SELECT * FROM settings WHERE id = 1').get();
+            const oldSettings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+
+            if (!oldSettings) {
+                return null;
+            }
+
+            // Build dynamic update query
+            const keys = Object.keys(body).filter(k => Object.hasOwn(oldSettings, k) && k !== 'id' && k !== 'created_at' && k !== 'updated_at');
+            if (keys.length === 0) {
+                return oldSettings;
+            }
+
+            const setClause = keys.map(k => `${k} = ?`).join(', ');
+            const values = keys.map(k => body[k]);
 
             const update = db.prepare(`
-                UPDATE settings 
-                SET office_lat = ?, office_lng = ?, radius_meters = ?, timezone = COALESCE(?, timezone)
+                UPDATE settings
+                SET ${setClause}
                 WHERE id = 1
             `);
-            
-            update.run(office_lat, office_lng, radius_meters, timezone);
-            
+
+            update.run(...values);
+
             const updatedSettings = db.prepare('SELECT * FROM settings WHERE id = 1').get();
             logAudit('settings', 1, 'UPDATE', req.user!.id, oldSettings, updatedSettings);
             return updatedSettings;
         });
 
         const updatedSettings = updateTransaction();
+        if (!updatedSettings) {
+             res.status(404).json({ error: 'Settings not found' });
+             return;
+        }
         res.json(updatedSettings);
     } catch (error) {
         console.error('Error updating settings:', error);

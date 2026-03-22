@@ -42,8 +42,8 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             // Auto-Resume existing session
             const resumeTransaction = db.transaction(() => {
                 db.prepare(`
-                    UPDATE attendance 
-                    SET check_out = NULL, 
+                    UPDATE attendance
+                    SET check_out = NULL,
                         current_status = ?,
                         status = CASE WHEN status = 'early_out' THEN 'on_time' ELSE status END
                     WHERE id = ?
@@ -51,21 +51,21 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
 
                 // 1. Void the Old Request (early_leave_approval)
                 const oldRequest = db.prepare(`
-                    SELECT id FROM requests 
+                    SELECT id FROM requests
                     WHERE attendance_id = ? AND type = 'early_leave_approval' AND status != 'rejected'
                 `).get(existingAttendance.id) as any;
 
                 if (oldRequest) {
                     db.prepare(`
-                        UPDATE requests 
-                        SET status = 'rejected', 
+                        UPDATE requests
+                        SET status = 'rejected',
                             manager_note = COALESCE(manager_note, '') || '\nSYSTEM: Auto-canceled because the employee returned. Replaced by a shift interruption request.'
                         WHERE id = ?
                     `).run(oldRequest.id);
 
                     // 2. Payroll Ledger Reversal
                     db.prepare(`
-                        UPDATE payroll_transactions 
+                        UPDATE payroll_transactions
                         SET status = 'voided', amount = 0, manager_notes = COALESCE(manager_notes, '') || '\nSYSTEM: Voided due to employee return'
                         WHERE reference_id = ?
                     `).run(oldRequest.id);
@@ -97,14 +97,15 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
 
         // Pure Schedule-Driven Logic:
         const clockInTime = new Date(timestamp);
-        const gracePeriod = userProfile.grace_period || 15;
+        const settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+        const gracePeriod = settings?.late_grace_period !== undefined ? settings.late_grace_period : (userProfile.grace_period || 15);
 
         if (!matchedShift || !scheduledTime) {
             status = 'unscheduled';
             isUnscheduled = true;
         } else {
             const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
-            
+
             if (diffMinutes > gracePeriod) {
                 status = 'late_in';
             } else if (diffMinutes < -gracePeriod) {
@@ -159,13 +160,13 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
         const oldSession = { ...activeSession };
 
         db.prepare(`
-            UPDATE attendance 
+            UPDATE attendance
             SET check_out = ?, location_lat = ?, location_lng = ?
             WHERE id = ?
         `).run(timestamp, lat, lng, activeSession.id);
 
         let updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id) as any;
-        
+
         const shiftDetails = getLogicalShiftDetails(schedule, timestamp, timezone, 'check_out', activeSession.check_in);
         const scheduledTime = shiftDetails.scheduledTime;
         const matchedShift = shiftDetails.shift;
@@ -175,7 +176,8 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
         } else if (scheduledTime) {
             const clockOutTime = new Date(timestamp);
             const diffMinutes = (clockOutTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
-            const gracePeriod = userProfile.grace_period || 15;
+            const settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+            const gracePeriod = settings?.late_grace_period !== undefined ? settings.late_grace_period : (userProfile.grace_period || 15);
 
             if (diffMinutes > gracePeriod) {
                 const otMins = Math.floor(diffMinutes);
@@ -221,7 +223,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
         logAudit('attendance', activeSession.id, 'UPDATE', userId, oldSession, updatedRecord);
         return { status: 200, data: updatedRecord };
     }
-    
+
     return { status: 400, error: 'Invalid type' };
 }
 
@@ -262,14 +264,14 @@ function handleClockAction(userId: number, type: string, lat: number, lng: numbe
 
     // Fetch company settings for geofence validation
     const settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
-    if (settings) {
+    if (settings && settings.geofence_toggle) {
         const distance = calculateDistance(lat, lng, settings.office_lat, settings.office_lng);
-        if (distance > settings.radius_meters) {
+        if (distance > settings.geofence_radius) {
             return { status: 403, error: 'Away from job: You are outside the allowed geofence area' };
         }
     }
 
-    const timezone = settings?.timezone || 'UTC';
+    const timezone = settings?.company_timezone || 'UTC';
 
     let schedule = null;
     if (userProfile.weekly_schedule) {
@@ -295,7 +297,7 @@ export const clockAttendance = (req: AuthRequest, res: Response): void => {
         }
 
         const result = handleClockAction(userId, type, lat, lng, deviceId, timestamp);
-        
+
         if (result.error) {
             // Map internal reasons to user-friendly messages for real-time
             let userMessage = result.error;
@@ -307,7 +309,7 @@ export const clockAttendance = (req: AuthRequest, res: Response): void => {
             res.status(result.status).json({ error: userMessage });
             return;
         }
-        
+
         res.status(result.status).json(result.data);
     } catch (error) {
         console.error('Error clocking attendance:', error);
@@ -328,16 +330,16 @@ export const syncOfflineLogs = (req: AuthRequest, res: Response): void => {
         const syncTransaction = db.transaction((logsToSync) => {
             const results = [];
             // We now trust the timestamp since it is securely calculated against server time on device
-            
+
             for (const log of logsToSync) {
                 const { type, timestamp, lat, lng, deviceId } = log;
-                
+
                 // Calculate true historical time securely
                 // Use raw timestamp
                 // Timestamp is extracted from log above
-                
+
                 const result = handleClockAction(userId, type, lat, lng, deviceId, timestamp);
-                
+
                 if (result.error) {
                     results.push({ logId: log.id, status: 'skipped', reason: result.error });
                 } else {
@@ -359,8 +361,8 @@ export const getMyLogs = (req: AuthRequest, res: Response): void => {
     try {
         const userId = req.user!.id;
         const logs = db.prepare(`
-            SELECT * FROM attendance 
-            WHERE user_id = ? 
+            SELECT * FROM attendance
+            WHERE user_id = ?
             ORDER BY date DESC, check_in DESC
         `).all(userId) as any[];
 
@@ -416,7 +418,7 @@ export const getAttendanceLogs = (req: Request, res: Response): void => {
 export const getAttendanceStats = (req: Request, res: Response): void => {
     try {
         const statusDist = db.prepare('SELECT status as name, COUNT(*) as value FROM attendance GROUP BY status').all();
-        
+
         const dailyHours = db.prepare(`
             SELECT date, ROUND(SUM((julianday(check_out) - julianday(check_in)) * 24), 2) as hours
             FROM attendance
@@ -427,11 +429,11 @@ export const getAttendanceStats = (req: Request, res: Response): void => {
         `).all();
 
         const settingsForTz = db.prepare('SELECT timezone FROM settings WHERE id = 1').get() as any;
-        const timezone = settingsForTz?.timezone || 'UTC';
+        const timezone = settingsForTz?.company_timezone || 'UTC';
         const todayDateStr = getDateStringInTimezone(new Date(), timezone);
 
         const todayStats = db.prepare(`
-            SELECT 
+            SELECT
                 SUM(CASE WHEN status = 'on_time' THEN 1 ELSE 0 END) as present,
                 SUM(CASE WHEN status = 'late_in' THEN 1 ELSE 0 END) as late,
                 SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) as absent
@@ -524,8 +526,8 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
 
         const result = stepAwayTransaction();
 
-        res.status(201).json({ 
-            message: 'Stepped away successfully', 
+        res.status(201).json({
+            message: 'Stepped away successfully',
             status: result.status,
             interruptionId: result.interruptionId,
             hasBreakBalance
@@ -567,8 +569,8 @@ export const resumeWork = (req: AuthRequest, res: Response): void => {
         }
 
         const activeInterruption = db.prepare(`
-            SELECT * FROM shift_interruptions 
-            WHERE attendance_id = ? AND end_time IS NULL 
+            SELECT * FROM shift_interruptions
+            WHERE attendance_id = ? AND end_time IS NULL
             ORDER BY start_time DESC LIMIT 1
         `).get(activeAttendance.id) as any;
 

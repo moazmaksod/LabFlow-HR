@@ -35,8 +35,18 @@ export const seedDb = async (): Promise<void> => {
     if (settingsRow.count === 0) {
       console.log('Settings table is empty. Seeding default settings...');
       const insertSettings = db.prepare(`
-        INSERT INTO settings (id, office_lat, office_lng, radius_meters, timezone)
-        VALUES (1, 37.7749, -122.4194, 50, 'UTC')
+        INSERT INTO settings (
+          id, company_name, company_logo_url, brand_primary_color, company_timezone, support_contact,
+          payroll_cycle_type, overtime_rate_percent, weekend_rate_percent, attendance_bonus_amount, show_salary_estimate,
+          geofence_toggle, office_lat, office_lng, geofence_radius, time_sync_interval, max_drift_threshold, accuracy_meters, device_binding_enforced,
+          auto_checkout, step_away_grace_period, late_grace_period, max_monthly_permissions, enable_reminders, send_daily_report, maintenance_mode
+        )
+        VALUES (
+          1, 'LabFlow', NULL, '#4f46e5', 'UTC', NULL,
+          'calendar_month', 150.0, 200.0, 0.0, 1,
+          1, 37.7749, -122.4194, 50, 300, 10, 100, 1,
+          0, 5, 15, 3, 1, 0, 0
+        )
       `);
       insertSettings.run();
     }
