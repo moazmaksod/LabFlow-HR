@@ -185,7 +185,7 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
         }
 
         if (requestRecord.status !== 'pending') {
-            res.status(400).json({ error: 'Request is already processed' });
+            res.status(400).json({ error: 'Request is already processed', errorCode: 'ERR_ALREADY_PROCESSED', currentStatus: requestRecord.status });
             return;
         }
 
