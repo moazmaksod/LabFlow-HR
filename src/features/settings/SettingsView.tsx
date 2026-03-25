@@ -197,115 +197,57 @@ export default function SettingsView() {
   if (isLoading) {
     return (
       <div className="p-8 animate-pulse">
-        <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-1/4 mb-6"></div>
-        <div className="h-64 bg-gray-200 dark:bg-gray-700 rounded-xl"></div>
+        <div className="h-8 bg-muted rounded w-1/4 mb-6"></div>
+        <div className="h-64 bg-muted rounded-xl"></div>
       </div>
     );
   }
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-          <SettingsIcon className="text-indigo-600 dark:text-indigo-400" />
-          Organization Settings
-        </h1>
-        <p className="text-gray-500 dark:text-gray-400 mt-2">
-          Centralized configuration for company identity, payroll rules, security, and policies.
-        </p>
-      </div>
-
       {successMsg && (
-        <div className="mb-6 p-4 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded-xl flex items-center gap-3 border border-emerald-200 dark:border-emerald-800">
+        <div className="mb-6 p-4 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-xl flex items-center gap-3 border border-emerald-500/20">
           <CheckCircle className="w-5 h-5" />
           {successMsg}
         </div>
       )}
 
       {errorMsg && (
-        <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-xl flex items-center gap-3 border border-red-200 dark:border-red-800">
+        <div className="mb-6 p-4 bg-red-500/10 text-red-600 dark:text-red-400 rounded-xl flex items-center gap-3 border border-red-500/20">
           <AlertCircle className="w-5 h-5" />
           {errorMsg}
         </div>
       )}
 
       <div className="flex flex-col md:flex-row gap-8">
-        {/* Navigation Sidebar */}
-        <div className="w-full md:w-64 flex flex-col gap-2">
-          <button
-            onClick={() => setActiveTab('identity')}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-colors ${
-              activeTab === 'identity'
-                ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'
-                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
-            }`}
-          >
-            <Building2 className="w-5 h-5" />
-            Identity
-          </button>
-          <button
-            onClick={() => setActiveTab('payroll')}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-colors ${
-              activeTab === 'payroll'
-                ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'
-                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
-            }`}
-          >
-            <CreditCard className="w-5 h-5" />
-            Payroll
-          </button>
-          <button
-            onClick={() => setActiveTab('security')}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-colors ${
-              activeTab === 'security'
-                ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'
-                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
-            }`}
-          >
-            <Shield className="w-5 h-5" />
-            Security
-          </button>
-          <button
-            onClick={() => setActiveTab('policy')}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-colors ${
-              activeTab === 'policy'
-                ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'
-                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
-            }`}
-          >
-            <FileText className="w-5 h-5" />
-            Policy
-          </button>
-        </div>
-
         {/* Content Area */}
-        <div className="flex-1 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div className="flex-1 bg-card rounded-2xl shadow-sm border border-border overflow-hidden">
           <form onSubmit={handleSubmit}>
             <div className="p-6 space-y-6">
 
               {/* --- IDENTITY TAB --- */}
               {activeTab === 'identity' && (
                 <>
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 border-b border-gray-100 dark:border-gray-700 pb-2">Company Identity</h2>
+                  <h2 className="text-lg font-semibold text-foreground mb-4 border-b border-border pb-2">Company Identity</h2>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Company Name</label>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Company Name</label>
                       <input
                         type="text"
                         name="company_name"
                         value={formData.company_name || ''}
                         onChange={handleChange}
-                        className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                        className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Company Logo</label>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Company Logo</label>
                       <div className="flex items-center gap-4">
                         {formData.company_logo_url && (
-                          <img src={formData.company_logo_url} alt="Company Logo" className="h-12 w-12 object-contain bg-gray-50 rounded" />
+                          <img src={formData.company_logo_url} alt="Company Logo" className="h-12 w-12 object-contain bg-background rounded" />
                         )}
-                        <label className="cursor-pointer px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-sm font-medium">
+                        <label className="cursor-pointer px-4 py-2 bg-muted text-muted-foreground border border-input rounded-xl hover:bg-accent transition-colors text-sm font-medium">
                           {uploadingLogo ? 'Uploading...' : 'Choose File'}
                           <input
                             type="file"
@@ -318,7 +260,7 @@ export default function SettingsView() {
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Brand Primary Color</label>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Brand Primary Color</label>
                       <div className="flex items-center gap-4">
                         <input
                           type="color"
@@ -331,23 +273,23 @@ export default function SettingsView() {
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Support Contact</label>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Support Contact</label>
                       <input
                         type="text"
                         name="support_contact"
                         value={formData.support_contact || ''}
                         onChange={handleChange}
-                        className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                        className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
                         placeholder="Email or Phone"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Company Timezone</label>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Company Timezone</label>
                       <select
                         name="company_timezone"
                         value={formData.company_timezone || 'UTC'}
                         onChange={handleChange}
-                        className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                        className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
                       >
                         {Object.entries(TIMEZONE_GROUPS).map(([region, zones]) => (
                           <optgroup key={region} label={region}>
@@ -365,16 +307,16 @@ export default function SettingsView() {
               {/* --- PAYROLL TAB --- */}
               {activeTab === 'payroll' && (
                 <>
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 border-b border-gray-100 dark:border-gray-700 pb-2">Payroll Settings</h2>
+                  <h2 className="text-lg font-semibold text-foreground mb-4 border-b border-border pb-2">Payroll Settings</h2>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Payroll Cycle Type</label>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Payroll Cycle Type</label>
                       <select
                         name="payroll_cycle_type"
                         value={formData.payroll_cycle_type || 'calendar_month'}
                         onChange={handleChange}
-                        className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                        className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
                       >
                         <option value="calendar_month">Calendar Month</option>
                         <option value="fixed_30">Fixed 30 Days</option>
@@ -382,45 +324,45 @@ export default function SettingsView() {
                       </select>
                       {formData.payroll_cycle_type === 'custom' && (
                         <div className="mt-4">
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Custom Cycle Days</label>
+                          <label className="block text-sm font-medium text-muted-foreground mb-2">Custom Cycle Days</label>
                           <input
                             type="number"
                             name="custom_payroll_cycle_days"
                             value={formData.custom_payroll_cycle_days ?? 0}
                             onChange={handleChange}
-                            className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                            className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
                           />
                         </div>
                       )}
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Overtime Rate (%)</label>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Overtime Rate (%)</label>
                       <input
                         type="number"
                         name="overtime_rate_percent"
                         value={formData.overtime_rate_percent ?? 150}
                         onChange={handleChange}
-                        className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                        className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Weekend Rate (%)</label>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Weekend Rate (%)</label>
                       <input
                         type="number"
                         name="weekend_rate_percent"
                         value={formData.weekend_rate_percent ?? 200}
                         onChange={handleChange}
-                        className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                        className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Attendance Bonus Amount</label>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Attendance Bonus Amount</label>
                       <input
                         type="number"
                         name="attendance_bonus_amount"
                         value={formData.attendance_bonus_amount ?? 0}
                         onChange={handleChange}
-                        className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                        className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
                       />
                     </div>
                     <div className="flex items-center gap-3">
@@ -430,9 +372,9 @@ export default function SettingsView() {
                         name="show_salary_estimate"
                         checked={!!formData.show_salary_estimate}
                         onChange={handleChange}
-                        className="w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        className="w-5 h-5 rounded border-input text-primary focus:ring-primary"
                       />
-                      <label htmlFor="show_salary_estimate" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <label htmlFor="show_salary_estimate" className="text-sm font-medium text-muted-foreground">
                         Show Salary Estimate to Employees
                       </label>
                     </div>
@@ -443,7 +385,7 @@ export default function SettingsView() {
               {/* --- SECURITY TAB --- */}
               {activeTab === 'security' && (
                 <>
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 border-b border-gray-100 dark:border-gray-700 pb-2">Security & Geofence</h2>
+                  <h2 className="text-lg font-semibold text-foreground mb-4 border-b border-border pb-2">Security & Geofence</h2>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="md:col-span-2 flex items-center gap-3">
@@ -453,9 +395,9 @@ export default function SettingsView() {
                         name="geofence_toggle"
                         checked={!!formData.geofence_toggle}
                         onChange={handleChange}
-                        className="w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        className="w-5 h-5 rounded border-input text-primary focus:ring-primary"
                       />
-                      <label htmlFor="geofence_toggle" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <label htmlFor="geofence_toggle" className="text-sm font-medium text-muted-foreground">
                         Enable Geofencing
                       </label>
                     </div>
@@ -463,68 +405,68 @@ export default function SettingsView() {
                     {!!formData.geofence_toggle && (
                       <>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Office Latitude</label>
+                          <label className="block text-sm font-medium text-muted-foreground mb-2">Office Latitude</label>
                           <input
                             type="number"
                             step="any"
                             name="office_lat"
                             value={formData.office_lat ?? 0}
                             onChange={handleChange}
-                            className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                            className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Office Longitude</label>
+                          <label className="block text-sm font-medium text-muted-foreground mb-2">Office Longitude</label>
                           <input
                             type="number"
                             step="any"
                             name="office_lng"
                             value={formData.office_lng ?? 0}
                             onChange={handleChange}
-                            className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                            className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Allowed Radius (meters)</label>
+                          <label className="block text-sm font-medium text-muted-foreground mb-2">Allowed Radius (meters)</label>
                           <input
                             type="number"
                             name="geofence_radius"
                             value={formData.geofence_radius ?? 50}
                             onChange={handleChange}
-                            className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                            className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Min Accuracy (meters)</label>
+                          <label className="block text-sm font-medium text-muted-foreground mb-2">Min Accuracy (meters)</label>
                           <input
                             type="number"
                             name="accuracy_meters"
                             value={formData.accuracy_meters ?? 100}
                             onChange={handleChange}
-                            className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                            className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
                           />
                         </div>
                       </>
                     )}
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Time Sync Interval (seconds)</label>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Time Sync Interval (seconds)</label>
                       <input
                         type="number"
                         name="time_sync_interval"
                         value={formData.time_sync_interval ?? 300}
                         onChange={handleChange}
-                        className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                        className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Max Time Drift Threshold (s)</label>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Max Time Drift Threshold (s)</label>
                       <input
                         type="number"
                         name="max_drift_threshold"
                         value={formData.max_drift_threshold ?? 10}
                         onChange={handleChange}
-                        className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                        className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
                       />
                     </div>
 
@@ -535,9 +477,9 @@ export default function SettingsView() {
                         name="device_binding_enforced"
                         checked={!!formData.device_binding_enforced}
                         onChange={handleChange}
-                        className="w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        className="w-5 h-5 rounded border-input text-primary focus:ring-primary"
                       />
-                      <label htmlFor="device_binding_enforced" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <label htmlFor="device_binding_enforced" className="text-sm font-medium text-muted-foreground">
                         Enforce Mobile Device Binding (One device per user)
                       </label>
                     </div>
@@ -548,41 +490,41 @@ export default function SettingsView() {
               {/* --- POLICY TAB --- */}
               {activeTab === 'policy' && (
                 <>
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 border-b border-gray-100 dark:border-gray-700 pb-2">Company Policies</h2>
+                  <h2 className="text-lg font-semibold text-foreground mb-4 border-b border-border pb-2">Company Policies</h2>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Global Late Grace Period (mins)</label>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Global Late Grace Period (mins)</label>
                       <input
                         type="number"
                         name="late_grace_period"
                         value={formData.late_grace_period ?? 15}
                         onChange={handleChange}
-                        className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                        className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Step Away Grace Period (mins)</label>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Step Away Grace Period (mins)</label>
                       <input
                         type="number"
                         name="step_away_grace_period"
                         value={formData.step_away_grace_period ?? 5}
                         onChange={handleChange}
-                        className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                        className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Max Monthly Permissions</label>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Max Monthly Permissions</label>
                       <input
                         type="number"
                         name="max_monthly_permissions"
                         value={formData.max_monthly_permissions ?? 3}
                         onChange={handleChange}
-                        className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                        className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
                       />
                     </div>
 
-                    <div className="md:col-span-2 space-y-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+                    <div className="md:col-span-2 space-y-4 pt-4 border-t border-border">
                       <div className="flex items-center gap-3">
                         <input
                           type="checkbox"
@@ -590,9 +532,9 @@ export default function SettingsView() {
                           name="auto_checkout"
                           checked={!!formData.auto_checkout}
                           onChange={handleChange}
-                          className="w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                          className="w-5 h-5 rounded border-input text-primary focus:ring-primary"
                         />
-                        <label htmlFor="auto_checkout" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <label htmlFor="auto_checkout" className="text-sm font-medium text-muted-foreground">
                           Enable Auto-Checkout at end of shift
                         </label>
                       </div>
@@ -603,9 +545,9 @@ export default function SettingsView() {
                           name="enable_reminders"
                           checked={!!formData.enable_reminders}
                           onChange={handleChange}
-                          className="w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                          className="w-5 h-5 rounded border-input text-primary focus:ring-primary"
                         />
-                        <label htmlFor="enable_reminders" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <label htmlFor="enable_reminders" className="text-sm font-medium text-muted-foreground">
                           Enable Push Notifications/Reminders
                         </label>
                       </div>
@@ -616,9 +558,9 @@ export default function SettingsView() {
                           name="send_daily_report"
                           checked={!!formData.send_daily_report}
                           onChange={handleChange}
-                          className="w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                          className="w-5 h-5 rounded border-input text-primary focus:ring-primary"
                         />
-                        <label htmlFor="send_daily_report" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <label htmlFor="send_daily_report" className="text-sm font-medium text-muted-foreground">
                           Send Daily Report to Managers
                         </label>
                       </div>
@@ -629,7 +571,7 @@ export default function SettingsView() {
                           name="maintenance_mode"
                           checked={!!formData.maintenance_mode}
                           onChange={handleChange}
-                          className="w-5 h-5 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                          className="w-5 h-5 rounded border-input text-red-600 focus:ring-red-500"
                         />
                         <label htmlFor="maintenance_mode" className="text-sm font-medium text-red-700 dark:text-red-400">
                           Enable Maintenance Mode (System Offline)
@@ -642,11 +584,11 @@ export default function SettingsView() {
 
             </div>
 
-            <div className="p-6 bg-gray-50 dark:bg-gray-900 border-t border-gray-100 dark:border-gray-700 flex justify-end">
+            <div className="p-6 bg-background border-t border-border flex justify-end">
               <button
                 type="submit"
                 disabled={updateMutation.isPending}
-                className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium transition-colors disabled:opacity-50"
+                className="flex items-center gap-2 px-6 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-xl font-medium transition-colors disabled:opacity-50"
               >
                 <Save className="w-5 h-5" />
                 {updateMutation.isPending ? 'Saving...' : 'Save Settings'}
@@ -657,7 +599,7 @@ export default function SettingsView() {
       </div>
 
       {user?.role === 'manager' && (
-        <div className="mt-8 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-red-100 dark:border-red-900/30 overflow-hidden max-w-6xl mx-auto">
+        <div className="mt-8 bg-card rounded-2xl shadow-sm border border-red-100 dark:border-red-900/30 overflow-hidden max-w-6xl mx-auto">
           <div className="p-6 border-b border-red-50 dark:border-red-900/20 bg-red-50/30 dark:bg-red-900/10">
             <h2 className="text-lg font-semibold text-red-900 dark:text-red-400 flex items-center gap-2">
               <ShieldAlert className="w-5 h-5" />
@@ -667,7 +609,7 @@ export default function SettingsView() {
           <div className="p-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <h3 className="text-sm font-medium text-gray-900 dark:text-white">Reset My Mobile Device Binding</h3>
+                <h3 className="text-sm font-medium text-foreground">Reset My Mobile Device Binding</h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   If you have lost your phone or need to switch to a new mobile device, use this to clear your current binding.
                 </p>
