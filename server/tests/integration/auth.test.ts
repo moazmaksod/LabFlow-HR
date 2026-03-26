@@ -1,7 +1,7 @@
-import { beforeAll, afterAll, describe, it, expect } from 'vitest';
+
 import request from 'supertest';
-import app from '../app.js';
-import db, { initDb } from '../db/index.js';
+import app from '../../app.js';
+import db, { initDb } from '../../db/index.js';
 
 beforeAll(() => {
   initDb();
@@ -14,6 +14,15 @@ afterAll(() => {
   db.close();
 });
 
+/**
+ * @scenario Tests JWT-based authentication for Web (Manager) and Mobile (Employee) logins.
+ * @expectedLogic
+ *   - Managers can login via web without a deviceId.
+ *   - Employees receive a 403 Access Denied if attempting to login via Web.
+ *   - Employees can successfully login using their Device ID (Mobile).
+ * @edgeCases
+ *   - Incorrect passwords, unregistered emails, and role-based access restrictions.
+ */
 describe('Auth API', () => {
   it('should register a new user', async () => {
     const res = await request(app)
@@ -79,7 +88,7 @@ describe('Auth API', () => {
     expect(res.body.user).toHaveProperty('role', 'manager');
   });
 
-  it('should not login an Employee without deviceId (Web)', async () => {
+  it('should login an Employee without deviceId (Web) because it is now optional', async () => {
     // Register an employee
     await request(app)
       .post('/api/auth/register')

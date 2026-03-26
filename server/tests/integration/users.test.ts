@@ -1,6 +1,6 @@
 import request from 'supertest';
-import app from '../app.js';
-import db, { initDb } from '../db/index.js';
+import app from '../../app.js';
+import db, { initDb } from '../../db/index.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import path from 'path';
@@ -45,6 +45,14 @@ afterAll(() => {
   db.close();
 });
 
+/**
+ * @scenario Tests user and profile management operations.
+ * @expectedLogic
+ *   - Managers can retrieve lists of users, fetch specific profiles, and update roles.
+ *   - Updating a profile correctly saves associated metadata like weekly schedules.
+ * @edgeCases
+ *   - Unauthorized access attempts or updating non-existent user IDs.
+ */
 describe('User Profile API', () => {
   it('should allow employee to update their profile details', async () => {
     const res = await request(app)

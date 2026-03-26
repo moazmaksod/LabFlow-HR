@@ -1,6 +1,6 @@
 import request from 'supertest';
-import app from '../app.js';
-import db, { initDb } from '../db/index.js';
+import app from '../../app.js';
+import db, { initDb } from '../../db/index.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
@@ -29,6 +29,14 @@ afterAll(() => {
   db.close();
 });
 
+/**
+ * @scenario Verifies the submission and managerial approval/rejection of employee requests (e.g., overtime, leave).
+ * @expectedLogic
+ *   - Employees can submit leave or manual check-in requests.
+ *   - Managers can review, approve, or reject these requests, triggering respective state changes.
+ * @edgeCases
+ *   - Processing a request that does not exist or has already been reviewed.
+ */
 describe('Requests API', () => {
   it('should allow employee to submit a request', async () => {
     const res = await request(app)

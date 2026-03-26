@@ -1,8 +1,8 @@
 import request from 'supertest';
 import express from 'express';
-import db from '../db/index.js';
-import attendanceRoutes from '../routes/attendanceRoutes.js';
-import { schema } from '../db/schema.js';
+import db from '../../db/index.js';
+import attendanceRoutes from '../../routes/attendanceRoutes.js';
+import { schema } from '../../db/schema.js';
 import jwt from 'jsonwebtoken';
 
 const app = express();
@@ -11,6 +11,15 @@ app.use('/attendance', attendanceRoutes);
 
 const JWT_SECRET = process.env.JWT_SECRET as string;
 
+/**
+ * @scenario Verifies the auto-pause and resume logic when stepping away during an active shift.
+ * @expectedLogic
+ *   - Stepping away checks break balance and auto-approves if balance > 0.
+ *   - If break balance is 0, it creates a pending manager approval request.
+ *   - Resuming closes the interruption and correctly calculates used break time.
+ * @edgeCases
+ *   - Initiating interruptions multiple times or without remaining break time limits.
+ */
 describe('Attendance Interruptions API', () => {
     let employeeToken: string;
     let employeeId: number;

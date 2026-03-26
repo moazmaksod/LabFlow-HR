@@ -1,6 +1,6 @@
 import request from 'supertest';
-import app from '../app.js';
-import db, { initDb } from '../db/index.js';
+import app from '../../app.js';
+import db, { initDb } from '../../db/index.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
@@ -16,6 +16,14 @@ afterAll(() => {
   db.close();
 });
 
+/**
+ * @scenario Validates payroll generation, wage calculations, and bonus disbursements.
+ * @expectedLogic
+ *   - Payroll generation iterates over completed shifts, factors in hourly_rate and overtime.
+ *   - 100% Attendance Bonus is granted if total delay and absence minutes equal 0.
+ * @edgeCases
+ *   - Discrepancies in shift calculations, or handling pending shifts during generation.
+ */
 describe('Payroll API', () => {
   let adminToken: string;
   let employeeId: number;

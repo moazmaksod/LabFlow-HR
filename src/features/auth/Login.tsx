@@ -26,7 +26,7 @@ export default function Login() {
       return response.data;
     },
     onSuccess: (data) => {
-      login(data.user, data.token);
+      login(data.user, data.token, data.serverTime);
       navigate(from, { replace: true });
     },
   });
