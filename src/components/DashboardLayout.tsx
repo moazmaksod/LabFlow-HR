@@ -1,5 +1,8 @@
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import axios from 'axios';
 import { useAppStore } from '../store/useAppStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { Moon, Sun, Globe, LayoutDashboard, Users, Calendar, FileText, Settings, LogOut, Briefcase, DollarSign, Activity, Building2, CreditCard, Shield, FileText as FileTextIcon } from 'lucide-react';
@@ -9,11 +12,31 @@ import TimezoneClock from './TimezoneClock';
 export default function DashboardLayout() {
   const { t } = useTranslation();
   const { theme, language, toggleTheme, setLanguage } = useAppStore();
-  const { user, logout } = useAuthStore();
+  const { user, token, logout } = useAuthStore();
   const location = useLocation();
   const navigate = useNavigate();
 
   const isSettingsActive = location.pathname.startsWith('/settings');
+
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: async () => {
+      const res = await axios.get('/api/settings', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return res.data;
+    }
+  });
+
+  useEffect(() => {
+    if (settings?.brand_primary_color) {
+      // In a real Tailwind setup with CSS vars, we'd map hex to HSL and set --primary.
+      // But we can directly inject a style tag or set the root CSS variable.
+      // For simplicity here without a deep hex-to-hsl converter:
+      document.documentElement.style.setProperty('--primary-hex', settings.brand_primary_color);
+      // Wait, standard tailwind needs the color format in config. If it's standard, this might not work without hex conversion. Let's just do a simpler inline style where needed if it's not complex.
+    }
+  }, [settings?.brand_primary_color]);
 
   const toggleLanguage = () => {
     setLanguage(language === 'en' ? 'ar' : 'en');
@@ -40,9 +63,12 @@ export default function DashboardLayout() {
     <div className="flex h-screen w-full bg-background text-foreground overflow-hidden font-sans">
       {/* Sidebar */}
       <aside className="w-64 border-r border-border bg-card flex flex-col transition-all duration-300 rtl:border-r-0 rtl:border-l">
-        <div className="p-6 border-b border-border">
-          <h1 className="text-2xl font-bold tracking-tight text-primary">
-            {t('app.title')}
+        <div className="p-6 border-b border-border flex items-center gap-3">
+          {settings?.company_logo_url ? (
+            <img src={settings.company_logo_url} alt="Logo" className="w-8 h-8 object-contain rounded" />
+          ) : null}
+          <h1 className="text-2xl font-bold tracking-tight" style={{ color: settings?.brand_primary_color || 'var(--primary)' }}>
+            {settings?.company_name || t('app.title')}
           </h1>
         </div>
 
@@ -55,9 +81,10 @@ export default function DashboardLayout() {
                   className={({ isActive }) => cn(
                     "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                     isActive
-                      ? "bg-primary text-primary-foreground"
+                      ? "text-white"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   )}
+                  style={({ isActive }) => isActive && settings?.brand_primary_color ? { backgroundColor: settings.brand_primary_color } : isActive ? { backgroundColor: 'var(--primary)' } : {}}
                 >
                   <item.icon className="w-5 h-5" />
                   {item.label === 'Job Roles' ? item.label : t(item.label)}
@@ -71,9 +98,10 @@ export default function DashboardLayout() {
                   className={cn(
                     "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left",
                     isSettingsActive
-                      ? "bg-primary text-primary-foreground"
+                      ? "text-white"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   )}
+                  style={isSettingsActive && settings?.brand_primary_color ? { backgroundColor: settings.brand_primary_color } : isSettingsActive ? { backgroundColor: 'var(--primary)' } : {}}
                 >
                   <Settings className="w-5 h-5" />
                   {t('app.settings')}
@@ -90,9 +118,10 @@ export default function DashboardLayout() {
                             className={cn(
                               "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-colors text-left",
                               isActiveSub
-                                ? "text-primary bg-primary/10"
+                                ? ""
                                 : "text-muted-foreground hover:bg-muted hover:text-foreground"
                             )}
+                            style={isActiveSub && settings?.brand_primary_color ? { color: settings.brand_primary_color, backgroundColor: `${settings.brand_primary_color}1a` } : isActiveSub ? { color: 'var(--primary)', backgroundColor: 'hsl(var(--primary) / 0.1)' } : {}}
                           >
                             <sub.icon className="w-4 h-4" />
                             {sub.label}

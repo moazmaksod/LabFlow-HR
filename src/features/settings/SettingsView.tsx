@@ -379,6 +379,35 @@ export default function SettingsView() {
                       </label>
                     </div>
                   </div>
+
+                  {user?.role === 'manager' && (
+                    <div className="mt-8 bg-red-50 dark:bg-red-900/10 rounded-2xl shadow-sm border border-red-200 dark:border-red-900/30 overflow-hidden">
+                      <div className="p-6 border-b border-red-200 dark:border-red-900/20">
+                        <h2 className="text-lg font-semibold text-red-900 dark:text-red-400 flex items-center gap-2">
+                          <ShieldAlert className="w-5 h-5" />
+                          Admin Actions
+                        </h2>
+                      </div>
+                      <div className="p-6">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div>
+                            <h3 className="text-sm font-medium text-red-900 dark:text-red-300">Reset My Mobile Device Binding</h3>
+                            <p className="text-sm text-red-700/80 dark:text-red-400/80 mt-1">
+                              If you have lost your phone or need to switch to a new mobile device, use this to clear your current binding.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleResetDevice}
+                            disabled={resetDeviceMutation.isPending}
+                            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-medium transition-colors disabled:opacity-50 whitespace-nowrap"
+                          >
+                            {resetDeviceMutation.isPending ? 'Resetting...' : 'Reset Device Binding'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
 
@@ -588,7 +617,7 @@ export default function SettingsView() {
               <button
                 type="submit"
                 disabled={updateMutation.isPending}
-                className="flex items-center gap-2 px-6 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-xl font-medium transition-colors disabled:opacity-50"
+                className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl font-medium transition-colors disabled:opacity-50"
               >
                 <Save className="w-5 h-5" />
                 {updateMutation.isPending ? 'Saving...' : 'Save Settings'}
@@ -597,34 +626,6 @@ export default function SettingsView() {
           </form>
         </div>
       </div>
-
-      {user?.role === 'manager' && (
-        <div className="mt-8 bg-card rounded-2xl shadow-sm border border-red-100 dark:border-red-900/30 overflow-hidden max-w-6xl mx-auto">
-          <div className="p-6 border-b border-red-50 dark:border-red-900/20 bg-red-50/30 dark:bg-red-900/10">
-            <h2 className="text-lg font-semibold text-red-900 dark:text-red-400 flex items-center gap-2">
-              <ShieldAlert className="w-5 h-5" />
-              Admin Actions
-            </h2>
-          </div>
-          <div className="p-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div>
-                <h3 className="text-sm font-medium text-foreground">Reset My Mobile Device Binding</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  If you have lost your phone or need to switch to a new mobile device, use this to clear your current binding.
-                </p>
-              </div>
-              <button
-                onClick={handleResetDevice}
-                disabled={resetDeviceMutation.isPending}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-medium transition-colors disabled:opacity-50 whitespace-nowrap"
-              >
-                {resetDeviceMutation.isPending ? 'Resetting...' : 'Reset Device Binding'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
