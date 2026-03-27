@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { useAuthStore } from '../store/useAuthStore';
@@ -7,7 +8,10 @@ import { Clock } from 'lucide-react';
 export default function TimezoneClock() {
 
   const { token, serverTimeOffset } = useAuthStore();
+
+  const { token, serverTimeOffset } = useAuthStore();
   const [time, setTime] = useState<string>('');
+  const shadowTimeRef = useRef(Date.now() + (serverTimeOffset || 0));
   const shadowTimeRef = useRef(Date.now() + (serverTimeOffset || 0));
 
   const { data: settings } = useQuery({
@@ -36,7 +40,10 @@ export default function TimezoneClock() {
       try {
         shadowTimeRef.current += 1000;
         const now = new Date(shadowTimeRef.current);
+        shadowTimeRef.current += 1000;
+        const now = new Date(shadowTimeRef.current);
         const formatter = new Intl.DateTimeFormat('en-US', {
+          timeZone: selectedTimezone,
           timeZone: selectedTimezone,
           hour: '2-digit',
           minute: '2-digit',
@@ -62,6 +69,7 @@ export default function TimezoneClock() {
     <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/50 text-sm font-medium text-muted-foreground border border-border">
       <Clock className="w-4 h-4" />
       <span>{time}</span>
+      <span className="text-xs opacity-70 ml-1">({settings?.company_timezone || 'UTC'})</span>
       <span className="text-xs opacity-70 ml-1">({settings?.company_timezone || 'UTC'})</span>
     </div>
   );
