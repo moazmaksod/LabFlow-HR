@@ -61,7 +61,7 @@ describe('Attendance Interruptions API', () => {
         );
 
         // Create settings
-        db.prepare(`INSERT INTO settings (id, office_lat, office_lng, geofence_radius, timezone) VALUES (1, 0, 0, 1000000, 'UTC')`).run();
+        db.prepare(`INSERT INTO settings (id, office_lat, office_lng, geofence_radius, company_timezone) VALUES (1, 0, 0, 1000000, 'UTC')`).run();
 
         employeeToken = jwt.sign({ id: employeeId, role: 'employee' }, JWT_SECRET);
     });
