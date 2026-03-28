@@ -70,4 +70,31 @@ describe('getLogicalShiftDetails', () => {
         expect(result.scheduledTime?.getUTCHours()).toBe(6);
         expect(result.logicalDate).toBe('2023-10-25');
     });
+    
+    it('should handle timezone specific shifts (NY Time)', () => {
+        const schedule = {
+            wednesday: [
+                { start: '17:00', end: '05:00' } // 5 PM to 5 AM Thursday NY Time
+            ]
+        };
+        // 2023-10-25T21:15:00Z هي الساعة 5:15 مساءً في نيويورك
+        const punchIn = '2023-10-25T21:15:00Z'; 
+        const result = getLogicalShiftDetails(schedule, punchIn, 'America/New_York', 'check_in');
+        
+        expect(result.shift).toEqual({ start: '17:00', end: '05:00' });
+        expect(result.logicalDate).toBe('2023-10-25');
+    });
+
+    it('should correctly calculate end time in NY Timezone', () => {
+        const schedule = { wednesday: [{ start: '17:00', end: '05:00' }] };
+        // 2023-10-26T09:00:00Z هي الساعة 5:00 صباح الخميس في نيويورك
+        const punchOut = '2023-10-26T09:00:00Z';
+        const checkInTime = '2023-10-25T21:15:00Z';
+
+        const result = getLogicalShiftDetails(schedule, punchOut, 'America/New_York', 'check_out', checkInTime);
+        
+        expect(result.shift).toEqual({ start: '17:00', end: '05:00' });
+        expect(result.logicalDate).toBe('2023-10-25');
+    });
+
 });
