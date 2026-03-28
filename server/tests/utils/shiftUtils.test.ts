@@ -16,18 +16,21 @@ describe('getLogicalShiftDetails', () => {
         const result = getLogicalShiftDetails(null, timestamp, timezone, 'check_in');
         expect(result.shift).toBeNull();
         expect(result.scheduledTime).toBeNull();
+        expect(result.logicalDate).toBe('2023-10-25');
     });
 
     it('should return nulls when schedule is undefined', () => {
         const result = getLogicalShiftDetails(undefined, timestamp, timezone, 'check_in');
         expect(result.shift).toBeNull();
         expect(result.scheduledTime).toBeNull();
+        expect(result.logicalDate).toBe('2023-10-25');
     });
 
     it('should return nulls when schedule is an empty object', () => {
         const result = getLogicalShiftDetails({}, timestamp, timezone, 'check_in');
         expect(result.shift).toBeNull();
         expect(result.scheduledTime).toBeNull();
+        expect(result.logicalDate).toBe('2023-10-25');
     });
 
     it('should find the shift when punching in early', () => {
