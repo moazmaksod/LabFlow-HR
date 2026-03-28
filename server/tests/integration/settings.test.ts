@@ -1,6 +1,6 @@
 import request from 'supertest';
-import app from '../app.js';
-import db, { initDb } from '../db/index.js';
+import app from '../../app.js';
+import db, { initDb } from '../../db/index.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
@@ -28,6 +28,14 @@ afterAll(() => {
   db.close();
 });
 
+/**
+ * @scenario Validates the retrieval and updating of global system settings (e.g., office location, timezone).
+ * @expectedLogic
+ *   - Authenticated users can fetch global settings.
+ *   - Only Managers can update system configurations like geofence radius.
+ * @edgeCases
+ *   - Employees attempting unauthorized updates should face strict 403 blocks.
+ */
 describe('Settings API', () => {
   it('should allow authenticated users to get settings', async () => {
     const res = await request(app)

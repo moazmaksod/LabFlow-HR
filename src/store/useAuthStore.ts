@@ -12,7 +12,8 @@ interface AuthState {
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
-  login: (user: User, token: string) => void;
+  serverTimeOffset: number;
+  login: (user: User, token: string, serverTime?: string | number) => void;
   logout: () => void;
 }
 
@@ -22,8 +23,15 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       token: null,
       isAuthenticated: false,
-      login: (user, token) => set({ user, token, isAuthenticated: true }),
-      logout: () => set({ user: null, token: null, isAuthenticated: false }),
+      serverTimeOffset: 0,
+      login: (user, token, serverTime) => {
+        let offset = 0;
+        if (serverTime) {
+          offset = new Date(serverTime).getTime() - Date.now();
+        }
+        set({ user, token, isAuthenticated: true, serverTimeOffset: offset });
+      },
+      logout: () => set({ user: null, token: null, isAuthenticated: false, serverTimeOffset: 0 }),
     }),
     {
       name: 'labflow-auth-storage',

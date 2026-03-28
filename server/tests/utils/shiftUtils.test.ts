@@ -1,5 +1,13 @@
-import { getLogicalShiftDetails } from '../utils/shiftUtils.js';
+import { getLogicalShiftDetails } from '../../utils/shiftUtils.js';
 
+/**
+ * @scenario Unit tests for logical shift gap detection and boundary calculations.
+ * @expectedLogic
+ *   - Given a timestamp and schedule, calculates the nearest logical shift.
+ *   - Interprets gap bounds to classify early or late entries.
+ * @edgeCases
+ *   - Handling undefined/null schedules, and cross-day (night shift) boundaries reliably.
+ */
 describe('getLogicalShiftDetails', () => {
     const timestamp = '2023-10-25T08:00:00Z'; // This is a Wednesday, 8 AM UTC
     const timezone = 'UTC';
