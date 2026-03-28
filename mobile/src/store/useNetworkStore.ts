@@ -98,30 +98,39 @@ export const useNetworkStore = create<NetworkState>()(
       // Sync Requests
       const requests = getUnsyncedRequests() as any[];
       if (requests.length > 0) {
+        const results = await Promise.allSettled(
+          requests.map(async (req) => {
+            try {
+              const payload = JSON.parse(req.payload);
+              const method = req.method?.toLowerCase() || 'post';
+
+              if (method === 'put') {
+                await api.put(req.endpoint, payload);
+              } else if (method === 'delete') {
+                await api.delete(req.endpoint, { data: payload });
+              } else {
+                await api.post(req.endpoint, payload);
+              }
+
+              return { id: req.id, success: true };
+            } catch (err: any) {
+              // If it's a server error (e.g., 400 Bad Request), we should still mark it as synced so it doesn't block
+              if (err.response) {
+                return { id: req.id, success: true };
+              }
+              return { id: req.id, success: false };
+            }
+          })
+        );
+
         const syncedRequestIds: number[] = [];
-        for (const req of requests) {
-          try {
-            const payload = JSON.parse(req.payload);
-            const method = req.method?.toLowerCase() || 'post';
-            
-            if (method === 'put') {
-              await api.put(req.endpoint, payload);
-            } else if (method === 'delete') {
-              await api.delete(req.endpoint, { data: payload });
-            } else {
-              await api.post(req.endpoint, payload);
-            }
-            
-            syncedRequestIds.push(req.id);
+        results.forEach((result) => {
+          if (result.status === 'fulfilled' && result.value.success) {
+            syncedRequestIds.push(result.value.id);
             hasSyncedAny = true;
-          } catch (err: any) {
-            // If it's a server error (e.g., 400 Bad Request), we should still mark it as synced so it doesn't block
-            if (err.response) {
-              syncedRequestIds.push(req.id);
-              hasSyncedAny = true;
-            }
           }
-        }
+        });
+
         if (syncedRequestIds.length > 0) {
           markRequestsAsSynced(syncedRequestIds);
         }
