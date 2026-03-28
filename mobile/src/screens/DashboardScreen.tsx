@@ -161,7 +161,6 @@ export default function DashboardScreen() {
           Alert.alert('Attendance Error', errorMessage);
         } else {
           // Network error, save to local SQLite for later sync
-          console.log('Network Error, saving offline:', apiError.message);
           saveOfflineLog(type, timestamp, latitude, longitude, deviceId);
           setStatus(type === 'check_in' ? 'working' : 'none');
           setLastActionTimestamp(timestamp);
