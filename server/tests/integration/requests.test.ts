@@ -98,6 +98,41 @@ describe('Requests API', () => {
     expect(res.body.status).toBe('approved');
   });
 
+
+  it('should return 400 if trying to process a rejected request to approved', async () => {
+    // 1. Create a new request
+    const createRes = await request(app)
+      .post('/api/requests')
+      .set('Authorization', `Bearer ${employeeToken}`)
+      .send({
+        reason: 'Vacation',
+        requested_check_in: new Date().toISOString(),
+        requested_check_out: new Date().toISOString()
+      });
+    expect(createRes.status).toBe(201);
+    const newReqId = createRes.body.id;
+
+    // 2. Reject the request
+    const rejectRes = await request(app)
+      .put(`/api/requests/${newReqId}/status`)
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ status: 'rejected', manager_note: 'Denied' });
+    expect(rejectRes.status).toBe(200);
+    expect(rejectRes.body.status).toBe('rejected');
+
+    // 3. Attempt to approve the already rejected request
+    const approveRes = await request(app)
+      .put(`/api/requests/${newReqId}/status`)
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ status: 'approved', manager_note: 'Changed my mind' });
+
+    // 4. Assertions
+    expect(approveRes.status).toBe(400);
+    expect(approveRes.body).toHaveProperty('error', 'Request is already processed');
+    expect(approveRes.body).toHaveProperty('errorCode', 'ERR_ALREADY_PROCESSED');
+    expect(approveRes.body).toHaveProperty('currentStatus', 'rejected');
+  });
+
   it('should return 400 if trying to process an already processed request', async () => {
     const res = await request(app)
       .put(`/api/requests/${requestId}/status`)
@@ -106,6 +141,8 @@ describe('Requests API', () => {
     
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error', 'Request is already processed');
+    expect(res.body).toHaveProperty('errorCode', 'ERR_ALREADY_PROCESSED');
+    expect(res.body).toHaveProperty('currentStatus', 'approved');
   });
 
   it('should allow employee to submit attendance correction request', async () => {
