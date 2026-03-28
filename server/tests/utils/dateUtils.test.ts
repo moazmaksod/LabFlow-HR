@@ -1,4 +1,4 @@
-import { getDateStringInTimezone } from '../utils/dateUtils.js';
+import { getDateStringInTimezone } from '../../utils/dateUtils.js';
 
 describe('dateUtils - getDateStringInTimezone', () => {
     const timestamp = '2023-10-25T12:00:00Z'; // UTC date
