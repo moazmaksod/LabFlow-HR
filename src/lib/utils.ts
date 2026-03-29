@@ -6,9 +6,10 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatStatusLabel(status: string | null | undefined): string {
-  if (!status) return '';
+  if (!status) return 'Unknown';
   return status
-    .split('_')
+    .replace(/_/g, ' ')
+    .split(' ')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join(' ');
 }
