@@ -343,16 +343,7 @@ export const AuditLogs: React.FC = () => {
         }
     });
 
-    // Filter out truly empty system updates if needed, or keep them for the "muted" view
-    const logs = useMemo(() => {
-        if (!rawLogs) return [];
-        // Optional: Filter out logs that have no changes and are just "UPDATE"
-        // return rawLogs.filter(log => {
-        //     if (log.action !== 'UPDATE') return true;
-        //     return getChangedKeys(log).length > 0;
-        // });
-        return rawLogs;
-    }, [rawLogs]);
+    const logs = useMemo(() => rawLogs || [], [rawLogs]);
 
     if (isLoading) return (
         <div className="flex flex-col items-center justify-center p-12 space-y-4">
