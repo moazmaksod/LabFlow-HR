@@ -40,13 +40,14 @@ export const getAuditLogs = (req: Request, res: Response): void => {
         const logs = db.prepare(query).all(...params);
 
         // Parse JSON strings back to objects for the response
-        const parsedLogs = logs.map((log: any) => ({
-            ...log,
-            old_values: log.old_values ? JSON.parse(log.old_values) : null,
-            new_values: log.new_values ? JSON.parse(log.new_values) : null
-        }));
+        const len = logs.length;
+        for (let i = 0; i < len; i++) {
+            const log = logs[i];
+            if (log.old_values) log.old_values = JSON.parse(log.old_values);
+            if (log.new_values) log.new_values = JSON.parse(log.new_values);
+        }
 
-        res.json(parsedLogs);
+        res.json(logs);
     } catch (error) {
         console.error('Error fetching audit logs:', error);
         res.status(500).json({ error: 'Internal server error' });
