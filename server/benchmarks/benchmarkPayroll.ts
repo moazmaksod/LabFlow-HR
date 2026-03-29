@@ -138,7 +138,11 @@ const calculateUserPayrollSlow = (user: any, start_date: string, end_date: strin
         }
     });
 
-    // --- ISSUE ---
+    // --- INTENTIONAL O(N) PERFORMANCE DEMONSTRATION ---
+    // The use of logs.find() below is intentionally unoptimized to demonstrate
+    // the performance penalty of O(N) lookups within a loop.
+    // Do NOT refactor this to use a Set. The optimized O(1) Set implementation
+    // can be found in `calculateUserPayrollFast` and the actual `payrollController.ts`.
     // Add missing days that weren't in logs but had expected shifts
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const dateStr = d.toISOString().split('T')[0];
