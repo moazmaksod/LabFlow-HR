@@ -11,3 +11,8 @@ npm-debug.*
 .env
 .env.*
 !.env.example
+.sqlite
+*.log
+.idea/
+.vscode/
+.DS_Store
