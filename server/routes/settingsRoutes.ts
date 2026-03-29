@@ -23,16 +23,12 @@ const storage = multer.diskStorage({
     }
 });
 
+import { imageFileFilter, imageUploadLimits } from '../utils/fileUpload.js';
+
 const upload = multer({
     storage,
-    limits: { fileSize: 2 * 1024 * 1024 }, // 2MB limit
-    fileFilter: (req, file, cb) => {
-        if (file.mimetype.startsWith('image/')) {
-            cb(null, true);
-        } else {
-            cb(new Error('Only image files are allowed.'));
-        }
-    }
+    limits: imageUploadLimits,
+    fileFilter: imageFileFilter
 });
 
 // Get settings (authenticated users can read)
@@ -42,6 +38,15 @@ router.get('/', authenticate, getSettings);
 router.put('/', authenticate, requireRole(['manager']), updateSettings);
 
 // Upload company logo
-router.post('/logo', authenticate, requireRole(['manager']), upload.single('logo'), uploadLogo);
+router.post('/logo', authenticate, requireRole(['manager']), (req, res, next) => {
+    upload.single('logo')(req, res, (err: any) => {
+        if (err instanceof multer.MulterError) {
+            return res.status(400).json({ error: `Upload error: ${err.message}` });
+        } else if (err) {
+            return res.status(400).json({ error: err.message });
+        }
+        next();
+    });
+}, uploadLogo);
 
 export default router;
