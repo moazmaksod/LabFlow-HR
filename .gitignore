@@ -1,17 +1,40 @@
+# --- General & System Files ---
 node_modules/
+.DS_Store
+*.log
+.idea/
+.vscode/
+npm-debug.*
+
+# --- Web & Server Build Artifacts ---
 build/
 dist/
 coverage/
-.DS_Store
-*.log
+
+# --- Mobile Specific (Expo & React Native) ---
+# Added from your mobile/.gitignore to prevent .expo/ tracking
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+*.jsc
+*.jsbundle
+*.map
+
+# --- Environment Variables (Security) ---
+# Excludes sensitive keys while keeping examples for other devs
 .env*
 !.env.example
+mobile/.env*
+!mobile/.env.example
 
-# SQLite Database Files
+# --- SQLite Database Files ---
+# Essential to prevent leaking patient/attendance data
 *.db
 *.db-wal
 *.db-shm
 :memory:
-# Ignore user uploaded files
+*.sqlite
+
+# --- User Uploads & Media ---
 public/uploads/*
 !public/uploads/.gitkeep
