@@ -64,9 +64,3 @@ export const markLogsAsSynced = (ids: number[]) => {
   const placeholders = ids.map(() => '?').join(',');
   db.runSync(`UPDATE local_logs SET synced = 1 WHERE id IN (${placeholders})`, ids);
 };
-
-// Clear synced logs to save space (optional)
-export const clearSyncedLogs = () => {
-  db.runSync('DELETE FROM local_logs WHERE synced = 1');
-  db.runSync('DELETE FROM local_requests WHERE synced = 1');
-};
