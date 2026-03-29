@@ -1,6 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
+import crypto from 'crypto';
 import { getSettings, updateSettings, uploadLogo } from '../controllers/settingsController.js';
 import { authenticate, requireRole } from '../middlewares/authMiddleware.js';
 import fs from 'fs';
@@ -18,7 +19,7 @@ const storage = multer.diskStorage({
         cb(null, uploadDir);
     },
     filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const uniqueSuffix = Date.now() + '-' + crypto.randomBytes(4).toString('hex');
         cb(null, 'logo-' + uniqueSuffix + path.extname(file.originalname));
     }
 });
