@@ -14,6 +14,8 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
+import { imageFileFilter, imageUploadLimits } from '../utils/fileUpload.js';
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadDir);
@@ -24,14 +26,27 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: imageUploadLimits,
+  fileFilter: imageFileFilter
+});
 
 router.use(authenticate);
 
 // Profile routes (Any authenticated user)
 router.get('/profile', getProfile);
 router.put('/profile', updateProfile);
-router.post('/upload-avatar', upload.single('avatar'), uploadAvatar);
+router.post('/upload-avatar', (req, res, next) => {
+    upload.single('avatar')(req, res, (err: any) => {
+        if (err instanceof multer.MulterError) {
+            return res.status(400).json({ error: `Upload error: ${err.message}` });
+        } else if (err) {
+            return res.status(400).json({ error: err.message });
+        }
+        next();
+    });
+}, uploadAvatar);
 
 // Admin/Manager routes
 router.get('/', requireRole(['manager']), getUsers);

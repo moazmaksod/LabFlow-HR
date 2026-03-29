@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import db from '../db/index.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
 import { logAudit } from '../services/auditService.js';
+import fs from 'fs';
+import path from 'path';
 
 import { getLogicalShiftDetails } from '../utils/shiftUtils.js';
 
@@ -13,7 +15,7 @@ export const getUsers = (req: Request, res: Response): void => {
 
         // Get users with their profile and job info, excluding managers
         const users = db.prepare(`
-            SELECT 
+            SELECT
                 u.id, u.name, u.email, u.role, u.created_at,
                 p.status, p.job_id, p.weekly_schedule, p.device_id,
                 j.title as job_title,
@@ -89,7 +91,7 @@ export const updateUserRole = (req: Request, res: Response): void => {
             let profileExists = false;
             if (role === 'employee' || role === 'manager') {
                 profileExists = !!db.prepare('SELECT id FROM profiles WHERE user_id = ?').get(id);
-                
+
                 if (profileExists) {
                     db.prepare('UPDATE profiles SET job_id = ?, status = ? WHERE user_id = ?')
                       .run(job_id || null, 'active', id);
@@ -115,7 +117,7 @@ export const updateUserRole = (req: Request, res: Response): void => {
         updateTransaction();
 
         const updatedUser = db.prepare(`
-            SELECT 
+            SELECT
                 u.id, u.name, u.email, u.role,
                 p.status, p.job_id,
                 j.title as job_title
@@ -136,7 +138,7 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
     try {
         const userId = req.user!.id;
         const user = db.prepare(`
-            SELECT 
+            SELECT
                 u.id, u.name, u.email, u.role,
                 p.age, p.gender, p.profile_picture_url, p.status,
                 p.weekly_schedule, p.hourly_rate, p.lunch_break_minutes,
@@ -220,9 +222,9 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
                 const values = [];
 
                 const allowedFields = [
-                    'age', 'gender', 'profile_picture_url', 'weekly_schedule', 
-                    'hourly_rate', 'lunch_break_minutes', 'emergency_contact_name', 
-                    'emergency_contact_phone', 'leave_balance', 'bio', 'personal_phone', 
+                    'age', 'gender', 'profile_picture_url', 'weekly_schedule',
+                    'hourly_rate', 'lunch_break_minutes', 'emergency_contact_name',
+                    'emergency_contact_phone', 'leave_balance', 'bio', 'personal_phone',
                     'legal_name', 'id_photo_url', 'hire_date', 'allow_overtime', 'max_overtime_hours'
                 ];
 
@@ -254,10 +256,10 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
                         allow_overtime, max_overtime_hours
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `).run(
-                    userId, 
-                    body.age || null, 
-                    body.gender || null, 
-                    body.profile_picture_url || null, 
+                    userId,
+                    body.age || null,
+                    body.gender || null,
+                    body.profile_picture_url || null,
                     'active',
                     body.weekly_schedule ? JSON.stringify(body.weekly_schedule) : null,
                     body.hourly_rate || 0,
@@ -289,7 +291,7 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
         updateTransaction();
 
         const updatedUser = db.prepare(`
-            SELECT 
+            SELECT
                 u.id, u.name, u.email, u.role,
                 p.age, p.gender, p.profile_picture_url,
                 p.weekly_schedule, p.hourly_rate, p.lunch_break_minutes,
@@ -314,7 +316,7 @@ export const getUserById = (req: Request, res: Response): void => {
     try {
         const { id } = req.params;
         const user = db.prepare(`
-            SELECT 
+            SELECT
                 u.id, u.name, u.email, u.role,
                 p.age, p.gender, p.profile_picture_url,
                 p.weekly_schedule, p.hourly_rate, p.lunch_break_minutes,
@@ -352,7 +354,7 @@ export const updateUserProfile = (req: Request, res: Response): void => {
             const oldProfile = db.prepare('SELECT * FROM profiles WHERE user_id = ?').get(id);
 
             const userToUpdate = db.prepare('SELECT role FROM users WHERE id = ?').get(id) as { role: string } | undefined;
-            
+
             // Enforce 'employee' role for non-managers when updating via this HR interface
             let roleToSet = userToUpdate?.role;
             if (roleToSet && roleToSet !== 'manager') {
@@ -370,10 +372,10 @@ export const updateUserProfile = (req: Request, res: Response): void => {
                 const values = [];
 
                 const allowedFields = [
-                    'age', 'gender', 'profile_picture_url', 'weekly_schedule', 
-                    'hourly_rate', 'lunch_break_minutes', 'emergency_contact_name', 
-                    'emergency_contact_phone', 'leave_balance', 'job_id', 'status', 
-                    'suspension_reason', 'allow_overtime', 'max_overtime_hours', 
+                    'age', 'gender', 'profile_picture_url', 'weekly_schedule',
+                    'hourly_rate', 'lunch_break_minutes', 'emergency_contact_name',
+                    'emergency_contact_phone', 'leave_balance', 'job_id', 'status',
+                    'suspension_reason', 'allow_overtime', 'max_overtime_hours',
                     'bio', 'personal_phone', 'legal_name', 'id_photo_url', 'hire_date'
                 ];
 
@@ -408,10 +410,10 @@ export const updateUserProfile = (req: Request, res: Response): void => {
                         bio, personal_phone, legal_name, id_photo_url, hire_date
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `).run(
-                    id, 
-                    body.age || null, 
-                    body.gender || null, 
-                    body.profile_picture_url || null, 
+                    id,
+                    body.age || null,
+                    body.gender || null,
+                    body.profile_picture_url || null,
                     body.status || 'active',
                     body.status === 'suspended' ? body.suspension_reason : null,
                     body.weekly_schedule ? (typeof body.weekly_schedule === 'string' ? body.weekly_schedule : JSON.stringify(body.weekly_schedule)) : null,
@@ -445,7 +447,7 @@ export const updateUserProfile = (req: Request, res: Response): void => {
         updateTransaction();
 
         const updatedUser = db.prepare(`
-            SELECT 
+            SELECT
                 u.id, u.name, u.email, u.role,
                 p.age, p.gender, p.profile_picture_url,
                 p.weekly_schedule, p.hourly_rate, p.lunch_break_minutes,
@@ -471,12 +473,12 @@ export const resetDevice = (req: Request, res: Response): void => {
     try {
         const { id } = req.params;
         const oldProfile = db.prepare('SELECT * FROM profiles WHERE user_id = ?').get(id);
-        
+
         db.prepare('UPDATE profiles SET device_id = NULL WHERE user_id = ?').run(id);
-        
+
         const updatedProfile = db.prepare('SELECT * FROM profiles WHERE user_id = ?').get(id);
         logAudit('profiles', (updatedProfile as any).id, 'UPDATE', (req as AuthRequest).user!.id, oldProfile, updatedProfile);
-        
+
         res.json({ message: 'Device binding reset successfully' });
     } catch (error) {
         console.error('Error resetting device binding:', error);
@@ -489,6 +491,28 @@ export const uploadAvatar = (req: Request, res: Response): void => {
         if (!req.file) {
             res.status(400).json({ error: 'No file uploaded' });
             return;
+        }
+
+        const authReq = req as AuthRequest;
+        const userId = authReq.user?.id;
+
+        if (userId) {
+            const oldProfile = db.prepare('SELECT profile_picture_url, id_photo_url FROM profiles WHERE user_id = ?').get(userId) as { profile_picture_url: string | null, id_photo_url: string | null } | undefined;
+
+            // Delete old profile picture if it exists and is a local file upload
+            if (oldProfile && oldProfile.profile_picture_url && oldProfile.profile_picture_url.startsWith('/uploads/')) {
+                try {
+                    const oldFileName = oldProfile.profile_picture_url.split('/').pop();
+                    if (oldFileName) {
+                        const oldFilePath = path.join(process.cwd(), 'public', 'uploads', oldFileName);
+                        if (fs.existsSync(oldFilePath)) {
+                            fs.unlinkSync(oldFilePath);
+                        }
+                    }
+                } catch (unlinkError) {
+                    console.error('Error deleting old avatar file:', unlinkError);
+                }
+            }
         }
 
         const imageUrl = `/uploads/${req.file.filename}`;

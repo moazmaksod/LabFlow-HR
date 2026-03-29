@@ -15,3 +15,8 @@
 **Vulnerability:** The system used `Math.random()` to generate suffixes for file uploads and device IDs. This is a PRNG (Pseudo-Random Number Generator) that is cryptographically insecure, meaning the sequences it produces can be predicted if the internal state is known or guessed. This could lead to filename collisions, enumeration attacks, or predictable device identifiers.
 **Learning:** `Math.random()` should never be used for security-sensitive values like unique IDs, tokens, or filenames where unpredictability is required.
 **Prevention:** Use cryptographically secure alternatives: `crypto.randomBytes()` in Node.js environments and `window.crypto.getRandomValues()` in browser environments. These APIs utilize system-level entropy to generate truly unpredictable random values.
+
+## 2024-03-29 - Missing File Upload Validation (MIME Type)
+**Vulnerability:** Arbitrary file upload due to missing MIME type and file size validation on the `/upload-avatar` endpoint, potentially leading to XSS, RCE, or DoS.
+**Learning:** Security validations for Multer should be centralized and reused across all file upload routes to prevent drift and ensure consistent security posture. Old files must also be explicitly deleted to prevent resource exhaustion.
+**Prevention:** Created a shared `fileUpload.ts` utility defining strict `fileFilter` (allowing only image/jpeg, image/png, image/webp) and `limits` (5MB). Applied this to both user and settings routes, ensuring any Multer error is caught and returns a 400 Bad Request instead of a generic 500 error.
