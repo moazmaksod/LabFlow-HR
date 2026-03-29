@@ -8,7 +8,13 @@ const dbPath = process.env.DB_PATH === ':memory:'
   : path.resolve(process.cwd(), process.env.DB_PATH || 'labflow.db');
 
 const isTestEnv = process.env.NODE_ENV === 'test';
-const db = new Database(dbPath, { verbose: isTestEnv ? undefined : console.log });
+
+
+const isBenchmarkOrTest = isTestEnv || dbPath.includes('temp') || dbPath === ':memory:';
+
+const db = new Database(dbPath, { 
+    verbose: isBenchmarkOrTest ? undefined : console.log 
+});
 
 // Strictly enforce Foreign Keys
 db.pragma('foreign_keys = ON');

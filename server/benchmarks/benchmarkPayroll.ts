@@ -1,4 +1,4 @@
-import db, { initDb } from '../db/index.js';
+import db, { initDb } from '../db/index.ts';
 
 initDb();
 
