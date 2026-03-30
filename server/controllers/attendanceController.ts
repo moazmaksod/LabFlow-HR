@@ -410,10 +410,28 @@ export const getMyLogs = (req: AuthRequest, res: Response): void => {
             const breaks = db.prepare(`SELECT * FROM shift_interruptions WHERE attendance_id IN (${placeholders})`).all(...attendanceIds) as any[];
             const requests = db.prepare(`SELECT * FROM requests WHERE attendance_id IN (${placeholders})`).all(...attendanceIds) as any[];
 
-            logs.forEach(log => {
-                log.breaks = breaks.filter(b => b.attendance_id === log.id);
-                log.requests = requests.filter(r => r.attendance_id === log.id);
-            });
+            const breaksMap = new Map<number, any[]>();
+            for (let i = 0; i < breaks.length; i++) {
+                const b = breaks[i];
+                if (!breaksMap.has(b.attendance_id)) {
+                    breaksMap.set(b.attendance_id, []);
+                }
+                breaksMap.get(b.attendance_id)!.push(b);
+            }
+
+            const requestsMap = new Map<number, any[]>();
+            for (let i = 0; i < requests.length; i++) {
+                const r = requests[i];
+                if (!requestsMap.has(r.attendance_id)) {
+                    requestsMap.set(r.attendance_id, []);
+                }
+                requestsMap.get(r.attendance_id)!.push(r);
+            }
+
+            for (let i = 0; i < logs.length; i++) {
+                logs[i].breaks = breaksMap.get(logs[i].id) || [];
+                logs[i].requests = requestsMap.get(logs[i].id) || [];
+            }
         }
 
         res.json(logs);
@@ -440,10 +458,28 @@ export const getAttendanceLogs = (req: Request, res: Response): void => {
             const breaks = db.prepare(`SELECT * FROM shift_interruptions WHERE attendance_id IN (${placeholders})`).all(...attendanceIds) as any[];
             const requests = db.prepare(`SELECT * FROM requests WHERE attendance_id IN (${placeholders})`).all(...attendanceIds) as any[];
 
-            logs.forEach(log => {
-                log.breaks = breaks.filter(b => b.attendance_id === log.id);
-                log.requests = requests.filter(r => r.attendance_id === log.id);
-            });
+            const breaksMap = new Map<number, any[]>();
+            for (let i = 0; i < breaks.length; i++) {
+                const b = breaks[i];
+                if (!breaksMap.has(b.attendance_id)) {
+                    breaksMap.set(b.attendance_id, []);
+                }
+                breaksMap.get(b.attendance_id)!.push(b);
+            }
+
+            const requestsMap = new Map<number, any[]>();
+            for (let i = 0; i < requests.length; i++) {
+                const r = requests[i];
+                if (!requestsMap.has(r.attendance_id)) {
+                    requestsMap.set(r.attendance_id, []);
+                }
+                requestsMap.get(r.attendance_id)!.push(r);
+            }
+
+            for (let i = 0; i < logs.length; i++) {
+                logs[i].breaks = breaksMap.get(logs[i].id) || [];
+                logs[i].requests = requestsMap.get(logs[i].id) || [];
+            }
         }
 
         res.json(logs);
