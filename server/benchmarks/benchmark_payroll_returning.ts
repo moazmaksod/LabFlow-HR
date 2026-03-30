@@ -16,6 +16,10 @@ db.prepare('DELETE FROM payrolls').run();
 db.prepare('DELETE FROM profiles').run();
 db.prepare('DELETE FROM users').run();
 
+// Create admin user
+const insertAdmin = db.prepare('INSERT INTO users (id, name, email, password_hash, role) VALUES (?, ?, ?, ?, ?)');
+insertAdmin.run(actorId, 'Admin User', 'admin@test.com', 'admin_hash', 'manager');
+
 // Create fake users
 const insertUser = db.prepare('INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)');
 const userIds: number[] = [];
@@ -24,36 +28,25 @@ for (let i = 0; i < N_USERS; i++) {
     userIds.push(info.lastInsertRowid as number);
 }
 
-// 1. Slow Implementation (what currently exists)
-function slowBulkInsert() {
-    for (const userId of userIds) {
-        getOrCreateDraftPayroll(userId, startDate, actorId);
-    }
-}
-
-// 2. Fast Implementation (what we will propose)
-function fastBulkInsert() {
+// Fast Implementation (RETURNING *)
+function fastReturningInsert() {
     const missingUsers = userIds; // in real life, we would filter this list
 
-    // Bulk insert missing drafts
+    // Bulk insert missing drafts and return them
     const insertStmt = db.prepare(`
         INSERT INTO payrolls (user_id, start_date, end_date, base_salary, status)
         VALUES (?, ?, ?, 0, 'draft')
+        RETURNING *
     `);
 
+    let newPayrolls: any[] = [];
     const insertTx = db.transaction((users) => {
         for (const userId of users) {
-            insertStmt.run(userId, startDate, endDate);
+            const payroll = insertStmt.get(userId, startDate, endDate);
+            newPayrolls.push(payroll);
         }
     });
     insertTx(missingUsers);
-
-    // Bulk select the newly created drafts
-    const placeholders = missingUsers.map(() => '?').join(',');
-    const newPayrolls = db.prepare(`
-        SELECT * FROM payrolls
-        WHERE user_id IN (${placeholders}) AND start_date = ? AND end_date = ? AND status = 'draft'
-    `).all(...missingUsers, startDate, endDate) as any[];
 
     // Bulk audit log
     const auditStmt = db.prepare(`
@@ -83,19 +76,9 @@ console.log(`Benchmarking with N = ${N_USERS} users...`);
 db.prepare('DELETE FROM audit_logs').run();
 db.prepare('DELETE FROM payrolls').run();
 
-const startSlow = performance.now();
-slowBulkInsert();
-const endSlow = performance.now();
-const slowMs = endSlow - startSlow;
-
-db.prepare('DELETE FROM audit_logs').run();
-db.prepare('DELETE FROM payrolls').run();
-
 const startFast = performance.now();
-fastBulkInsert();
+fastReturningInsert();
 const endFast = performance.now();
 const fastMs = endFast - startFast;
 
-console.log(`Slow: ${slowMs.toFixed(2)} ms (${(slowMs / N_USERS).toFixed(3)} ms/row)`);
-console.log(`Fast: ${fastMs.toFixed(2)} ms (${(fastMs / N_USERS).toFixed(3)} ms/row)`);
-console.log(`Improvement: ${(slowMs / fastMs).toFixed(2)}x faster`);
+console.log(`Fast (RETURNING): ${fastMs.toFixed(2)} ms (${(fastMs / N_USERS).toFixed(3)} ms/row)`);
