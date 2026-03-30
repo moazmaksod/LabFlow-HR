@@ -138,7 +138,9 @@ const calculateUserPayrollSlow = (user: any, start_date: string, end_date: strin
         }
     });
 
-    // --- ISSUE ---
+    // --- INTENTIONALLY UNOPTIMIZED ---
+    // This O(N*D) search serves as a baseline for the benchmark.
+    // Do not refactor to use a Set (O(N+D)).
     // Add missing days that weren't in logs but had expected shifts
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const dateStr = d.toISOString().split('T')[0];
