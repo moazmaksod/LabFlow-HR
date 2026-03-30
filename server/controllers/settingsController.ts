@@ -4,10 +4,17 @@ import { AuthRequest } from '../middlewares/authMiddleware.js';
 import { logAudit } from '../services/auditService.js';
 import fs from 'fs';
 import path from 'path';
+import { getSettingsCache, setSettingsCache, clearSettingsCache } from '../utils/cache.js';
 
 export const getSettings = (req: Request, res: Response): void => {
     try {
-        const settings = db.prepare('SELECT * FROM settings WHERE id = 1').get();
+        let settings = getSettingsCache();
+        if (!settings) {
+            settings = db.prepare('SELECT * FROM settings WHERE id = 1').get();
+            if (settings) {
+                setSettingsCache(settings);
+            }
+        }
         if (!settings) {
             res.status(404).json({ error: 'Settings not found' });
             return;
@@ -57,6 +64,7 @@ export const updateSettings = (req: AuthRequest, res: Response): void => {
              res.status(404).json({ error: 'Settings not found' });
              return;
         }
+        setSettingsCache(updatedSettings);
         res.json(updatedSettings);
     } catch (error) {
         console.error('Error updating settings:', error);
@@ -112,6 +120,7 @@ export const uploadLogo = (req: AuthRequest, res: Response): void => {
              return;
         }
 
+        setSettingsCache(updatedSettings);
         res.json({ message: 'Logo uploaded successfully', settings: updatedSettings });
     } catch (error) {
         console.error('Error uploading logo:', error);
