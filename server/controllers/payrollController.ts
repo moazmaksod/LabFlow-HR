@@ -526,10 +526,12 @@ export const getMyPayrolls = (req: AuthRequest, res: Response) => {
         const params: any[] = [userId];
 
         if (month && year) {
-            const startDate = new Date(Number(year), Number(month) - 1, 1).toISOString().split('T')[0];
-            const endDate = new Date(Number(year), Number(month), 0).toISOString().split('T')[0];
-            query += ` AND p.start_date >= ? AND p.end_date <= ?`;
-            params.push(startDate, endDate);
+            // Format the month to ensure it's two digits (e.g., "01" for January)
+            const formattedMonth = String(month).padStart(2, '0');
+            
+            // Use SQLite's STRFTIME to filter by month and year
+            query += ` AND STRFTIME('%m', p.start_date) = ? AND STRFTIME('%Y', p.start_date) = ?`;
+            params.push(formattedMonth, String(year));
         }
 
         const payrolls = db.prepare(query).all(...params);
