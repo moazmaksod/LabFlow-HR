@@ -387,10 +387,18 @@ export const generateDraftPayroll = (req: AuthRequest, res: Response) => {
                 WHERE payroll_id IN (${payrollPlaceholders}) AND status = 'applied'
             `).all(...allPayrollIds) as any[];
 
-            const transactionMap = new Map<number, any[]>();
+            const transactionMap = new Map<number, { additions: number; deductions: number }>();
             for (const tx of allTransactions) {
-                if (!transactionMap.has(tx.payroll_id)) transactionMap.set(tx.payroll_id, []);
-                transactionMap.get(tx.payroll_id)!.push(tx);
+                let agg = transactionMap.get(tx.payroll_id);
+                if (!agg) {
+                    agg = { additions: 0, deductions: 0 };
+                    transactionMap.set(tx.payroll_id, agg);
+                }
+                if (tx.type === 'overtime' || tx.type === 'bonus') {
+                    agg.additions += tx.amount;
+                } else if (tx.type === 'late_deduction' || tx.type === 'step_away_unpaid' || tx.type === 'deduction' || tx.type === 'disciplinary_penalty') {
+                    agg.deductions += tx.amount;
+                }
             }
 
             // 4. Bulk fetch old payroll states for audit logging
@@ -417,18 +425,10 @@ export const generateDraftPayroll = (req: AuthRequest, res: Response) => {
                     baseSalary = profile.required_hours_per_week * 4 * profile.hourly_rate;
                 }
 
-                // Aggregate transactions from map
-                const transactions = transactionMap.get(payrollId) || [];
-                let totalAdditions = 0;
-                let totalDeductions = 0;
-
-                for (const tx of transactions) {
-                    if (tx.type === 'overtime' || tx.type === 'bonus') {
-                        totalAdditions += tx.amount;
-                    } else if (tx.type === 'late_deduction' || tx.type === 'step_away_unpaid' || tx.type === 'deduction' || tx.type === 'disciplinary_penalty') {
-                        totalDeductions += tx.amount;
-                    }
-                }
+                // Retrieve aggregated transactions from map
+                const agg = transactionMap.get(payrollId) || { additions: 0, deductions: 0 };
+                const totalAdditions = agg.additions;
+                const totalDeductions = agg.deductions;
 
                 const netSalary = baseSalary + totalAdditions - totalDeductions;
 
