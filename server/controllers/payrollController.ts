@@ -3,16 +3,16 @@ import db from '../db/index.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
 import { logAudit } from '../services/auditService.js';
 
-const calculateUserPayroll = (user: any, start_date: string, end_date: string) => {
+const calculateUserPayroll = (user: any, start_date: string, end_date: string, prefetchedLogs?: any[], prefetchedBreaksMap?: Map<number, any[]>) => {
     const hourlyRate = user.hourly_rate || 0;
     const schedule = user.weekly_schedule ? JSON.parse(user.weekly_schedule) : {};
 
-    // Fetch Attendance Logs for the period
-    const logs = db.prepare(`
+    // Use prefetched logs or fetch Attendance Logs for the period
+    const logs = prefetchedLogs || (db.prepare(`
         SELECT * FROM attendance
         WHERE user_id = ? AND date BETWEEN ? AND ?
         ORDER BY date ASC
-    `).all(user.id, start_date, end_date) as any[];
+    `).all(user.id, start_date, end_date) as any[]);
 
     let totalExpectedMinutes = 0;
     let totalActualWorkedMinutes = 0;
@@ -24,24 +24,26 @@ const calculateUserPayroll = (user: any, start_date: string, end_date: string) =
     const end = new Date(end_date as string);
     const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
-    // Fetch all breaks in one query to avoid N+1 query performance issue
-    const logIds = logs.map(l => l.id);
-    const breaksMap = new Map<number, any[]>();
+    // Use prefetched breaks or fetch all breaks in one query
+    const breaksMap = prefetchedBreaksMap || new Map<number, any[]>();
 
-    if (logIds.length > 0) {
-        const placeholders = logIds.map(() => '?').join(',');
-        const allBreaks = db.prepare(`
-            SELECT attendance_id, start_time, end_time
-            FROM shift_interruptions
-            WHERE attendance_id IN (${placeholders})
-        `).all(...logIds) as any[];
+    if (!prefetchedBreaksMap) {
+        const logIds = logs.map(l => l.id);
+        if (logIds.length > 0) {
+            const placeholders = logIds.map(() => '?').join(',');
+            const allBreaks = db.prepare(`
+                SELECT attendance_id, start_time, end_time
+                FROM shift_interruptions
+                WHERE attendance_id IN (${placeholders})
+            `).all(...logIds) as any[];
 
-        allBreaks.forEach(b => {
-            if (!breaksMap.has(b.attendance_id)) {
-                breaksMap.set(b.attendance_id, []);
-            }
-            breaksMap.get(b.attendance_id)!.push(b);
-        });
+            allBreaks.forEach(b => {
+                if (!breaksMap.has(b.attendance_id)) {
+                    breaksMap.set(b.attendance_id, []);
+                }
+                breaksMap.get(b.attendance_id)!.push(b);
+            });
+        }
     }
 
     // Calculate expected minutes for the whole period
@@ -186,8 +188,55 @@ export const getAllPayroll = (req: Request, res: Response): void => {
             WHERE u.role = 'employee'
         `).all() as any[];
 
+        if (users.length === 0) {
+            res.json([]);
+            return;
+        }
+
+        // 1. Bulk Fetch Attendance Logs
+        const userIds = users.map(u => u.id);
+        const placeholders = userIds.map(() => '?').join(',');
+
+        const allLogs = db.prepare(`
+            SELECT * FROM attendance
+            WHERE user_id IN (${placeholders}) AND date BETWEEN ? AND ?
+            ORDER BY date ASC
+        `).all(...userIds, startDate, endDate) as any[];
+
+        const logsMap = new Map<number, any[]>();
+        for (const log of allLogs) {
+            if (!logsMap.has(log.user_id)) logsMap.set(log.user_id, []);
+            logsMap.get(log.user_id)!.push(log);
+        }
+
+        // 2. Bulk Fetch Shift Interruptions (Breaks)
+        const allBreaksMap = new Map<number, any[]>();
+        const logIds = allLogs.map(l => l.id);
+
+        if (logIds.length > 0) {
+            // Chunk log IDs to avoid SQLite parameter limit errors (usually max 999 or 32766)
+            const CHUNK_SIZE = 900;
+            for (let i = 0; i < logIds.length; i += CHUNK_SIZE) {
+                const chunk = logIds.slice(i, i + CHUNK_SIZE);
+                const chunkPlaceholders = chunk.map(() => '?').join(',');
+                const chunkBreaks = db.prepare(`
+                    SELECT attendance_id, start_time, end_time
+                    FROM shift_interruptions
+                    WHERE attendance_id IN (${chunkPlaceholders})
+                `).all(...chunk) as any[];
+
+                for (const b of chunkBreaks) {
+                    if (!allBreaksMap.has(b.attendance_id)) {
+                        allBreaksMap.set(b.attendance_id, []);
+                    }
+                    allBreaksMap.get(b.attendance_id)!.push(b);
+                }
+            }
+        }
+
         const results = users.map(user => {
-            const summary = calculateUserPayroll(user, startDate as string, endDate as string);
+            const userLogs = logsMap.get(user.id) || [];
+            const summary = calculateUserPayroll(user, startDate as string, endDate as string, userLogs, allBreaksMap);
             return {
                 user_id: user.id,
                 user_name: user.name,
