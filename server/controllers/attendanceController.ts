@@ -372,10 +372,33 @@ export const getMyLogs = (req: AuthRequest, res: Response): void => {
             const breaks = db.prepare(`SELECT * FROM shift_interruptions WHERE attendance_id IN (${placeholders})`).all(...attendanceIds) as any[];
             const requests = db.prepare(`SELECT * FROM requests WHERE attendance_id IN (${placeholders})`).all(...attendanceIds) as any[];
 
-            logs.forEach(log => {
-                log.breaks = breaks.filter(b => b.attendance_id === log.id);
-                log.requests = requests.filter(r => r.attendance_id === log.id);
-            });
+            const breaksMap = new Map<number, any[]>();
+            for (let i = 0; i < breaks.length; i++) {
+                const b = breaks[i];
+                const arr = breaksMap.get(b.attendance_id);
+                if (arr) {
+                    arr.push(b);
+                } else {
+                    breaksMap.set(b.attendance_id, [b]);
+                }
+            }
+
+            const requestsMap = new Map<number, any[]>();
+            for (let i = 0; i < requests.length; i++) {
+                const r = requests[i];
+                const arr = requestsMap.get(r.attendance_id);
+                if (arr) {
+                    arr.push(r);
+                } else {
+                    requestsMap.set(r.attendance_id, [r]);
+                }
+            }
+
+            for (let i = 0; i < logs.length; i++) {
+                const log = logs[i];
+                log.breaks = breaksMap.get(log.id) || [];
+                log.requests = requestsMap.get(log.id) || [];
+            }
         }
 
         res.json(logs);
@@ -402,10 +425,33 @@ export const getAttendanceLogs = (req: Request, res: Response): void => {
             const breaks = db.prepare(`SELECT * FROM shift_interruptions WHERE attendance_id IN (${placeholders})`).all(...attendanceIds) as any[];
             const requests = db.prepare(`SELECT * FROM requests WHERE attendance_id IN (${placeholders})`).all(...attendanceIds) as any[];
 
-            logs.forEach(log => {
-                log.breaks = breaks.filter(b => b.attendance_id === log.id);
-                log.requests = requests.filter(r => r.attendance_id === log.id);
-            });
+            const breaksMap = new Map<number, any[]>();
+            for (let i = 0; i < breaks.length; i++) {
+                const b = breaks[i];
+                const arr = breaksMap.get(b.attendance_id);
+                if (arr) {
+                    arr.push(b);
+                } else {
+                    breaksMap.set(b.attendance_id, [b]);
+                }
+            }
+
+            const requestsMap = new Map<number, any[]>();
+            for (let i = 0; i < requests.length; i++) {
+                const r = requests[i];
+                const arr = requestsMap.get(r.attendance_id);
+                if (arr) {
+                    arr.push(r);
+                } else {
+                    requestsMap.set(r.attendance_id, [r]);
+                }
+            }
+
+            for (let i = 0; i < logs.length; i++) {
+                const log = logs[i];
+                log.breaks = breaksMap.get(log.id) || [];
+                log.requests = requestsMap.get(log.id) || [];
+            }
         }
 
         res.json(logs);
