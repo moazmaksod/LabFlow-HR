@@ -42,6 +42,118 @@ describe('Auth API', () => {
     expect(res.body.user).toHaveProperty('role', 'pending');
   });
 
+  describe('POST /api/auth/register - Error Handling', () => {
+    it('should return 500 when database insertion fails', async () => {
+      // Create a temporary spy on db.prepare to force an error on the 'INSERT' query
+      const originalPrepare = db.prepare;
+      const prepareSpy = jest.spyOn(db, 'prepare').mockImplementation((sql: string) => {
+        if (sql.includes('INSERT INTO users')) {
+          return {
+            run: () => {
+              throw new Error('Forced Database Insertion Error');
+            }
+          } as any;
+        }
+        return originalPrepare.call(db, sql);
+      });
+
+      // Suppress console.error expected during this test
+      const originalConsoleError = console.error;
+      console.error = jest.fn();
+
+      const res = await request(app)
+        .post('/api/auth/register')
+        .send({
+          name: 'Error User',
+          email: 'erroruser2@example.com',
+          password: 'password123',
+          age: 25,
+          gender: 'male'
+        });
+
+      expect(res.status).toBe(500);
+      expect(res.body).toHaveProperty('error', 'Internal server error');
+
+      // Restore the original function and console.error
+      prepareSpy.mockRestore();
+      console.error = originalConsoleError;
+    });
+  });
+
+  describe('POST /api/auth/register - Validation Logic', () => {
+    it('should not register a user with missing required fields', async () => {
+      const res = await request(app)
+        .post('/api/auth/register')
+        .send({
+          name: 'Incomplete User',
+          // missing email, password, age, gender
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('error', 'Missing required fields: name, email, password, age, gender');
+    });
+
+    it('should not register a user with invalid age (not a number)', async () => {
+      const res = await request(app)
+        .post('/api/auth/register')
+        .send({
+          name: 'Invalid Age User',
+          email: 'invalidage1@example.com',
+          password: 'password123',
+          age: 'thirty',
+          gender: 'male'
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('error', 'Invalid age. Must be between 16 and 100.');
+    });
+
+    it('should not register a user with invalid age (less than 16)', async () => {
+      const res = await request(app)
+        .post('/api/auth/register')
+        .send({
+          name: 'Young User',
+          email: 'young@example.com',
+          password: 'password123',
+          age: 15,
+          gender: 'female'
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('error', 'Invalid age. Must be between 16 and 100.');
+    });
+
+    it('should not register a user with invalid age (greater than 100)', async () => {
+      const res = await request(app)
+        .post('/api/auth/register')
+        .send({
+          name: 'Old User',
+          email: 'old@example.com',
+          password: 'password123',
+          age: 101,
+          gender: 'male'
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('error', 'Invalid age. Must be between 16 and 100.');
+    });
+
+    it('should not register a user with invalid gender', async () => {
+      const res = await request(app)
+        .post('/api/auth/register')
+        .send({
+          name: 'Invalid Gender User',
+          email: 'invalidgender@example.com',
+          password: 'password123',
+          age: 25,
+          gender: 'other' // Only "male" or "female" are allowed
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('error', 'Invalid gender. Must be "male" or "female".');
+    });
+  });
+
   it('should not register a user with an existing email', async () => {
     const res = await request(app)
       .post('/api/auth/register')
