@@ -236,14 +236,17 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
     return { status: 400, error: 'Invalid type' };
 }
 
-function handleClockAction(userId: number, type: string, lat: number, lng: number, deviceId: string, timestamp: string) {
+function handleClockAction(userId: number, type: string, lat: number, lng: number, deviceId: string, timestamp: string, prefetchedProfile?: any, prefetchedSettings?: any) {
     // Fetch user profile and status
-    const userProfile = db.prepare(`
-        SELECT p.status, p.device_id, p.weekly_schedule, j.grace_period, p.allow_overtime, p.max_overtime_hours
-        FROM profiles p
-        LEFT JOIN jobs j ON p.job_id = j.id
-        WHERE p.user_id = ?
-    `).get(userId) as any;
+    let userProfile = prefetchedProfile;
+    if (!userProfile) {
+        userProfile = db.prepare(`
+            SELECT p.status, p.device_id, p.weekly_schedule, j.grace_period, p.allow_overtime, p.max_overtime_hours
+            FROM profiles p
+            LEFT JOIN jobs j ON p.job_id = j.id
+            WHERE p.user_id = ?
+        `).get(userId) as any;
+    }
 
     if (!userProfile) {
         return { status: 404, error: 'User profile not found' };
@@ -271,11 +274,16 @@ function handleClockAction(userId: number, type: string, lat: number, lng: numbe
         return { status: 403, error: 'Security Alert: Unauthorized device.' };
     }
 
-    // Fetch company settings for geofence validation
-    let settings = getSettingsCache();
+    // Check for prefetched settings first, then fall back to global cache
+    let settings = (typeof prefetchedSettings !== 'undefined' ? prefetchedSettings : null) || getSettingsCache();
+
     if (!settings) {
+        // If not found in memory or prefetch, query the database
         settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
-        setSettingsCache(settings);
+        if (settings) {
+            // Hydrate the global cache for subsequent requests
+            setSettingsCache(settings);
+        }
     }
 
     if (settings && settings.geofence_toggle) {
@@ -303,7 +311,7 @@ export const clockAttendance = (req: AuthRequest, res: Response): void => {
     try {
         const userId = req.user!.id;
         const { type, lat, lng, deviceId } = req.body;
-        const timestamp = new Date().toISOString(); // Server is the single source of truth
+        const timestamp = new Date().toISOString();
 
         if (!type || !['check_in', 'check_out'].includes(type) || lat === undefined || lng === undefined || !deviceId) {
             res.status(400).json({ error: 'Missing required fields or deviceId' });
@@ -312,8 +320,8 @@ export const clockAttendance = (req: AuthRequest, res: Response): void => {
 
         const result = handleClockAction(userId, type, lat, lng, deviceId, timestamp);
 
-        if (result.error) {
-            // Map internal reasons to user-friendly messages for real-time
+        // TypeScript Type Guard: Check if 'error' exists in the returned object
+        if ('error' in result) {
             let userMessage = result.error;
             if (result.error === 'REASON: INACTIVE') {
                 userMessage = 'Action Blocked: Your account status is "Inactive". Please contact HR.';
@@ -324,6 +332,7 @@ export const clockAttendance = (req: AuthRequest, res: Response): void => {
             return;
         }
 
+        // Now TypeScript knows 'result' must contain 'data'
         res.status(result.status).json(result.data);
     } catch (error) {
         console.error('Error clocking attendance:', error);
@@ -343,21 +352,36 @@ export const syncOfflineLogs = (req: AuthRequest, res: Response): void => {
 
         const syncTransaction = db.transaction((logsToSync) => {
             const results = [];
-            // We now trust the timestamp since it is securely calculated against server time on device
+            const settingsCache = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+            const profileMap = new Map();
 
             for (const log of logsToSync) {
                 const { type, timestamp, lat, lng, deviceId } = log;
 
-                // Calculate true historical time securely
-                // Use raw timestamp
-                // Timestamp is extracted from log above
+                let profile = profileMap.get(userId);
+                if (!profile) {
+                    profile = db.prepare(`
+                        SELECT p.status, p.device_id, p.weekly_schedule, j.grace_period, p.allow_overtime, p.max_overtime_hours
+                        FROM profiles p
+                        LEFT JOIN jobs j ON p.job_id = j.id
+                        WHERE p.user_id = ?
+                    `).get(userId);
+                    if (profile) {
+                        profileMap.set(userId, profile);
+                    }
+                }
 
-                const result = handleClockAction(userId, type, lat, lng, deviceId, timestamp);
+                const result = handleClockAction(userId, type, lat, lng, deviceId, timestamp, profile, settingsCache);
 
-                if (result.error) {
+                // Handle both success and error cases for sync results
+                if ('error' in result) {
                     results.push({ logId: log.id, status: 'skipped', reason: result.error });
                 } else {
-                    results.push({ logId: log.id, status: 'success', action: result.status === 201 ? 'inserted' : 'updated' });
+                    results.push({ 
+                        logId: log.id, 
+                        status: 'success', 
+                        action: result.status === 201 ? 'inserted' : 'updated' 
+                    });
                 }
             }
             return results;
