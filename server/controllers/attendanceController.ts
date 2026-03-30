@@ -227,14 +227,17 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
     return { status: 400, error: 'Invalid type' };
 }
 
-function handleClockAction(userId: number, type: string, lat: number, lng: number, deviceId: string, timestamp: string) {
+function handleClockAction(userId: number, type: string, lat: number, lng: number, deviceId: string, timestamp: string, prefetchedProfile?: any, prefetchedSettings?: any) {
     // Fetch user profile and status
-    const userProfile = db.prepare(`
-        SELECT p.status, p.device_id, p.weekly_schedule, j.grace_period, p.allow_overtime, p.max_overtime_hours
-        FROM profiles p
-        LEFT JOIN jobs j ON p.job_id = j.id
-        WHERE p.user_id = ?
-    `).get(userId) as any;
+    let userProfile = prefetchedProfile;
+    if (!userProfile) {
+        userProfile = db.prepare(`
+            SELECT p.status, p.device_id, p.weekly_schedule, j.grace_period, p.allow_overtime, p.max_overtime_hours
+            FROM profiles p
+            LEFT JOIN jobs j ON p.job_id = j.id
+            WHERE p.user_id = ?
+        `).get(userId) as any;
+    }
 
     if (!userProfile) {
         return { status: 404, error: 'User profile not found' };
@@ -263,7 +266,11 @@ function handleClockAction(userId: number, type: string, lat: number, lng: numbe
     }
 
     // Fetch company settings for geofence validation
-    const settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+    let settings = prefetchedSettings;
+    if (!settings) {
+        settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+    }
+
     if (settings && settings.geofence_toggle) {
         const distance = calculateDistance(lat, lng, settings.office_lat, settings.office_lng);
         if (distance > settings.geofence_radius) {
@@ -331,6 +338,9 @@ export const syncOfflineLogs = (req: AuthRequest, res: Response): void => {
             const results = [];
             // We now trust the timestamp since it is securely calculated against server time on device
 
+            const settingsCache = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+            const profileMap = new Map();
+
             for (const log of logsToSync) {
                 const { type, timestamp, lat, lng, deviceId } = log;
 
@@ -338,7 +348,20 @@ export const syncOfflineLogs = (req: AuthRequest, res: Response): void => {
                 // Use raw timestamp
                 // Timestamp is extracted from log above
 
-                const result = handleClockAction(userId, type, lat, lng, deviceId, timestamp);
+                let profile = profileMap.get(userId);
+                if (!profile) {
+                    profile = db.prepare(`
+                        SELECT p.status, p.device_id, p.weekly_schedule, j.grace_period, p.allow_overtime, p.max_overtime_hours
+                        FROM profiles p
+                        LEFT JOIN jobs j ON p.job_id = j.id
+                        WHERE p.user_id = ?
+                    `).get(userId);
+                    if (profile) {
+                        profileMap.set(userId, profile);
+                    }
+                }
+
+                const result = handleClockAction(userId, type, lat, lng, deviceId, timestamp, profile, settingsCache);
 
                 if (result.error) {
                     results.push({ logId: log.id, status: 'skipped', reason: result.error });
