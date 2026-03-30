@@ -14,7 +14,6 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-import { imageFileFilter, imageUploadLimits } from '../utils/fileUpload.js';
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -28,8 +27,14 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: imageUploadLimits,
-  fileFilter: imageFileFilter
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed.'));
+    }
+  }
 });
 
 router.use(authenticate);
@@ -37,15 +42,19 @@ router.use(authenticate);
 // Profile routes (Any authenticated user)
 router.get('/profile', getProfile);
 router.put('/profile', updateProfile);
+
 router.post('/upload-avatar', (req, res, next) => {
-    upload.single('avatar')(req, res, (err: any) => {
-        if (err instanceof multer.MulterError) {
-            return res.status(400).json({ error: `Upload error: ${err.message}` });
-        } else if (err) {
-            return res.status(400).json({ error: err.message });
-        }
-        next();
-    });
+  upload.single('avatar')(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ error: 'File too large. Maximum size is 2MB.' });
+      }
+      return res.status(400).json({ error: err.message });
+    } else if (err) {
+      return res.status(400).json({ error: err.message });
+    }
+    next();
+  });
 }, uploadAvatar);
 
 // Admin/Manager routes
