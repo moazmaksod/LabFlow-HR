@@ -4,6 +4,7 @@ import { getDateStringInTimezone } from '../utils/dateUtils.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
 import { getLogicalShiftDetails } from '../utils/shiftUtils.js';
 import { logAudit } from '../services/auditService.js';
+import { getSettingsCache, setSettingsCache } from '../utils/cache.js';
 
 // Haversine formula to calculate distance between two points in meters
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -97,7 +98,11 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
 
         // Pure Schedule-Driven Logic:
         const clockInTime = new Date(timestamp);
-        const settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+        let settings = getSettingsCache();
+        if (!settings) {
+            settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+            setSettingsCache(settings);
+        }
         const gracePeriod = settings?.late_grace_period !== undefined ? settings.late_grace_period : (userProfile.grace_period || 15);
 
         if (!matchedShift || !scheduledTime) {
@@ -176,7 +181,11 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
         } else if (scheduledTime) {
             const clockOutTime = new Date(timestamp);
             const diffMinutes = (clockOutTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
-            const settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+            let settings = getSettingsCache();
+            if (!settings) {
+                settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+                setSettingsCache(settings);
+            }
             const gracePeriod = settings?.late_grace_period !== undefined ? settings.late_grace_period : (userProfile.grace_period || 15);
 
             if (diffMinutes > gracePeriod) {
@@ -263,7 +272,12 @@ function handleClockAction(userId: number, type: string, lat: number, lng: numbe
     }
 
     // Fetch company settings for geofence validation
-    const settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+    let settings = getSettingsCache();
+    if (!settings) {
+        settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+        setSettingsCache(settings);
+    }
+
     if (settings && settings.geofence_toggle) {
         const distance = calculateDistance(lat, lng, settings.office_lat, settings.office_lng);
         if (distance > settings.geofence_radius) {
