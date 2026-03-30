@@ -39,7 +39,7 @@ async function runBenchmarks() {
     try {
         for (const file of files) {
             const filePath = path.join(CURRENT_DIR, file);
-            console.log(`\n[Executing: ${file}]`);
+            console.log(`\n🚀 [Executing: ${file}]`);
             
             /**
              * Execute the peer benchmark file using ts-node.
