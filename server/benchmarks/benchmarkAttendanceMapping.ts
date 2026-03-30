@@ -1,11 +1,15 @@
-// benchmarkAttendanceMapping.ts
-import process from 'process';
+import { performance } from 'perf_hooks';
 
+// Benchmark Configuration
 const NUM_LOGS = 1000;
 const NUM_BREAKS = 3000;
 const NUM_REQUESTS = 3000;
+const ITERATIONS = 100;
 
-// Setup mock data
+console.log(`--- Benchmark Configuration ---`);
+console.log(`Logs: ${NUM_LOGS}, Breaks: ${NUM_BREAKS}, Requests: ${NUM_REQUESTS}`);
+
+// Generate mock data
 const logs: any[] = [];
 for (let i = 1; i <= NUM_LOGS; i++) {
     logs.push({ id: i });
@@ -13,84 +17,103 @@ for (let i = 1; i <= NUM_LOGS; i++) {
 
 const breaks: any[] = [];
 for (let i = 1; i <= NUM_BREAKS; i++) {
-    breaks.push({ attendance_id: Math.floor(Math.random() * NUM_LOGS) + 1 });
+    breaks.push({ id: i, attendance_id: Math.floor(Math.random() * NUM_LOGS) + 1 });
 }
 
 const requests: any[] = [];
 for (let i = 1; i <= NUM_REQUESTS; i++) {
-    requests.push({ attendance_id: Math.floor(Math.random() * NUM_LOGS) + 1 });
+    requests.push({ id: i, attendance_id: Math.floor(Math.random() * NUM_LOGS) + 1 });
 }
 
-// 1. Baseline: Filter inside forEach (O(N*M))
+// 1. Slow approach: Baseline O(N*M) using nested .filter()
 function benchmarkBaseline() {
-    // Create deep copies to avoid modifying the original array if it mutates
-    const logsCopy = logs.map(l => ({ ...l }));
-    const start = process.hrtime.bigint();
+    const logsCopy = JSON.parse(JSON.stringify(logs));
+    const start = performance.now();
 
-    logsCopy.forEach(log => {
+    logsCopy.forEach((log: any) => {
         log.breaks = breaks.filter(b => b.attendance_id === log.id);
         log.requests = requests.filter(r => r.attendance_id === log.id);
     });
 
-    const end = process.hrtime.bigint();
-    return Number(end - start) / 1e6; // Convert to ms
+    const end = performance.now();
+    return end - start;
 }
 
-// 2. Optimized: Map approach (O(N+M))
+// 2. Fast approach: Optimized O(N+M) using Map hashing
 function benchmarkOptimized() {
-    const logsCopy = logs.map(l => ({ ...l }));
-    const start = process.hrtime.bigint();
+    const logsCopy = JSON.parse(JSON.stringify(logs));
+    const start = performance.now();
 
-    // Group breaks
-    const breaksByAttendanceId = new Map<number, any[]>();
-    for (const b of breaks) {
-        if (!breaksByAttendanceId.has(b.attendance_id)) {
-            breaksByAttendanceId.set(b.attendance_id, []);
+    const breaksMap = new Map<number, any[]>();
+    for (let i = 0; i < breaks.length; i++) {
+        const b = breaks[i];
+        if (!breaksMap.has(b.attendance_id)) {
+            breaksMap.set(b.attendance_id, []);
         }
-        breaksByAttendanceId.get(b.attendance_id)!.push(b);
+        breaksMap.get(b.attendance_id)!.push(b);
     }
 
-    // Group requests
-    const requestsByAttendanceId = new Map<number, any[]>();
-    for (const r of requests) {
-        if (!requestsByAttendanceId.has(r.attendance_id)) {
-            requestsByAttendanceId.set(r.attendance_id, []);
+    const requestsMap = new Map<number, any[]>();
+    for (let i = 0; i < requests.length; i++) {
+        const r = requests[i];
+        if (!requestsMap.has(r.attendance_id)) {
+            requestsMap.set(r.attendance_id, []);
         }
-        requestsByAttendanceId.get(r.attendance_id)!.push(r);
+        requestsMap.get(r.attendance_id)!.push(r);
     }
 
-    logsCopy.forEach(log => {
-        log.breaks = breaksByAttendanceId.get(log.id) || [];
-        log.requests = requestsByAttendanceId.get(log.id) || [];
-    });
+    for (let i = 0; i < logsCopy.length; i++) {
+        const log = logsCopy[i];
+        log.breaks = breaksMap.get(log.id) || [];
+        log.requests = requestsMap.get(log.id) || [];
+    }
 
-    const end = process.hrtime.bigint();
-    return Number(end - start) / 1e6; // Convert to ms
+    const end = performance.now();
+    return end - start;
 }
 
-// Warm up
+// Warm up the engine to allow V8 optimizations
+console.log("Warming up...");
 for (let i = 0; i < 10; i++) {
     benchmarkBaseline();
     benchmarkOptimized();
 }
 
-// Run benchmarks
-const iterations = 100;
-
+// Execution
 let totalBaselineMs = 0;
 let totalOptimizedMs = 0;
 
-for (let i = 0; i < iterations; i++) {
+for (let i = 0; i < ITERATIONS; i++) {
     totalBaselineMs += benchmarkBaseline();
     totalOptimizedMs += benchmarkOptimized();
 }
 
-const avgBaselineMs = totalBaselineMs / iterations;
-const avgOptimizedMs = totalOptimizedMs / iterations;
+const avgBaselineMs = totalBaselineMs / ITERATIONS;
+const avgOptimizedMs = totalOptimizedMs / ITERATIONS;
 
-console.log(`--- Benchmark Results (Logs: ${NUM_LOGS}, Breaks: ${NUM_BREAKS}, Requests: ${NUM_REQUESTS}) ---`);
+console.log(`--- Benchmark Results (Average over ${ITERATIONS} runs) ---`);
 console.log(`Baseline (O(N*M)):       ${avgBaselineMs.toFixed(3)} ms`);
 console.log(`Optimized (Map O(N+M)):  ${avgOptimizedMs.toFixed(3)} ms`);
 
 const improvement = ((avgBaselineMs - avgOptimizedMs) / avgBaselineMs) * 100;
 console.log(`Improvement: ${improvement.toFixed(2)}%`);
+
+// Final Correctness Check
+const testSlow = logs.map(l => ({ ...l }));
+const testFast = logs.map(l => ({ ...l }));
+
+testSlow.forEach((log: any) => {
+    log.breaks = breaks.filter(b => b.attendance_id === log.id);
+});
+
+const bMap = new Map();
+breaks.forEach(b => {
+    if (!bMap.has(b.attendance_id)) bMap.set(b.attendance_id, []);
+    bMap.get(b.attendance_id).push(b);
+});
+testFast.forEach((log: any) => {
+    log.breaks = bMap.get(log.id) || [];
+});
+
+const isCorrect = JSON.stringify(testSlow) === JSON.stringify(testFast);
+console.log(`Correctness Check: ${isCorrect ? 'PASS ✅' : 'FAIL ❌'}`);

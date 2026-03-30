@@ -413,24 +413,29 @@ export const getMyLogs = (req: AuthRequest, res: Response): void => {
             const breaksMap = new Map<number, any[]>();
             for (let i = 0; i < breaks.length; i++) {
                 const b = breaks[i];
-                if (!breaksMap.has(b.attendance_id)) {
-                    breaksMap.set(b.attendance_id, []);
+                const arr = breaksMap.get(b.attendance_id);
+                if (arr) {
+                    arr.push(b);
+                } else {
+                    breaksMap.set(b.attendance_id, [b]);
                 }
-                breaksMap.get(b.attendance_id)!.push(b);
             }
 
             const requestsMap = new Map<number, any[]>();
             for (let i = 0; i < requests.length; i++) {
                 const r = requests[i];
-                if (!requestsMap.has(r.attendance_id)) {
-                    requestsMap.set(r.attendance_id, []);
+                const arr = requestsMap.get(r.attendance_id);
+                if (arr) {
+                    arr.push(r);
+                } else {
+                    requestsMap.set(r.attendance_id, [r]);
                 }
-                requestsMap.get(r.attendance_id)!.push(r);
             }
 
             for (let i = 0; i < logs.length; i++) {
-                logs[i].breaks = breaksMap.get(logs[i].id) || [];
-                logs[i].requests = requestsMap.get(logs[i].id) || [];
+                const log = logs[i];
+                log.breaks = breaksMap.get(log.id) || [];
+                log.requests = requestsMap.get(log.id) || [];
             }
         }
 
@@ -461,24 +466,29 @@ export const getAttendanceLogs = (req: Request, res: Response): void => {
             const breaksMap = new Map<number, any[]>();
             for (let i = 0; i < breaks.length; i++) {
                 const b = breaks[i];
-                if (!breaksMap.has(b.attendance_id)) {
-                    breaksMap.set(b.attendance_id, []);
+                const arr = breaksMap.get(b.attendance_id);
+                if (arr) {
+                    arr.push(b);
+                } else {
+                    breaksMap.set(b.attendance_id, [b]);
                 }
-                breaksMap.get(b.attendance_id)!.push(b);
             }
 
             const requestsMap = new Map<number, any[]>();
             for (let i = 0; i < requests.length; i++) {
                 const r = requests[i];
-                if (!requestsMap.has(r.attendance_id)) {
-                    requestsMap.set(r.attendance_id, []);
+                const arr = requestsMap.get(r.attendance_id);
+                if (arr) {
+                    arr.push(r);
+                } else {
+                    requestsMap.set(r.attendance_id, [r]);
                 }
-                requestsMap.get(r.attendance_id)!.push(r);
             }
 
             for (let i = 0; i < logs.length; i++) {
-                logs[i].breaks = breaksMap.get(logs[i].id) || [];
-                logs[i].requests = requestsMap.get(logs[i].id) || [];
+                const log = logs[i];
+                log.breaks = breaksMap.get(log.id) || [];
+                log.requests = requestsMap.get(log.id) || [];
             }
         }
 
