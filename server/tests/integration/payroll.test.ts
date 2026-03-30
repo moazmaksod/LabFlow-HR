@@ -9,7 +9,7 @@ beforeAll(async () => {
 });
 
 afterEach(() => {
-  db.exec('DELETE FROM users; DELETE FROM attendance; DELETE FROM profiles; DELETE FROM requests; DELETE FROM jobs;');
+  db.exec('DELETE FROM users; DELETE FROM attendance; DELETE FROM profiles; DELETE FROM requests; DELETE FROM jobs; DELETE FROM payrolls; DELETE FROM payroll_transactions;');
 });
 
 afterAll(() => {
@@ -121,5 +121,150 @@ describe('Payroll API', () => {
 
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error', 'Missing required parameters: startDate, endDate');
+  });
+
+  describe('GET /api/payroll/my-records', () => {
+    let employeeToken: string;
+    let otherEmployeeId: number;
+
+    beforeEach(async () => {
+      employeeToken = jwt.sign({ id: employeeId, role: 'employee' }, process.env.JWT_SECRET as string);
+
+      // Create another employee
+      const salt = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash('password123', salt);
+      const insertEmployee = db.prepare(`
+        INSERT INTO users (name, email, password_hash, role)
+        VALUES (?, ?, ?, ?)
+      `);
+      const otherEmployeeInfo = insertEmployee.run('Other Employee', 'other@test.com', passwordHash, 'employee');
+      otherEmployeeId = otherEmployeeInfo.lastInsertRowid as number;
+
+      // Insert payrolls
+      const insertPayroll = db.prepare(`
+        INSERT INTO payrolls (user_id, start_date, end_date, base_salary, net_salary, status)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+
+      // Current employee payrolls
+      insertPayroll.run(employeeId, '2023-10-01', '2023-10-31', 2000, 2000, 'finalized');
+      insertPayroll.run(employeeId, '2023-09-01', '2023-09-30', 2000, 2000, 'paid');
+
+      // Other employee payroll
+      insertPayroll.run(otherEmployeeId, '2023-10-01', '2023-10-31', 2500, 2500, 'finalized');
+    });
+
+    it('should return all payrolls for the authenticated user', async () => {
+      const res = await request(app)
+        .get('/api/payroll/my-records')
+        .set('Authorization', `Bearer ${employeeToken}`);
+
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body)).toBe(true);
+      expect(res.body.length).toBe(2);
+      res.body.forEach((payroll: any) => {
+        expect(payroll.user_id).toBe(employeeId);
+      });
+    });
+
+    it('should filter payrolls by month and year', async () => {
+      const res = await request(app)
+        .get('/api/payroll/my-records')
+        .query({ month: 10, year: 2023 })
+        .set('Authorization', `Bearer ${employeeToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.length).toBe(1);
+      expect(res.body[0].start_date).toBe('2023-10-01');
+    });
+
+    it('should return an empty array if no payrolls match the filters', async () => {
+      const res = await request(app)
+        .get('/api/payroll/my-records')
+        .query({ month: 1, year: 2024 })
+        .set('Authorization', `Bearer ${employeeToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.length).toBe(0);
+    });
+
+    it('should not return payrolls belonging to other users', async () => {
+      const res = await request(app)
+        .get('/api/payroll/my-records')
+        .set('Authorization', `Bearer ${employeeToken}`);
+
+      const otherPayroll = res.body.find((p: any) => p.user_id === otherEmployeeId);
+      expect(otherPayroll).toBeUndefined();
+    });
+  });
+
+  describe('GET /api/payroll/my-records/:payroll_id/transactions', () => {
+    let employeeToken: string;
+    let employeePayrollId: number;
+    let otherEmployeePayrollId: number;
+
+    beforeEach(async () => {
+      employeeToken = jwt.sign({ id: employeeId, role: 'employee' }, process.env.JWT_SECRET as string);
+
+      // Create another employee
+      const salt = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash('password123', salt);
+      const insertEmployee = db.prepare(`
+        INSERT INTO users (name, email, password_hash, role)
+        VALUES (?, ?, ?, ?)
+      `);
+      const otherEmployeeInfo = insertEmployee.run('Other Employee', 'other@test.com', passwordHash, 'employee');
+      const otherEmployeeId = otherEmployeeInfo.lastInsertRowid as number;
+
+      // Insert payrolls
+      const insertPayroll = db.prepare(`
+        INSERT INTO payrolls (user_id, start_date, end_date, base_salary, net_salary, status)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+
+      const p1 = insertPayroll.run(employeeId, '2023-10-01', '2023-10-31', 2000, 2050, 'finalized');
+      employeePayrollId = p1.lastInsertRowid as number;
+
+      const p2 = insertPayroll.run(otherEmployeeId, '2023-10-01', '2023-10-31', 2500, 2500, 'finalized');
+      otherEmployeePayrollId = p2.lastInsertRowid as number;
+
+      // Insert transactions
+      const insertTransaction = db.prepare(`
+        INSERT INTO payroll_transactions (payroll_id, type, amount, status)
+        VALUES (?, ?, ?, ?)
+      `);
+      insertTransaction.run(employeePayrollId, 'bonus', 50, 'applied');
+      insertTransaction.run(otherEmployeePayrollId, 'bonus', 100, 'applied');
+    });
+
+    it('should return transactions for the owned payroll', async () => {
+      const res = await request(app)
+        .get(`/api/payroll/my-records/${employeePayrollId}/transactions`)
+        .set('Authorization', `Bearer ${employeeToken}`);
+
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body)).toBe(true);
+      expect(res.body.length).toBe(1);
+      expect(res.body[0].payroll_id).toBe(employeePayrollId);
+      expect(res.body[0].amount).toBe(50);
+    });
+
+    it('should return 403 when trying to access transactions of another user\'s payroll', async () => {
+      const res = await request(app)
+        .get(`/api/payroll/my-records/${otherEmployeePayrollId}/transactions`)
+        .set('Authorization', `Bearer ${employeeToken}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body).toHaveProperty('error', 'Access denied');
+    });
+
+    it('should return 403 if the payroll does not exist', async () => {
+      const res = await request(app)
+        .get('/api/payroll/my-records/9999/transactions')
+        .set('Authorization', `Bearer ${employeeToken}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body).toHaveProperty('error', 'Access denied');
+    });
   });
 });
