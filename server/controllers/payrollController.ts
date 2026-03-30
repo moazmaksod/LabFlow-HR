@@ -164,8 +164,8 @@ export const getPayrollSummary = (req: Request, res: Response): void => {
         });
 
     } catch (error) {
-        console.error('Error calculating payroll summary:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        console.error('Error in getPayrollSummary:', error);
+        res.status(500).json({ error: 'Failed to fetch payroll summary' });
     }
 };
 

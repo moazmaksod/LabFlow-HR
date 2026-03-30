@@ -122,4 +122,80 @@ describe('Payroll API', () => {
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error', 'Missing required parameters: startDate, endDate');
   });
+
+  describe('getPayrollSummary', () => {
+    it('should return 400 if required parameters are missing', async () => {
+      const res = await request(app)
+        .get('/api/payroll/summary')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('error', 'Missing required parameters: user_id, start_date, end_date');
+    });
+
+    it('should return 404 if user is not found', async () => {
+      const res = await request(app)
+        .get('/api/payroll/summary')
+        .query({ user_id: 9999, start_date: '2023-10-01', end_date: '2023-10-31' })
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body).toHaveProperty('error', 'User not found');
+    });
+
+    it('should calculate payroll summary correctly', async () => {
+      const res = await request(app)
+        .get('/api/payroll/summary')
+        .query({ user_id: employeeId, start_date: '2023-10-01', end_date: '2023-10-01' })
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('period');
+      expect(res.body.period).toEqual({ start: '2023-10-01', end: '2023-10-01' });
+      expect(res.body).toHaveProperty('user');
+      expect(res.body.user).toHaveProperty('id', employeeId);
+      expect(res.body.user).toHaveProperty('name', 'Employee');
+      expect(res.body.user).toHaveProperty('hourly_rate', 25.50);
+      expect(res.body).toHaveProperty('time_metrics');
+      expect(res.body.time_metrics).toHaveProperty('actual_worked_hours', 9);
+      expect(res.body).toHaveProperty('financial_metrics');
+      expect(res.body.financial_metrics).toHaveProperty('final_net_salary', 229.5);
+    });
+
+    it('should return 403 if an employee tries to access payroll summary', async () => {
+      // Create employee token
+      const employeeToken = jwt.sign({ id: employeeId, role: 'employee' }, process.env.JWT_SECRET as string);
+
+      const res = await request(app)
+        .get('/api/payroll/summary')
+        .query({ user_id: employeeId, start_date: '2023-10-01', end_date: '2023-10-01' })
+        .set('Authorization', `Bearer ${employeeToken}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body).toHaveProperty('error', 'Forbidden: Insufficient permissions');
+    });
+
+    it('should return 500 if an internal server error occurs', async () => {
+      // Create a spy that only throws an error when getPayrollSummary queries users table, but allows the auth middleware to pass
+      const originalPrepare = db.prepare.bind(db);
+      const spy = jest.spyOn(db, 'prepare').mockImplementation((sql: string) => {
+        if (sql.includes('SELECT u.id, u.name, p.hourly_rate')) {
+          throw new Error('Database connection failed');
+        }
+        return originalPrepare(sql);
+      });
+
+      try {
+        const res = await request(app)
+          .get('/api/payroll/summary')
+          .query({ user_id: employeeId, start_date: '2023-10-01', end_date: '2023-10-01' })
+          .set('Authorization', `Bearer ${adminToken}`);
+
+        expect(res.status).toBe(500);
+        expect(res.body).toHaveProperty('error', 'Failed to fetch payroll summary');
+      } finally {
+        spy.mockRestore();
+      }
+    });
+  });
 });
