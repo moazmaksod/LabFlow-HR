@@ -198,4 +198,69 @@ describe('Payroll API', () => {
       }
     });
   });
+
+  describe('POST /api/payroll/generate', () => {
+    it('should generate draft payrolls successfully for given month and year', async () => {
+      const res = await request(app)
+        .post('/api/payroll/generate')
+        .query({ month: '03', year: '2026' })
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('message', 'Draft payrolls generated successfully');
+      expect(Array.isArray(res.body.payrolls)).toBe(true);
+      expect(res.body.payrolls.length).toBeGreaterThan(0);
+
+      const employeePayroll = res.body.payrolls.find((p: any) => p.user_id === employeeId);
+      expect(employeePayroll).toBeDefined();
+
+      // Verify the database record
+      const payrollRecord = db.prepare(`SELECT * FROM payrolls WHERE id = ?`).get(employeePayroll.payroll_id) as any;
+      expect(payrollRecord).toBeDefined();
+      expect(payrollRecord.status).toBe('draft');
+      expect(payrollRecord.user_id).toBe(employeeId);
+    });
+
+    it('should return 400 if month is missing', async () => {
+      const res = await request(app)
+        .post('/api/payroll/generate')
+        .query({ year: '2026' })
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('error', 'Month and year are required');
+    });
+
+    it('should return 400 if year is missing', async () => {
+      const res = await request(app)
+        .post('/api/payroll/generate')
+        .query({ month: '03' })
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('error', 'Month and year are required');
+    });
+
+    it('should return 400 if both month and year are missing', async () => {
+      const res = await request(app)
+        .post('/api/payroll/generate')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('error', 'Month and year are required');
+    });
+
+    it('should forbid non-manager users from generating payrolls', async () => {
+      const employeeToken = jwt.sign({ id: employeeId, role: 'employee' }, process.env.JWT_SECRET as string);
+
+      const res = await request(app)
+        .post('/api/payroll/generate')
+        .query({ month: '03', year: '2026' })
+        .set('Authorization', `Bearer ${employeeToken}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body).toHaveProperty('error', 'Forbidden: Insufficient permissions');
+    });
+
+  });
 });
