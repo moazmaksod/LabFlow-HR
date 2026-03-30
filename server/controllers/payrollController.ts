@@ -275,11 +275,47 @@ export const generateDraftPayroll = (req: AuthRequest, res: Response) => {
 
             const payrollMap = new Map<number, number>(existingPayrolls.map(p => [p.user_id, p.id]));
 
-            // For users without a draft, create one
-            for (const user of users) {
-                if (!payrollMap.has(user.id)) {
-                    const pid = getOrCreateDraftPayroll(user.id, startDate, actorId);
-                    payrollMap.set(user.id, pid);
+            // Identify users who need a new draft payroll
+            const missingUsers = users.filter((user: any) => !payrollMap.has(user.id));
+
+            if (missingUsers.length > 0) {
+                const insertStmt = db.prepare(`
+                    INSERT INTO payrolls (user_id, start_date, end_date, base_salary, status)
+                    VALUES (?, ?, ?, 0, 'draft')
+                    RETURNING *
+                `);
+
+                const newPayrolls: any[] = [];
+                const insertTx = db.transaction((usersToInsert) => {
+                    for (const user of usersToInsert) {
+                        const payroll = insertStmt.get(user.id, startDate, endDate);
+                        newPayrolls.push(payroll);
+                    }
+                });
+                insertTx(missingUsers);
+
+                // Audit log creation for all new payrolls
+                const auditStmt = db.prepare(`
+                    INSERT INTO audit_logs (entity_name, entity_id, action, actor_id, old_values, new_values)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                `);
+
+                const auditTx = db.transaction((payrolls) => {
+                    for (const p of payrolls) {
+                        auditStmt.run(
+                            'payrolls',
+                            p.id,
+                            'CREATE',
+                            actorId,
+                            null,
+                            JSON.stringify(p)
+                        );
+                    }
+                });
+                auditTx(newPayrolls);
+
+                for (const p of newPayrolls) {
+                    payrollMap.set(p.user_id, p.id);
                 }
             }
 
