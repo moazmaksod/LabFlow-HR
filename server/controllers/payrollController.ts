@@ -480,10 +480,9 @@ export const getPayrolls = (req: Request, res: Response) => {
         const params: any[] = [];
 
         if (month && year) {
-            const startDate = new Date(Number(year), Number(month) - 1, 1).toISOString().split('T')[0];
-            const endDate = new Date(Number(year), Number(month), 0).toISOString().split('T')[0];
-            query += ` AND p.start_date >= ? AND p.end_date <= ?`;
-            params.push(startDate, endDate);
+            const formattedMonth = String(month).padStart(2, '0');
+            query += ` AND STRFTIME('%m', p.start_date) = ? AND STRFTIME('%Y', p.start_date) = ?`;
+            params.push(formattedMonth, String(year));
         }
 
         if (user_id) {
@@ -494,8 +493,8 @@ export const getPayrolls = (req: Request, res: Response) => {
         const payrolls = db.prepare(query).all(...params);
         res.json(payrolls);
     } catch (error) {
-        console.error('Error fetching payrolls:', error);
-        res.status(500).json({ error: 'Failed to fetch payrolls' });
+        console.error('Error in getPayrolls:', error);
+        res.status(500).json({ error: 'Failed to fetch payroll records' });
     }
 };
 
@@ -537,8 +536,8 @@ export const getMyPayrolls = (req: AuthRequest, res: Response) => {
         const payrolls = db.prepare(query).all(...params);
         res.json(payrolls);
     } catch (error) {
-        console.error('Error fetching my payrolls:', error);
-        res.status(500).json({ error: 'Failed to fetch your payrolls' });
+        console.error('Error in getMyPayrolls:', error);
+        res.status(500).json({ error: 'Failed to fetch your payroll records' });
     }
 };
 
@@ -558,7 +557,7 @@ export const getMyPayrollTransactions = (req: AuthRequest, res: Response) => {
         `).all(payroll_id);
         res.json(transactions);
     } catch (error) {
-        console.error('Error fetching my payroll transactions:', error);
+        console.error('Error in getMyPayrollTransactions:', error);
         res.status(500).json({ error: 'Failed to fetch your payroll transactions' });
     }
 };
