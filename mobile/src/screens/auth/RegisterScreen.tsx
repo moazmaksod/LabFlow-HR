@@ -6,19 +6,19 @@ export default function RegisterScreen({ navigation }: any) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [age, setAge] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
   const [gender, setGender] = useState('male'); // Default to male
   const [loading, setLoading] = useState(false);
 
   const handleRegister = async () => {
-    if (!name || !email || !password || !age || !gender) {
+    if (!name || !email || !password || !dateOfBirth || !gender) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
     setLoading(true);
     try {
-      await api.post('/auth/register', { name, email, password, age, gender });
+      await api.post('/auth/register', { name, email, password, date_of_birth: dateOfBirth, gender });
       Alert.alert(
         'Registration Successful',
         'Your account has been created. Please wait for a manager to approve your account and assign your role.',
@@ -54,8 +54,8 @@ export default function RegisterScreen({ navigation }: any) {
             <Text style={styles.label}>Age</Text>
             <TextInput
               style={styles.input}
-              value={age}
-              onChangeText={setAge}
+              value={dateOfBirth}
+              onChangeText={setDateOfBirth}
               placeholder="25"
               keyboardType="numeric"
             />

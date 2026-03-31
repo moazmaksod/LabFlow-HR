@@ -18,6 +18,7 @@ export const createJob = (req: Request, res: Response): void => {
         const {
             title,
             hourly_rate,
+            required_hours_per_week,
             grace_period,
             default_annual_leave_days,
             default_sick_leave_days,
@@ -34,20 +35,22 @@ export const createJob = (req: Request, res: Response): void => {
             INSERT INTO jobs (
                 title,
                 hourly_rate,
-                required_hours, -- Keep for backward compatibility if needed, but we'll set it to 0 or same as weekly
+                required_hours,
+                required_hours_per_week,
                 grace_period,
                 default_annual_leave_days,
                 default_sick_leave_days,
                 allow_overtime,
                 employment_type
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         const info = insert.run(
             title,
             hourly_rate,
-            0, // Setting daily required_hours to 0
+            0,
+            required_hours_per_week || 40,
             grace_period || 15,
             default_annual_leave_days ?? 21,
             default_sick_leave_days ?? 7,
@@ -72,6 +75,7 @@ export const updateJob = (req: Request, res: Response): void => {
         const {
             title,
             hourly_rate,
+            required_hours_per_week,
             grace_period,
             default_annual_leave_days,
             default_sick_leave_days,
@@ -93,6 +97,7 @@ export const updateJob = (req: Request, res: Response): void => {
                     title = ?,
                     hourly_rate = ?,
                     required_hours = ?,
+                    required_hours_per_week = ?,
                     grace_period = ?,
                     default_annual_leave_days = ?,
                     default_sick_leave_days = ?,
@@ -105,6 +110,7 @@ export const updateJob = (req: Request, res: Response): void => {
                 title,
                 hourly_rate,
                 0,
+                required_hours_per_week || 40,
                 grace_period || 15,
                 default_annual_leave_days ?? 21,
                 default_sick_leave_days ?? 7,

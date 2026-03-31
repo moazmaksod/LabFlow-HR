@@ -129,6 +129,7 @@ export default function JobManagement() {
     const payload = {
       ...formData,
       hourly_rate: Number(formData.hourly_rate),
+      required_hours_per_week: Number(formData.required_hours_per_week),
       grace_period: Number(formData.grace_period),
       default_annual_leave_days: Number(formData.default_annual_leave_days),
       default_sick_leave_days: Number(formData.default_sick_leave_days)
