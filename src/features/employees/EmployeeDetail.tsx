@@ -70,14 +70,20 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
         ...employee,
         weekly_schedule: fullSchedule,
         hourly_rate: employee.hourly_rate || 0,
-        leave_balance: employee.leave_balance || 21,
+        annual_leave_balance: employee.annual_leave_balance ?? 21,
+        sick_leave_balance: employee.sick_leave_balance ?? 7,
         lunch_break_minutes: employee.lunch_break_minutes || 0,
         emergency_contact_name: employee.emergency_contact_name || '',
         emergency_contact_phone: employee.emergency_contact_phone || '',
+        emergency_contact_relationship: employee.emergency_contact_relationship || '',
+        full_address: employee.full_address || '',
+        national_id: employee.national_id || '',
+        bank_name: employee.bank_name || '',
+        bank_account_iban: employee.bank_account_iban || '',
         legal_name: employee.legal_name || '',
         id_photo_url: employee.id_photo_url || '',
         hire_date: employee.hire_date || '',
-        age: employee.age || '',
+        date_of_birth: employee.date_of_birth || '',
         gender: employee.gender || '',
         allow_overtime: employee.allow_overtime || false,
         max_overtime_hours: employee.max_overtime_hours || 0
@@ -216,9 +222,9 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Age</label>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Date of Birth</label>
                     <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">
-                      {formData.age || '-'}
+                      {formData.date_of_birth || '-'}
                     </div>
                   </div>
                   <div className="space-y-1.5">
@@ -229,22 +235,36 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                   </div>
                 </div>
                 <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Full Address</label>
+                  <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground min-h-[60px]">
+                    {formData.full_address || '-'}
+                  </div>
+                </div>
+                <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Personal Phone</label>
                   <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">
                     {formData.personal_phone || '-'}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Emergency Contact</label>
-                    <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">
-                      {formData.emergency_contact_name || '-'}
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Emergency Contact</label>
+                      <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">
+                        {formData.emergency_contact_name || '-'}
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Emergency Phone</label>
+                      <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">
+                        {formData.emergency_contact_phone || '-'}
+                      </div>
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Emergency Phone</label>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Relationship</label>
                     <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">
-                      {formData.emergency_contact_phone || '-'}
+                      {formData.emergency_contact_relationship || '-'}
                     </div>
                   </div>
                 </div>
@@ -257,6 +277,16 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                 <Shield className="w-4 h-4" /> HR Administration
               </h4>
               <div className="grid grid-cols-1 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">National ID</label>
+                  <input
+                    type="text"
+                    value={formData.national_id}
+                    onChange={(e) => setFormData({...formData, national_id: e.target.value})}
+                    placeholder="National Identification Number"
+                    className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                  />
+                </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Legal Name</label>
                   <input 
@@ -329,7 +359,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                     ))}
                   </select>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Hourly Rate ($)</label>
                     <input 
@@ -340,11 +370,42 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Leave Balance</label>
-                    <input 
-                      type="number" 
-                      value={formData.leave_balance} 
-                      onChange={(e) => setFormData({...formData, leave_balance: Number(e.target.value)})}
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Annual Leave</label>
+                    <input
+                      type="number"
+                      value={formData.annual_leave_balance}
+                      onChange={(e) => setFormData({...formData, annual_leave_balance: Number(e.target.value)})}
+                      className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Sick Leave</label>
+                    <input
+                      type="number"
+                      value={formData.sick_leave_balance}
+                      onChange={(e) => setFormData({...formData, sick_leave_balance: Number(e.target.value)})}
+                      className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Bank Name</label>
+                    <input
+                      type="text"
+                      value={formData.bank_name}
+                      onChange={(e) => setFormData({...formData, bank_name: e.target.value})}
+                      placeholder="e.g. Chase"
+                      className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Account / IBAN</label>
+                    <input
+                      type="text"
+                      value={formData.bank_account_iban}
+                      onChange={(e) => setFormData({...formData, bank_account_iban: e.target.value})}
+                      placeholder="Account Number"
                       className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all"
                     />
                   </div>

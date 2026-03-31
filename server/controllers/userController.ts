@@ -103,12 +103,28 @@ export const updateUserRole = (req: Request, res: Response): void => {
             if (role === 'employee' || role === 'manager') {
                 profileExists = !!db.prepare('SELECT id FROM profiles WHERE user_id = ?').get(id);
 
+                // Fetch job blueprint defaults
+                let jobBlueprint: any = null;
+                if (job_id) {
+                    jobBlueprint = db.prepare('SELECT hourly_rate, default_annual_leave_days, default_sick_leave_days, allow_overtime FROM jobs WHERE id = ?').get(job_id);
+                }
+
                 if (profileExists) {
-                    db.prepare('UPDATE profiles SET job_id = ?, status = ? WHERE user_id = ?')
-                      .run(job_id || null, 'active', id);
+                    if (jobBlueprint) {
+                        db.prepare('UPDATE profiles SET job_id = ?, status = ?, hourly_rate = COALESCE(NULLIF(hourly_rate, 0), ?), annual_leave_balance = ?, sick_leave_balance = ?, allow_overtime = ? WHERE user_id = ?')
+                          .run(job_id, 'active', jobBlueprint.hourly_rate, jobBlueprint.default_annual_leave_days, jobBlueprint.default_sick_leave_days, jobBlueprint.allow_overtime, id);
+                    } else {
+                        db.prepare('UPDATE profiles SET job_id = ?, status = ? WHERE user_id = ?')
+                          .run(job_id || null, 'active', id);
+                    }
                 } else {
-                    db.prepare('INSERT INTO profiles (user_id, job_id, status) VALUES (?, ?, ?)')
-                      .run(id, job_id || null, 'active');
+                    if (jobBlueprint) {
+                        db.prepare('INSERT INTO profiles (user_id, job_id, status, hourly_rate, annual_leave_balance, sick_leave_balance, allow_overtime) VALUES (?, ?, ?, ?, ?, ?, ?)')
+                          .run(id, job_id, 'active', jobBlueprint.hourly_rate, jobBlueprint.default_annual_leave_days, jobBlueprint.default_sick_leave_days, jobBlueprint.allow_overtime);
+                    } else {
+                        db.prepare('INSERT INTO profiles (user_id, job_id, status) VALUES (?, ?, ?)')
+                          .run(id, job_id || null, 'active');
+                    }
                 }
             }
 
@@ -151,9 +167,11 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
         const user = db.prepare(`
             SELECT
                 u.id, u.name, u.email, u.role,
-                p.age, p.gender, p.profile_picture_url, p.status,
+                p.date_of_birth, p.gender, p.profile_picture_url, p.status,
                 p.weekly_schedule, p.hourly_rate, p.lunch_break_minutes,
-                p.emergency_contact_name, p.emergency_contact_phone, p.leave_balance,
+                p.emergency_contact_name, p.emergency_contact_phone, p.emergency_contact_relationship,
+                p.annual_leave_balance, p.sick_leave_balance,
+                p.full_address, p.national_id, p.bank_name, p.bank_account_iban,
                 p.bio, p.personal_phone, p.legal_name, p.id_photo_url, p.hire_date,
                 p.allow_overtime, p.max_overtime_hours,
                 p.job_id, j.title as job_title
@@ -232,10 +250,10 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
                 const values = [];
 
                 const allowedFields = [
-                    'age', 'gender', 'profile_picture_url', 'weekly_schedule',
-                    'hourly_rate', 'lunch_break_minutes', 'emergency_contact_name',
-                    'emergency_contact_phone', 'leave_balance', 'bio', 'personal_phone',
-                    'legal_name', 'id_photo_url', 'hire_date', 'allow_overtime', 'max_overtime_hours'
+                    'gender', 'profile_picture_url',
+                    'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
+                    'bio', 'personal_phone', 'legal_name', 'id_photo_url',
+                    'full_address', 'national_id', 'bank_name', 'bank_account_iban', 'date_of_birth'
                 ];
 
                 for (const field of allowedFields) {
@@ -259,31 +277,28 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
             } else {
                 db.prepare(`
                     INSERT INTO profiles (
-                        user_id, age, gender, profile_picture_url, status,
-                        weekly_schedule, hourly_rate, lunch_break_minutes,
-                        emergency_contact_name, emergency_contact_phone, leave_balance,
-                        bio, personal_phone, legal_name, id_photo_url, hire_date,
-                        allow_overtime, max_overtime_hours
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        user_id, date_of_birth, gender, profile_picture_url, status,
+                        emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
+                        bio, personal_phone, legal_name, id_photo_url,
+                        full_address, national_id, bank_name, bank_account_iban
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `).run(
                     userId,
-                    body.age || null,
+                    body.date_of_birth || null,
                     body.gender || null,
                     body.profile_picture_url || null,
                     'active',
-                    body.weekly_schedule ? JSON.stringify(body.weekly_schedule) : null,
-                    body.hourly_rate || 0,
-                    body.lunch_break_minutes || 0,
                     body.emergency_contact_name || null,
                     body.emergency_contact_phone || null,
-                    body.leave_balance || 21,
+                    body.emergency_contact_relationship || null,
                     body.bio || null,
                     body.personal_phone || null,
                     body.legal_name || null,
                     body.id_photo_url || null,
-                    body.hire_date || null,
-                    body.allow_overtime ? 1 : 0,
-                    body.max_overtime_hours || 0
+                    body.full_address || null,
+                    body.national_id || null,
+                    body.bank_name || null,
+                    body.bank_account_iban || null
                 );
             }
 
@@ -303,9 +318,11 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
         const updatedUser = db.prepare(`
             SELECT
                 u.id, u.name, u.email, u.role,
-                p.age, p.gender, p.profile_picture_url,
+                p.date_of_birth, p.gender, p.profile_picture_url,
                 p.weekly_schedule, p.hourly_rate, p.lunch_break_minutes,
-                p.emergency_contact_name, p.emergency_contact_phone, p.leave_balance,
+                p.emergency_contact_name, p.emergency_contact_phone, p.emergency_contact_relationship,
+                p.annual_leave_balance, p.sick_leave_balance,
+                p.full_address, p.national_id, p.bank_name, p.bank_account_iban,
                 p.bio, p.personal_phone, p.legal_name, p.id_photo_url, p.hire_date,
                 p.allow_overtime, p.max_overtime_hours,
                 p.job_id, j.title as job_title
@@ -328,9 +345,11 @@ export const getUserById = (req: Request, res: Response): void => {
         const user = db.prepare(`
             SELECT
                 u.id, u.name, u.email, u.role,
-                p.age, p.gender, p.profile_picture_url,
+                p.date_of_birth, p.gender, p.profile_picture_url,
                 p.weekly_schedule, p.hourly_rate, p.lunch_break_minutes,
-                p.emergency_contact_name, p.emergency_contact_phone, p.leave_balance,
+                p.emergency_contact_name, p.emergency_contact_phone, p.emergency_contact_relationship,
+                p.annual_leave_balance, p.sick_leave_balance,
+                p.full_address, p.national_id, p.bank_name, p.bank_account_iban,
                 p.bio, p.personal_phone, p.legal_name, p.id_photo_url, p.hire_date,
                 p.job_id, j.title as job_title,
                 p.status, p.suspension_reason,
@@ -382,11 +401,13 @@ export const updateUserProfile = (req: Request, res: Response): void => {
                 const values = [];
 
                 const allowedFields = [
-                    'age', 'gender', 'profile_picture_url', 'weekly_schedule',
+                    'date_of_birth', 'gender', 'profile_picture_url', 'weekly_schedule',
                     'hourly_rate', 'lunch_break_minutes', 'emergency_contact_name',
-                    'emergency_contact_phone', 'leave_balance', 'job_id', 'status',
+                    'emergency_contact_phone', 'emergency_contact_relationship',
+                    'annual_leave_balance', 'sick_leave_balance', 'job_id', 'status',
                     'suspension_reason', 'allow_overtime', 'max_overtime_hours',
-                    'bio', 'personal_phone', 'legal_name', 'id_photo_url', 'hire_date'
+                    'bio', 'personal_phone', 'legal_name', 'id_photo_url', 'hire_date',
+                    'full_address', 'national_id', 'bank_name', 'bank_account_iban'
                 ];
 
                 for (const field of allowedFields) {
@@ -413,15 +434,17 @@ export const updateUserProfile = (req: Request, res: Response): void => {
             } else {
                 db.prepare(`
                     INSERT INTO profiles (
-                        user_id, age, gender, profile_picture_url, status, suspension_reason,
+                        user_id, date_of_birth, gender, profile_picture_url, status, suspension_reason,
                         weekly_schedule, hourly_rate, lunch_break_minutes,
-                        emergency_contact_name, emergency_contact_phone, leave_balance, job_id,
+                        emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
+                        annual_leave_balance, sick_leave_balance, job_id,
                         allow_overtime, max_overtime_hours,
-                        bio, personal_phone, legal_name, id_photo_url, hire_date
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        bio, personal_phone, legal_name, id_photo_url, hire_date,
+                        full_address, national_id, bank_name, bank_account_iban
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `).run(
                     id,
-                    body.age || null,
+                    body.date_of_birth || null,
                     body.gender || null,
                     body.profile_picture_url || null,
                     body.status || 'active',
@@ -431,7 +454,9 @@ export const updateUserProfile = (req: Request, res: Response): void => {
                     body.lunch_break_minutes || 0,
                     body.emergency_contact_name || null,
                     body.emergency_contact_phone || null,
-                    body.leave_balance || 21,
+                    body.emergency_contact_relationship || null,
+                    body.annual_leave_balance ?? 21,
+                    body.sick_leave_balance ?? 7,
                     body.job_id || null,
                     body.allow_overtime ? 1 : 0,
                     body.max_overtime_hours || 0,
@@ -439,7 +464,11 @@ export const updateUserProfile = (req: Request, res: Response): void => {
                     body.personal_phone || null,
                     body.legal_name || null,
                     body.id_photo_url || null,
-                    body.hire_date || null
+                    body.hire_date || null,
+                    body.full_address || null,
+                    body.national_id || null,
+                    body.bank_name || null,
+                    body.bank_account_iban || null
                 );
             }
 
@@ -459,9 +488,11 @@ export const updateUserProfile = (req: Request, res: Response): void => {
         const updatedUser = db.prepare(`
             SELECT
                 u.id, u.name, u.email, u.role,
-                p.age, p.gender, p.profile_picture_url,
+                p.date_of_birth, p.gender, p.profile_picture_url,
                 p.weekly_schedule, p.hourly_rate, p.lunch_break_minutes,
-                p.emergency_contact_name, p.emergency_contact_phone, p.leave_balance,
+                p.emergency_contact_name, p.emergency_contact_phone, p.emergency_contact_relationship,
+                p.annual_leave_balance, p.sick_leave_balance,
+                p.full_address, p.national_id, p.bank_name, p.bank_account_iban,
                 p.bio, p.personal_phone, p.legal_name, p.id_photo_url, p.hire_date,
                 p.job_id, j.title as job_title,
                 p.status, p.suspension_reason,

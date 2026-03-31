@@ -15,13 +15,14 @@ export const getJobs = (req: Request, res: Response): void => {
 
 export const createJob = (req: Request, res: Response): void => {
     try {
-        const { 
-            title, 
-            hourly_rate, 
-            preferred_gender,
-            min_age,
-            max_age,
-            grace_period
+        const {
+            title,
+            hourly_rate,
+            grace_period,
+            default_annual_leave_days,
+            default_sick_leave_days,
+            allow_overtime,
+            employment_type
         } = req.body;
 
         if (!title || hourly_rate === undefined) {
@@ -31,25 +32,27 @@ export const createJob = (req: Request, res: Response): void => {
 
         const insert = db.prepare(`
             INSERT INTO jobs (
-                title, 
-                hourly_rate, 
+                title,
+                hourly_rate,
                 required_hours, -- Keep for backward compatibility if needed, but we'll set it to 0 or same as weekly
-                preferred_gender,
-                min_age,
-                max_age,
-                grace_period
+                grace_period,
+                default_annual_leave_days,
+                default_sick_leave_days,
+                allow_overtime,
+                employment_type
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
-        
+
         const info = insert.run(
-            title, 
-            hourly_rate, 
+            title,
+            hourly_rate,
             0, // Setting daily required_hours to 0
-            preferred_gender || 'any',
-            min_age || null,
-            max_age || null,
-            grace_period || 15
+            grace_period || 15,
+            default_annual_leave_days ?? 21,
+            default_sick_leave_days ?? 7,
+            allow_overtime !== undefined ? (allow_overtime ? 1 : 0) : 1,
+            employment_type || 'full-time'
         );
         
         const newJob = db.prepare('SELECT * FROM jobs WHERE id = ?').get(info.lastInsertRowid);
@@ -66,13 +69,14 @@ export const createJob = (req: Request, res: Response): void => {
 export const updateJob = (req: Request, res: Response): void => {
     try {
         const { id } = req.params;
-        const { 
-            title, 
-            hourly_rate, 
-            preferred_gender,
-            min_age,
-            max_age,
-            grace_period
+        const {
+            title,
+            hourly_rate,
+            grace_period,
+            default_annual_leave_days,
+            default_sick_leave_days,
+            allow_overtime,
+            employment_type
         } = req.body;
 
         if (!title || hourly_rate === undefined) {
@@ -85,25 +89,27 @@ export const updateJob = (req: Request, res: Response): void => {
             if (!oldJob) return false;
 
             const update = db.prepare(`
-                UPDATE jobs SET 
-                    title = ?, 
-                    hourly_rate = ?, 
-                    required_hours = ?, 
-                    preferred_gender = ?,
-                    min_age = ?,
-                    max_age = ?,
-                    grace_period = ?
+                UPDATE jobs SET
+                    title = ?,
+                    hourly_rate = ?,
+                    required_hours = ?,
+                    grace_period = ?,
+                    default_annual_leave_days = ?,
+                    default_sick_leave_days = ?,
+                    allow_overtime = ?,
+                    employment_type = ?
                 WHERE id = ?
             `);
-            
+
             const result = update.run(
-                title, 
-                hourly_rate, 
-                0, 
-                preferred_gender || 'any',
-                min_age || null,
-                max_age || null,
+                title,
+                hourly_rate,
+                0,
                 grace_period || 15,
+                default_annual_leave_days ?? 21,
+                default_sick_leave_days ?? 7,
+                allow_overtime !== undefined ? (allow_overtime ? 1 : 0) : 1,
+                employment_type || 'full-time',
                 id
             );
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from '@react-navigation/native';
-import { User, Camera, Save, LogOut, Mail, UserCircle, Lock, Info, DollarSign, Calendar, Clock, Shield, LayoutDashboard } from 'lucide-react-native';
+import { User, Camera, Save, LogOut, Mail, UserCircle, Lock, Info, DollarSign, Calendar, Clock, Shield, LayoutDashboard, MapPin, Landmark, HeartHandshake } from 'lucide-react-native';
 import api from '../lib/axios';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNetworkStore } from '../store/useNetworkStore';
@@ -20,8 +20,12 @@ export default function ProfileScreen() {
   const [personalPhone, setPersonalPhone] = useState('');
   const [emergencyContactName, setEmergencyContactName] = useState('');
   const [emergencyContactPhone, setEmergencyContactPhone] = useState('');
-  const [age, setAge] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
   const [gender, setGender] = useState('');
+  const [fullAddress, setFullAddress] = useState('');
+  const [emergencyContactRelationship, setEmergencyContactRelationship] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [bankAccountIban, setBankAccountIban] = useState('');
   const [avatar, setAvatar] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
@@ -42,8 +46,12 @@ export default function ProfileScreen() {
       setPersonalPhone(data.personal_phone || '');
       setEmergencyContactName(data.emergency_contact_name || '');
       setEmergencyContactPhone(data.emergency_contact_phone || '');
-      setAge(data.age?.toString() || '');
+      setDateOfBirth(data.date_of_birth || '');
       setGender(data.gender || '');
+      setFullAddress(data.full_address || '');
+      setEmergencyContactRelationship(data.emergency_contact_relationship || '');
+      setBankName(data.bank_name || '');
+      setBankAccountIban(data.bank_account_iban || '');
       setAvatar(data.profile_picture_url || null);
     } catch (error: any) {
       if (!error.isNetworkError) {
@@ -68,8 +76,12 @@ export default function ProfileScreen() {
       setPersonalPhone(userProfile.personal_phone || '');
       setEmergencyContactName(userProfile.emergency_contact_name || '');
       setEmergencyContactPhone(userProfile.emergency_contact_phone || '');
-      setAge(userProfile.age?.toString() || '');
+      setDateOfBirth(userProfile.date_of_birth || '');
       setGender(userProfile.gender || '');
+      setFullAddress(userProfile.full_address || '');
+      setEmergencyContactRelationship(userProfile.emergency_contact_relationship || '');
+      setBankName(userProfile.bank_name || '');
+      setBankAccountIban(userProfile.bank_account_iban || '');
       setAvatar(userProfile.profile_picture_url || null);
     }
   }, [userProfile, user]);
@@ -151,8 +163,12 @@ export default function ProfileScreen() {
         personal_phone: personalPhone,
         emergency_contact_name: emergencyContactName,
         emergency_contact_phone: emergencyContactPhone,
-        age: age ? parseInt(age) : null,
+        date_of_birth: dateOfBirth || null,
         gender: gender || null,
+        full_address: fullAddress || null,
+        emergency_contact_relationship: emergencyContactRelationship || null,
+        bank_name: bankName || null,
+        bank_account_iban: bankAccountIban || null,
       });
 
       setUserProfile(response.data);
@@ -339,13 +355,12 @@ export default function ProfileScreen() {
 
           <View style={styles.row}>
             <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-              <Text style={styles.label}>Age</Text>
+              <Text style={styles.label}>Date of Birth</Text>
               <TextInput
                 style={styles.input}
-                value={age}
-                onChangeText={setAge}
-                placeholder="e.g. 25"
-                keyboardType="numeric"
+                value={dateOfBirth}
+                onChangeText={setDateOfBirth}
+                placeholder="YYYY-MM-DD"
               />
             </View>
             <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
@@ -383,6 +398,57 @@ export default function ProfileScreen() {
               />
             </View>
           </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Emergency Contact Relationship</Text>
+            <View style={styles.inputWrapper}>
+              <HeartHandshake size={18} color="#71717a" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                value={emergencyContactRelationship}
+                onChangeText={setEmergencyContactRelationship}
+                placeholder="e.g. Spouse"
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Full Address</Text>
+            <View style={styles.inputWrapper}>
+              <MapPin size={18} color="#71717a" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                value={fullAddress}
+                onChangeText={setFullAddress}
+                placeholder="123 Main St, City"
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Bank Name</Text>
+            <View style={styles.inputWrapper}>
+              <Landmark size={18} color="#71717a" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                value={bankName}
+                onChangeText={setBankName}
+                placeholder="e.g. Chase"
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Bank Account / IBAN</Text>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                value={bankAccountIban}
+                onChangeText={setBankAccountIban}
+                placeholder="Account Number"
+              />
+            </View>
+          </View>
         </View>
 
         <View style={styles.section}>
@@ -401,16 +467,24 @@ export default function ProfileScreen() {
               <View style={styles.detailItem}>
                 <Calendar size={16} color="#71717a" />
                 <View style={styles.detailContent}>
-                  <Text style={styles.detailLabel}>Leave Balance</Text>
-                  <Text style={styles.detailValue}>{userProfile?.leave_balance || 0} days</Text>
+                  <Text style={styles.detailLabel}>Annual Leave</Text>
+                  <Text style={styles.detailValue}>{userProfile?.annual_leave_balance ?? 21} days</Text>
+                </View>
+              </View>
+
+              <View style={styles.detailItem}>
+                <Calendar size={16} color="#71717a" />
+                <View style={styles.detailContent}>
+                  <Text style={styles.detailLabel}>Sick Leave</Text>
+                  <Text style={styles.detailValue}>{userProfile?.sick_leave_balance ?? 7} days</Text>
                 </View>
               </View>
 
               <View style={styles.detailItem}>
                 <Clock size={16} color="#71717a" />
                 <View style={styles.detailContent}>
-                  <Text style={styles.detailLabel}>Max OT Hours</Text>
-                  <Text style={styles.detailValue}>{userProfile?.max_overtime_hours || 0}h/wk</Text>
+                  <Text style={styles.detailLabel}>Overtime Allowed</Text>
+                  <Text style={styles.detailValue}>{userProfile?.allow_overtime ? 'Yes' : 'No'}</Text>
                 </View>
               </View>
 

@@ -43,7 +43,7 @@ describe('Jobs API', () => {
         title: 'Software Engineer',
         hourly_rate: 45.5,
         required_hours_per_week: 40,
-        preferred_gender: 'any',
+        employment_type: 'any',
         grace_period: 15
       });
     
@@ -237,7 +237,7 @@ describe('Jobs API', () => {
         name: 'Cascade Employee',
         email: 'cascade@test.com',
         password: 'password123',
-        age: 25,
+        date_of_birth: '1998-01-01',
         gender: 'male'
       });
     const userId = userRes.body.user.id;
@@ -282,7 +282,7 @@ describe('Jobs API', () => {
         name: 'Assigned Employee',
         email: 'assigned@test.com',
         password: 'password123',
-        age: 25,
+        date_of_birth: '1998-01-01',
         gender: 'male'
       });
     const userId = userRes.body.user.id;

@@ -14,19 +14,18 @@ if (!JWT_SECRET) {
 
 export const register = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { name, email, password, age, gender } = req.body;
+        const { name, email, password, date_of_birth, gender } = req.body;
         
-        if (!name || !email || !password || !age || !gender) {
-            res.status(400).json({ error: 'Missing required fields: name, email, password, age, gender' });
+        if (!name || !email || !password || date_of_birth === undefined || !gender) {
+            res.status(400).json({ error: 'Missing required fields: name, email, password, date_of_birth, gender' });
             return;
         }
 
         const normalizedEmail = email.toLowerCase();
 
-        // Validate age
-        const ageNum = parseInt(age);
-        if (isNaN(ageNum) || ageNum < 16 || ageNum > 100) {
-            res.status(400).json({ error: 'Invalid age. Must be between 16 and 100.' });
+        // Validate date of birth
+        if (typeof date_of_birth !== 'string' || !date_of_birth.trim()) {
+            res.status(400).json({ error: 'Missing required fields: name, email, password, date_of_birth, gender' });
             return;
         }
 
@@ -55,8 +54,8 @@ export const register = async (req: Request, res: Response): Promise<void> => {
             const userId = info.lastInsertRowid;
 
             // Insert profile
-            const insertProfile = db.prepare('INSERT INTO profiles (user_id, age, gender, status) VALUES (?, ?, ?, ?)');
-            insertProfile.run(userId, ageNum, gender.toLowerCase(), 'inactive');
+            const insertProfile = db.prepare('INSERT INTO profiles (user_id, date_of_birth, gender, status, annual_leave_balance, sick_leave_balance) VALUES (?, ?, ?, ?, ?, ?)');
+            insertProfile.run(userId, date_of_birth || null, gender.toLowerCase(), 'inactive', 21, 7);
 
             return userId;
         });

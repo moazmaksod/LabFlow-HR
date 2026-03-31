@@ -49,17 +49,17 @@ export function initDb() {
     if (!jobColumns.some(c => c.name === 'required_hours_per_week')) {
       db.exec("ALTER TABLE jobs ADD COLUMN required_hours_per_week INTEGER;");
     }
-    if (!jobColumns.some(c => c.name === 'preferred_gender')) {
-      db.exec("ALTER TABLE jobs ADD COLUMN preferred_gender TEXT;");
+    if (!jobColumns.some(c => c.name === 'default_annual_leave_days')) {
+      db.exec("ALTER TABLE jobs ADD COLUMN default_annual_leave_days INTEGER DEFAULT 21;");
     }
-    if (!jobColumns.some(c => c.name === 'min_age')) {
-      db.exec("ALTER TABLE jobs ADD COLUMN min_age INTEGER;");
+    if (!jobColumns.some(c => c.name === 'default_sick_leave_days')) {
+      db.exec("ALTER TABLE jobs ADD COLUMN default_sick_leave_days INTEGER DEFAULT 7;");
     }
-    if (!jobColumns.some(c => c.name === 'max_age')) {
-      db.exec("ALTER TABLE jobs ADD COLUMN max_age INTEGER;");
+    if (!jobColumns.some(c => c.name === 'allow_overtime')) {
+      db.exec("ALTER TABLE jobs ADD COLUMN allow_overtime BOOLEAN DEFAULT 1;");
     }
-    if (!jobColumns.some(c => c.name === 'weekly_schedule')) {
-      db.exec("ALTER TABLE jobs ADD COLUMN weekly_schedule TEXT;");
+    if (!jobColumns.some(c => c.name === 'employment_type')) {
+      db.exec("ALTER TABLE jobs ADD COLUMN employment_type TEXT DEFAULT 'full-time';");
     }
 
     // Profiles migrations
@@ -78,8 +78,29 @@ export function initDb() {
     if (!profileColumns.some(c => c.name === 'emergency_contact_phone')) {
       db.exec("ALTER TABLE profiles ADD COLUMN emergency_contact_phone TEXT;");
     }
-    if (!profileColumns.some(c => c.name === 'leave_balance')) {
-      db.exec("ALTER TABLE profiles ADD COLUMN leave_balance INTEGER DEFAULT 21;");
+    if (!profileColumns.some(c => c.name === 'emergency_contact_relationship')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN emergency_contact_relationship TEXT;");
+    }
+    if (!profileColumns.some(c => c.name === 'full_address')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN full_address TEXT;");
+    }
+    if (!profileColumns.some(c => c.name === 'national_id')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN national_id TEXT;");
+    }
+    if (!profileColumns.some(c => c.name === 'bank_name')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN bank_name TEXT;");
+    }
+    if (!profileColumns.some(c => c.name === 'bank_account_iban')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN bank_account_iban TEXT;");
+    }
+    if (!profileColumns.some(c => c.name === 'date_of_birth')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN date_of_birth DATE;");
+    }
+    if (!profileColumns.some(c => c.name === 'annual_leave_balance')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN annual_leave_balance REAL DEFAULT 21;");
+    }
+    if (!profileColumns.some(c => c.name === 'sick_leave_balance')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN sick_leave_balance REAL DEFAULT 7;");
     }
     if (!profileColumns.some(c => c.name === 'device_id')) {
       db.exec("ALTER TABLE profiles ADD COLUMN device_id TEXT;");

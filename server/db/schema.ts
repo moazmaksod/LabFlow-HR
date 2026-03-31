@@ -19,11 +19,11 @@ CREATE TABLE IF NOT EXISTS jobs (
     hourly_rate REAL NOT NULL,
     required_hours REAL NOT NULL,
     required_hours_per_week INTEGER,
-    preferred_gender TEXT, -- 'male', 'female', 'any'
-    min_age INTEGER,
-    max_age INTEGER,
     grace_period INTEGER NOT NULL DEFAULT 15, -- In minutes
-    weekly_schedule TEXT, -- JSON stringified schedule array
+    default_annual_leave_days INTEGER DEFAULT 21,
+    default_sick_leave_days INTEGER DEFAULT 7,
+    allow_overtime BOOLEAN DEFAULT 1,
+    employment_type TEXT DEFAULT 'full-time',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -33,19 +33,25 @@ CREATE TABLE IF NOT EXISTS profiles (
     user_id INTEGER NOT NULL UNIQUE,
     job_id INTEGER,
     profile_picture_url TEXT,
-    age INTEGER,
+    date_of_birth DATE,
     gender TEXT,
     weekly_schedule TEXT, -- JSON stringified schedule array
     hourly_rate INTEGER DEFAULT 0,
     lunch_break_minutes INTEGER DEFAULT 0,
     emergency_contact_name TEXT,
     emergency_contact_phone TEXT,
+    emergency_contact_relationship TEXT,
+    full_address TEXT,
+    national_id TEXT,
+    bank_name TEXT,
+    bank_account_iban TEXT,
     bio TEXT,
     personal_phone TEXT,
     legal_name TEXT,
     id_photo_url TEXT,
     hire_date DATE,
-    leave_balance INTEGER DEFAULT 21,
+    annual_leave_balance REAL DEFAULT 21,
+    sick_leave_balance REAL DEFAULT 7,
     device_id TEXT,
     allow_overtime BOOLEAN DEFAULT 0,
     max_overtime_hours REAL DEFAULT 0,
