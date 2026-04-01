@@ -167,7 +167,9 @@ export default function SmartAttendanceCard({
   if (isClockedIn && activeSession && currentStatus === 'away' && activeSession.breaks && Array.isArray(activeSession.breaks)) {
     const openBreak = activeSession.breaks.find((b: any) => !b.end_time);
     if (openBreak) {
-      const openBreakStart = new Date(openBreak.start_time).getTime();
+      // Ensure SQLite timestamp is parsed as UTC to prevent timezone offsets causing massive leaps
+      const startStr = openBreak.start_time.endsWith('Z') ? openBreak.start_time : openBreak.start_time.replace(' ', 'T') + 'Z';
+      const openBreakStart = new Date(startStr).getTime();
       breakMins += (now.getTime() - openBreakStart) / (1000 * 60);
     }
   }
