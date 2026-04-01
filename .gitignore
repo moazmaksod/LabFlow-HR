@@ -38,3 +38,4 @@ mobile/.env*
 # --- User Uploads & Media ---
 public/uploads/*
 !public/uploads/.gitkeep
+*.cjs

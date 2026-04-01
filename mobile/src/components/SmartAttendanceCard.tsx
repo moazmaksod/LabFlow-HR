@@ -164,6 +164,15 @@ export default function SmartAttendanceCard({
   let remainingMins = 0;
   let breakMins = consumedBreakMinutes;
 
+  if (isClockedIn && activeSession && currentStatus === 'away' && activeSession.breaks && Array.isArray(activeSession.breaks)) {
+    const openBreak = activeSession.breaks.find((b: any) => !b.end_time);
+    if (openBreak) {
+      const openBreakStart = new Date(openBreak.start_time).getTime();
+      breakMins += (now.getTime() - openBreakStart) / (1000 * 60);
+    }
+  }
+  breakMins = Math.floor(breakMins);
+
   type SegmentType = 'work' | 'break' | 'missed' | 'remaining';
   const segments: { type: SegmentType, widthPct: number }[] = [];
 
@@ -325,12 +334,14 @@ export default function SmartAttendanceCard({
 
             {/* Break Info */}
             <View style={styles.breakInfoContainer}>
-              {consumedBreakMinutes < lunchBreakMinutes ? (
+              {lunchBreakMinutes - breakMins > 0 ? (
                 <Text style={styles.breakInfoText}>
-                  Remaining Break Time : {lunchBreakMinutes - consumedBreakMinutes} min
+                  Remaining Break Time: {Math.floor(lunchBreakMinutes - breakMins)} min
                 </Text>
               ) : (
-                <Text style={styles.breakWarningText}>Break time exhausted</Text>
+                <Text style={styles.breakWarningText}>
+                  Over Break Limit by: {Math.abs(Math.floor(lunchBreakMinutes - breakMins))} min
+                </Text>
               )}
             </View>
           </>
