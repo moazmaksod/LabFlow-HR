@@ -50,14 +50,14 @@ export default function RegisterScreen({ navigation }: any) {
         />
 
         <View style={styles.row}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.label}>Age</Text>
+          <View style={{ flex: 1.2 }}>
+            <Text style={styles.label}>Date of Birth</Text>
             <TextInput
               style={styles.input}
               value={dateOfBirth}
               onChangeText={setDateOfBirth}
-              placeholder="25"
-              keyboardType="numeric"
+              placeholder="YYYY-MM-DD"
+              keyboardType="default"
             />
           </View>
           <View style={{ flex: 1, marginLeft: 12 }}>
@@ -119,7 +119,7 @@ const styles = StyleSheet.create({
   label: { fontSize: 14, fontWeight: '500', color: '#18181b', marginBottom: -8 },
   input: { borderWidth: 1, borderColor: '#e4e4e7', borderRadius: 8, padding: 12, fontSize: 16, backgroundColor: '#fafafa' },
   genderContainer: { flexDirection: 'row', gap: 8, marginTop: 8 },
-  genderButton: { flex: 1, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#e4e4e7', alignItems: 'center', backgroundColor: '#fafafa' },
+  genderButton: { flex: 1, paddingVertical: 12, paddingHorizontal: 4, borderRadius: 8, borderWidth: 1, borderColor: '#e4e4e7', alignItems: 'center', backgroundColor: '#fafafa' },
   genderButtonActive: { backgroundColor: '#18181b', borderColor: '#18181b' },
   genderButtonText: { fontSize: 14, color: '#18181b', fontWeight: '500' },
   genderButtonTextActive: { color: '#fff' },
