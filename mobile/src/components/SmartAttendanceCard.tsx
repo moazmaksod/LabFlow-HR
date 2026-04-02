@@ -159,6 +159,11 @@ export default function SmartAttendanceCard({
   const shiftDate = shiftStartUtc;
   const startMins = 0; // Everything is relative to start now
 
+  const getMinsFromShiftStart = (dateStr: string | Date) => {
+    const d = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
+    return (d.getTime() - shiftStartUtc.getTime()) / (1000 * 60);
+  };
+
   // Calculations
   let workedMins = 0;
   let remainingMins = 0;
@@ -167,10 +172,9 @@ export default function SmartAttendanceCard({
   if (isClockedIn && activeSession && currentStatus === 'away' && activeSession.breaks && Array.isArray(activeSession.breaks)) {
     const openBreak = activeSession.breaks.find((b: any) => !b.end_time);
     if (openBreak) {
-      // Ensure SQLite timestamp is parsed as UTC to prevent timezone offsets causing massive leaps
-      const startStr = openBreak.start_time.endsWith('Z') ? openBreak.start_time : openBreak.start_time.replace(' ', 'T') + 'Z';
-      const openBreakStart = new Date(startStr).getTime();
-      breakMins += (now.getTime() - openBreakStart) / (1000 * 60);
+      const openBreakStartMins = getMinsFromShiftStart(openBreak.start_time);
+      const currentNowMinsVal = getMinsFromShiftStart(now);
+      breakMins += Math.max(0, currentNowMinsVal - openBreakStartMins);
     }
   }
   breakMins = Math.floor(breakMins);
@@ -185,10 +189,7 @@ export default function SmartAttendanceCard({
     
     remainingMins = Math.max(0, (shiftEndUtc.getTime() - now.getTime()) / (1000 * 60));
 
-    const getMinsFromShiftStart = (dateStr: string | Date) => {
-      const d = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
-      return (d.getTime() - shiftStartUtc.getTime()) / (1000 * 60);
-    };
+
 
     let checkInMins = getMinsFromShiftStart(activeSession.check_in);
     let lastEnd = 0;
