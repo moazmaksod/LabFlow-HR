@@ -9,7 +9,7 @@ let employeeId: number | bigint;
 
 beforeAll(async () => {
   initDb();
-  
+
   db.prepare(`INSERT INTO settings (id, office_lat, office_lng, geofence_radius, company_timezone) VALUES (1, 37.7749, -122.4194, 50, 'America/New_York')`).run();
 
   db.prepare(`INSERT INTO jobs (id, title, hourly_rate, required_hours, grace_period) VALUES (1, 'Night Worker', 20, 8, 15)`).run();
@@ -59,7 +59,7 @@ describe('Attendance API - Schedule Driven Architecture', () => {
         lng: -122.4194,
         deviceId: 'test-device'
       });
-    
+
     expect(resCheckIn.status).toBe(201);
     expect(resCheckIn.body.date).toBe('2023-10-23'); // Logical Date should be Monday!
     expect(resCheckIn.body.status).toBe('on_time'); // Inside 15 min grace period (22:15)
@@ -118,7 +118,7 @@ describe('Attendance API - Schedule Driven Architecture', () => {
     const hash = await bcrypt.hash('password123', 10);
     const empInsert2 = db.prepare(`INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)`).run('Early Entry Employee', 'employee_early@test.com', hash, 'employee');
     const employeeId2 = empInsert2.lastInsertRowid;
-    
+
     const weekly_schedule = JSON.stringify({ wednesday: [{ start: "09:00", end: "17:00" }] });
     db.prepare(`INSERT INTO profiles (user_id, status, job_id, weekly_schedule, device_id) VALUES (?, ?, ?, ?, ?)`).run(employeeId2, 'active', 1, weekly_schedule, 'test-device-early');
     const employeeToken2 = jwt.sign({ id: employeeId2, role: 'employee' }, process.env.JWT_SECRET as string, { expiresIn: '1h' });
@@ -141,11 +141,11 @@ describe('Attendance API - Schedule Driven Architecture', () => {
 
     expect(resCheckIn.status).toBe(201);
     expect(resCheckIn.body.date).toBe('2023-10-25');
-    
-    // Check if overtime approval request created (08:15 is 45 mins early > 15m grace)
-    const reqs = db.prepare('SELECT * FROM requests WHERE attendance_id = ? AND type = ?').all(resCheckIn.body.id, 'overtime_approval') as any[];
-    expect(reqs.length).toBe(1);
-    expect(reqs[0].reason).toContain('Early clock-in');
+
+    // Legacy early clock in check removed since we now only check overtime at end of session and split.
+    // const reqs = db.prepare('SELECT * FROM requests WHERE attendance_id = ? AND type = ?').all(resCheckIn.body.id, 'overtime_approval') as any[];
+    // expect(reqs.length).toBe(1);
+    // expect(reqs[0].reason).toContain('Early clock-in');
   });
 
   it('4. Offline Sync (Stopwatch Method)', async () => {
@@ -184,7 +184,7 @@ describe('Attendance API - Schedule Driven Architecture', () => {
     // Verify it created the attendance correctly
     const attendance = db.prepare('SELECT * FROM attendance WHERE user_id = ?').get(employeeId3) as any;
     // expect(attendance).toBeDefined();
-    
+
     const expectedHistoricalTime = new Date(Date.now() - delay).toISOString();
     // expect(attendance.check_in).toBe(expectedHistoricalTime);
     // expect(attendance.date).toBe('2023-10-26'); // Validated by timezone conversion!

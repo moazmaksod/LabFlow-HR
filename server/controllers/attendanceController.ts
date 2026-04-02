@@ -143,30 +143,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             `);
             const info = insert.run(userId, shiftId, timestamp, logicalDate, lat, lng, status);
-            const newId = info.lastInsertRowid;
-
-            if (isUnscheduled) {
-                db.prepare(`
-                    INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
-                    VALUES (?, 'overtime_approval', ?, ?, 'Unscheduled Check-in', '{}', 'pending')
-                `).run(userId, newId, newId);
-            } else if (otMinutes > 0) {
-                const maxOtMinutes = (userProfile.max_overtime_hours || 0) * 60;
-                const requestedOtMinutes = maxOtMinutes > 0 ? Math.min(otMinutes, maxOtMinutes) : otMinutes;
-
-                db.prepare(`
-                    INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
-                    VALUES (?, 'overtime_approval', ?, ?, ?, ?, 'pending')
-                `).run(
-                    userId,
-                    newId,
-                    newId,
-                    `Early clock-in by ${otMinutes} minutes`,
-                    JSON.stringify({ raw_overtime_minutes: otMinutes, requested_overtime_minutes: requestedOtMinutes })
-                );
-            }
-
-            return newId;
+            return info.lastInsertRowid;
         });
 
         const newId = insertTransaction();
@@ -182,71 +159,140 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
 
         const oldSession = { ...activeSession };
 
-        db.prepare(`
-            UPDATE attendance
-            SET check_out = ?, location_lat = ?, location_lng = ?
-            WHERE id = ?
-        `).run(timestamp, lat, lng, activeSession.id);
-
-        let updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id) as any;
-
         const shiftDetails = getLogicalShiftDetails(schedule, timestamp, timezone, 'check_out', activeSession.check_in);
-        const scheduledTime = shiftDetails.scheduledTime;
         const matchedShift = shiftDetails.shift;
+        const logicalDate = shiftDetails.logicalDate;
 
-        if (!matchedShift) {
-            // Was checked in unscheduled, create another overtime request for the checkout if needed, or it's handled by manager
-        } else if (scheduledTime) {
-            const clockOutTime = new Date(timestamp);
-            const diffMinutes = (clockOutTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
-            let settings = getSettingsCache();
-            if (!settings) {
-                settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
-                setSettingsCache(settings);
+        const clockInTime = new Date(activeSession.check_in);
+        const clockOutTime = new Date(timestamp);
+
+        let requiresSplit = false;
+        let splitSegments: { type: 'unscheduled' | 'official', start: Date, end: Date, status: string }[] = [];
+
+        if (matchedShift) {
+            // Find shift boundaries in UTC based on the logicalDate and shift definition
+            const [year, month, day] = logicalDate.split('-').map(Number);
+            const [startH, startM] = matchedShift.start.split(':').map(Number);
+            const [endH, endM] = matchedShift.end.split(':').map(Number);
+
+            const shiftStart = new Date(Date.UTC(year, month - 1, day, startH, startM, 0));
+            let shiftEnd = new Date(Date.UTC(year, month - 1, day, endH, endM, 0));
+            if (endH < startH || (endH === startH && endM < startM)) {
+                shiftEnd.setUTCDate(shiftEnd.getUTCDate() + 1);
             }
-            const gracePeriod = settings?.late_grace_period !== undefined ? settings.late_grace_period : (userProfile.grace_period || 15);
 
-            if (diffMinutes > gracePeriod) {
-                const otMins = Math.floor(diffMinutes);
-                const maxOtMinutes = (userProfile.max_overtime_hours || 0) * 60;
-                const requestedOtMinutes = maxOtMinutes > 0 ? Math.min(otMins, maxOtMinutes) : otMins;
+            // Convert UTC boundaries back to local logical boundaries dynamically
+            const formatter = new Intl.DateTimeFormat('en-US', {
+                timeZone: timezone,
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', second: '2-digit',
+                hour12: false
+            });
+            const getLocalTimeUTC = (date: Date) => {
+                const parts = formatter.formatToParts(date);
+                const getPart = (t: string) => parts.find(p => p.type === t)?.value || '00';
+                return new Date(Date.UTC(
+                    parseInt(getPart('year')), parseInt(getPart('month')) - 1, parseInt(getPart('day')),
+                    parseInt(getPart('hour')), parseInt(getPart('minute')), parseInt(getPart('second'))
+                ));
+            };
 
-                if (requestedOtMinutes > 0) {
-                    db.prepare(`
-                        INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
-                        VALUES (?, 'overtime_approval', ?, ?, ?, ?, 'pending')
-                    `).run(
-                        userId,
-                        activeSession.id,
-                        activeSession.id,
-                        `System detected ${otMins} minutes of overtime at checkout.`,
-                        JSON.stringify({ raw_overtime_minutes: otMins, requested_overtime_minutes: requestedOtMinutes })
-                    );
+            // Calculate offset to map back accurately if needed, but getLogicalShiftDetails did some of this.
+            // A simpler approach for the split boundaries:
+            let startGuessUTC = new Date(Date.UTC(year, month - 1, day, startH, startM, 0));
+            for (let i = 0; i < 4; i++) {
+                const gLocal = getLocalTimeUTC(startGuessUTC);
+                const diff = shiftStart.getTime() - gLocal.getTime();
+                startGuessUTC.setTime(startGuessUTC.getTime() + diff);
+            }
+            const exactShiftStart = startGuessUTC;
+
+            let endGuessUTC = new Date(Date.UTC(year, month - 1, day, endH, endM, 0));
+            if (endH < startH || (endH === startH && endM < startM)) endGuessUTC.setUTCDate(endGuessUTC.getUTCDate() + 1);
+            for (let i = 0; i < 4; i++) {
+                const gLocal = getLocalTimeUTC(endGuessUTC);
+                const diff = shiftEnd.getTime() - gLocal.getTime();
+                endGuessUTC.setTime(endGuessUTC.getTime() + diff);
+            }
+            const exactShiftEnd = endGuessUTC;
+
+            if (clockInTime < exactShiftStart && clockOutTime > exactShiftStart) {
+                requiresSplit = true;
+                splitSegments.push({ type: 'unscheduled', start: clockInTime, end: exactShiftStart, status: 'unscheduled' });
+
+                if (clockOutTime > exactShiftEnd) {
+                    splitSegments.push({ type: 'official', start: exactShiftStart, end: exactShiftEnd, status: activeSession.status });
+                    splitSegments.push({ type: 'unscheduled', start: exactShiftEnd, end: clockOutTime, status: 'unscheduled' });
+                } else {
+                    splitSegments.push({ type: 'official', start: exactShiftStart, end: clockOutTime, status: activeSession.status });
                 }
-            } else if (diffMinutes < -gracePeriod) {
-                const earlyMinutes = Math.floor(Math.abs(diffMinutes));
-
-                db.prepare(`
-                    UPDATE attendance
-                    SET status = CASE WHEN status = 'on_time' THEN 'early_out' ELSE status END
-                    WHERE id = ?
-                `).run(activeSession.id);
-
-                updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id) as any;
-
-                db.prepare(`
-                    INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
-                    VALUES (?, 'early_leave_approval', ?, ?, ?, ?, 'pending')
-                `).run(
-                    userId,
-                    activeSession.id,
-                    activeSession.id,
-                    `System detected early leave by ${earlyMinutes} minutes.`,
-                    JSON.stringify({ early_leave_minutes: earlyMinutes, missing_minutes: earlyMinutes })
-                );
+            } else if (clockInTime >= exactShiftStart && clockInTime < exactShiftEnd && clockOutTime > exactShiftEnd) {
+                requiresSplit = true;
+                splitSegments.push({ type: 'official', start: clockInTime, end: exactShiftEnd, status: activeSession.status });
+                splitSegments.push({ type: 'unscheduled', start: exactShiftEnd, end: clockOutTime, status: 'unscheduled' });
             }
         }
 
+        const outTransaction = db.transaction(() => {
+            if (requiresSplit) {
+                // Delete original session to replace it with splits to maintain clean IDs and boundaries
+                db.prepare('DELETE FROM attendance WHERE id = ?').run(activeSession.id);
+
+                const splitRecords = [];
+                for (const seg of splitSegments) {
+                    let segShiftId = null;
+                    if (seg.type === 'official' && matchedShift) {
+                        const cleanDate = logicalDate.replace(/-/g, '');
+                        const cleanStart = matchedShift.start.replace(/:/g, '');
+                        const cleanEnd = matchedShift.end.replace(/:/g, '');
+                        segShiftId = `${cleanDate}${cleanStart}${cleanEnd}`;
+                    } else {
+                        const cleanDate = logicalDate.replace(/-/g, '');
+                        const form = new Intl.DateTimeFormat('en-US', { timeZone: timezone, hour: '2-digit', hour12: false });
+                        const currentHour = parseInt(form.format(seg.start));
+                        const period = Math.floor(currentHour / 3);
+                        segShiftId = `unscheduled_${cleanDate}_P${period}`;
+                    }
+
+                    const ins = db.prepare(`
+                        INSERT INTO attendance (user_id, shift_id, check_in, check_out, date, location_lat, location_lng, status, current_status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'working')
+                    `);
+                    const inf = ins.run(userId, segShiftId, seg.start.toISOString(), seg.end.toISOString(), logicalDate, lat, lng, seg.status);
+                    const newSegId = inf.lastInsertRowid;
+                    splitRecords.push(db.prepare('SELECT * FROM attendance WHERE id = ?').get(newSegId));
+
+                    if (seg.type === 'unscheduled') {
+                        db.prepare(`
+                            INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
+                            VALUES (?, 'overtime_approval', ?, ?, 'Auto-generated overtime from unscheduled session', '{}', 'pending')
+                        `).run(userId, newSegId, newSegId);
+                    }
+                }
+                return splitRecords[splitRecords.length - 1]; // Return the last segment as updated record
+            } else {
+                db.prepare(`
+                    UPDATE attendance
+                    SET check_out = ?, location_lat = ?, location_lng = ?
+                    WHERE id = ?
+                `).run(timestamp, lat, lng, activeSession.id);
+
+                if (activeSession.status === 'unscheduled') {
+                    // It was always unscheduled, generate request now
+                    const existingReq = db.prepare('SELECT id FROM requests WHERE attendance_id = ? AND type = "overtime_approval"').get(activeSession.id);
+                    if (!existingReq) {
+                        db.prepare(`
+                            INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
+                            VALUES (?, 'overtime_approval', ?, ?, 'Auto-generated overtime from unscheduled session', '{}', 'pending')
+                        `).run(userId, activeSession.id, activeSession.id);
+                    }
+                }
+
+                return db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id);
+            }
+        });
+
+        const updatedRecord = outTransaction();
         logAudit('attendance', activeSession.id, 'UPDATE', userId, oldSession, updatedRecord);
         return { status: 200, data: updatedRecord };
     }
