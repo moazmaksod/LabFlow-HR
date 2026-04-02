@@ -159,240 +159,25 @@ export default function SmartAttendanceCard({
   const shiftDate = shiftStartUtc;
   const startMins = 0; // Everything is relative to start now
 
-  // Calculations (Absolute Time Approach)
-  let workedMins = 0;
-  let remainingMins = 0;
-  let breakMins = 0;
-
-  type SegmentType = 'work' | 'break' | 'missed' | 'remaining';
-  const segments: { type: SegmentType, widthPct: number }[] = [];
-
-  if (isClockedIn && activeSession) {
-    const checkInStr = activeSession.check_in.endsWith('Z') ? activeSession.check_in : activeSession.check_in.replace(' ', 'T') + 'Z';
-    const checkInDate = new Date(checkInStr);
-    const totalElapsed = Math.max(0, (now.getTime() - checkInDate.getTime()) / (1000 * 60));
-
-    // Calculate absolute total breaks from scratch
-    if (activeSession.breaks && Array.isArray(activeSession.breaks)) {
-      activeSession.breaks.forEach((b: any) => {
-        const breakStartStr = b.start_time.endsWith('Z') ? b.start_time : b.start_time.replace(' ', 'T') + 'Z';
-        const start = new Date(breakStartStr).getTime();
-
-        let end = now.getTime();
-        if (b.end_time) {
-          const breakEndStr = b.end_time.endsWith('Z') ? b.end_time : b.end_time.replace(' ', 'T') + 'Z';
-          end = new Date(breakEndStr).getTime();
-        }
-
-        const duration = Math.max(0, (end - start) / (1000 * 60));
-        breakMins += duration;
-      });
-    }
-
-    workedMins = Math.max(0, totalElapsed - breakMins);
-    remainingMins = Math.max(0, (shiftEndUtc.getTime() - now.getTime()) / (1000 * 60));
-
-    // Absolute Simple Timeline Segments
-    const missedMinsBeforeCheckIn = Math.max(0, (checkInDate.getTime() - shiftStartUtc.getTime()) / (1000 * 60));
-
-    if (missedMinsBeforeCheckIn > 0) {
-      segments.push({ type: 'missed', widthPct: Math.min(100, (missedMinsBeforeCheckIn / totalMins) * 100) });
-    }
-
-    if (workedMins > 0) {
-      segments.push({ type: 'work', widthPct: Math.min(100, (workedMins / totalMins) * 100) });
-    }
-
-    if (breakMins > 0) {
-      segments.push({ type: 'break', widthPct: Math.min(100, (breakMins / totalMins) * 100) });
-    }
-
-    const totalRendered = missedMinsBeforeCheckIn + workedMins + breakMins;
-    if (totalRendered < totalMins) {
-      segments.push({ type: 'remaining', widthPct: Math.max(0, ((totalMins - totalRendered) / totalMins) * 100) });
-    }
-
-  } else {
-    // Not clocked in
-    if (now.getTime() > shiftEndUtc.getTime()) {
-      segments.push({ type: 'missed', widthPct: 100 });
-    } else if (now.getTime() > shiftStartUtc.getTime()) {
-      const missedWidth = currentNowMins;
-      segments.push({ type: 'missed', widthPct: (missedWidth / totalMins) * 100 });
-      segments.push({ type: 'remaining', widthPct: ((totalMins - missedWidth) / totalMins) * 100 });
-    } else {
-      segments.push({ type: 'remaining', widthPct: 100 });
-    }
-    remainingMins = totalMins;
-  }
-
-  breakMins = Math.floor(breakMins);
-  workedMins = Math.floor(workedMins);
-  remainingMins = Math.floor(remainingMins);ct, useRef } from 'react';
-import { View, Text, StyleSheet, Dimensions, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { Clock, Calendar, Play, Pause, AlertCircle } from 'lucide-react-native';
-import { useAttendanceStore } from '../store/useAttendanceStore';
-import { useNetworkStore } from '../store/useNetworkStore';
-
-interface SmartAttendanceCardProps {
-  currentShift: any | null;
-  currentStatus: 'working' | 'away' | 'none';
-  consumedBreakMinutes: number;
-  loading: boolean;
-  handleClock: (type: 'check_in' | 'check_out') => void;
-  handleStepAway: () => void;
-  handleResumeWork: () => void;
-  lunchBreakMinutes: number;
-}
-
-const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-
-const timeToMinutes = (timeStr: string) => {
-  if (!timeStr) return 0;
-  const [h, m] = timeStr.split(':').map(Number);
-  return h * 60 + m;
-};
-
-const formatDuration = (mins: number) => {
-  if (mins <= 0) return '0h 0m';
-  const h = Math.floor(mins / 60);
-  const m = Math.floor(mins % 60);
-  return `${h}h ${m}m`;
-};
-
-const formatTime = (timeStr: string) => {
-  if (!timeStr) return '';
-  const [h, m] = timeStr.split(':').map(Number);
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  const h12 = h % 12 || 12;
-  return `${h12}:${m.toString().padStart(2, '0')} ${ampm}`;
-};
-
-export default function SmartAttendanceCard({
-  currentShift,
-  currentStatus,
-  consumedBreakMinutes,
-  loading,
-  handleClock,
-  handleStepAway,
-  handleResumeWork,
-  lunchBreakMinutes
-}: SmartAttendanceCardProps) {
-  const activeSession = useAttendanceStore((state) => state.activeSession);
-  const serverTimeOffset = useNetworkStore((state) => state.serverTimeOffset);
-  const lastLocalSyncTime = useNetworkStore((state) => state.lastLocalSyncTime);
-
-  const shadowTimeRef = useRef(Date.now() + serverTimeOffset);
-  const [now, setNow] = useState(new Date(shadowTimeRef.current));
-  const [isTampered, setIsTampered] = useState(false);
-
-  useEffect(() => {
-    // Re-sync shadow ref when dependency updates (e.g. app wakes up and syncs)
-    shadowTimeRef.current = Date.now() + serverTimeOffset;
-
-    const interval = setInterval(() => {
-      // A) The Shadow Tick
-      shadowTimeRef.current += 1000;
-      setNow(new Date(shadowTimeRef.current));
-
-      // B) The Drift Check
-      const expectedOsTime = Date.now() + serverTimeOffset;
-      if (Math.abs(expectedOsTime - shadowTimeRef.current) > 60000 || Date.now() < lastLocalSyncTime) {
-        setIsTampered(true);
-      } else {
-        setIsTampered(false);
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [serverTimeOffset, lastLocalSyncTime]);
-
-  const todayShift = currentShift;
-  const isClockedIn = currentStatus === 'working' || currentStatus === 'away';
-
-  if (!todayShift) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.timelineCard}>
-          <View style={styles.timelineHeader}>
-            <View>
-              <Text style={styles.timelineTitle}>No Shift Today</Text>
-              <Text style={styles.timelineSubtitle}>Enjoy your day off!</Text>
-            </View>
-            <View style={[styles.statusBadge, styles.statusNone]}>
-              <Text style={[styles.statusText, styles.statusTextNone]}>Off Duty</Text>
-            </View>
-          </View>
-          <View style={styles.buttonRow}>
-          {isTampered ? (
-            <View style={styles.tamperContainer}>
-              <AlertCircle color="#ef4444" size={24} style={{ marginBottom: 8 }} />
-              <Text style={styles.tamperTitle}>Device Time Out of Sync</Text>
-              <Text style={styles.tamperText}>
-                Please set your phone's Date & Time to 'Automatic' to log attendance.
-              </Text>
-            </View>
-          ) : !isClockedIn ? (
-            <TouchableOpacity
-              style={[styles.clockButton, styles.clockInButton, loading && styles.disabledButton]}
-              onPress={() => handleClock('check_in')}
-              disabled={loading}
-            >
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Clock In</Text>}
-            </TouchableOpacity>
-          ) : (
-            <>
-              {currentStatus === 'working' ? (
-                <TouchableOpacity
-                  style={[styles.clockButton, styles.stepAwayButton, loading && styles.disabledButton]}
-                  onPress={handleStepAway}
-                  disabled={loading}
-                >
-                  <Pause color="#fff" size={20} style={{ marginRight: 8 }} />
-                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Step Away</Text>}
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  style={[styles.clockButton, styles.resumeButton, loading && styles.disabledButton]}
-                  onPress={handleResumeWork}
-                  disabled={loading}
-                >
-                  <Play color="#fff" size={20} style={{ marginRight: 8 }} />
-                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Resume Work</Text>}
-                </TouchableOpacity>
-              )}
-
-              <TouchableOpacity
-                style={[styles.clockButton, styles.clockOutButton, loading && styles.disabledButton]}
-                onPress={() => handleClock('check_out')}
-                disabled={loading}
-              >
-                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Clock Out</Text>}
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-        </View>
-      </View>
-    );
-  }
-
-
-
-
-  const shiftStartUtc = new Date(todayShift.start_utc);
-  const shiftEndUtc = new Date(todayShift.end_utc);
-  const totalMins = (shiftEndUtc.getTime() - shiftStartUtc.getTime()) / (1000 * 60);
-  const currentNowMins = (now.getTime() - shiftStartUtc.getTime()) / (1000 * 60);
-
-  const dayDiff = now.getDate() !== shiftStartUtc.getDate() ? 1 : 0; // Simplified for display logic
-  const shiftDate = shiftStartUtc;
-  const startMins = 0; // Everything is relative to start now
+  const getMinsFromShiftStart = (dateStr: string | Date) => {
+    const d = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
+    return (d.getTime() - shiftStartUtc.getTime()) / (1000 * 60);
+  };
 
   // Calculations
   let workedMins = 0;
   let remainingMins = 0;
   let breakMins = consumedBreakMinutes;
+
+  if (isClockedIn && activeSession && currentStatus === 'away' && activeSession.breaks && Array.isArray(activeSession.breaks)) {
+    const openBreak = activeSession.breaks.find((b: any) => !b.end_time);
+    if (openBreak) {
+      const openBreakStartMins = getMinsFromShiftStart(openBreak.start_time);
+      const currentNowMinsVal = getMinsFromShiftStart(now);
+      breakMins += Math.max(0, currentNowMinsVal - openBreakStartMins);
+    }
+  }
+  breakMins = Math.floor(breakMins);
 
   type SegmentType = 'work' | 'break' | 'missed' | 'remaining';
   const segments: { type: SegmentType, widthPct: number }[] = [];
@@ -404,10 +189,7 @@ export default function SmartAttendanceCard({
     
     remainingMins = Math.max(0, (shiftEndUtc.getTime() - now.getTime()) / (1000 * 60));
 
-    const getMinsFromShiftStart = (dateStr: string | Date) => {
-      const d = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
-      return (d.getTime() - shiftStartUtc.getTime()) / (1000 * 60);
-    };
+
 
     let checkInMins = getMinsFromShiftStart(activeSession.check_in);
     let lastEnd = 0;
