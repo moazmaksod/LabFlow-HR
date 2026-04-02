@@ -147,109 +147,86 @@ export default function SmartAttendanceCard({
     );
   }
 
+  // --- 1. إعداد الثوابت الزمنية المطلقة ---
+  const currentNowMs = now.getTime(); 
+  const shiftStartMs = new Date(todayShift.start_utc).getTime();
+  const shiftEndMs = new Date(todayShift.end_utc).getTime();
+  const totalShiftMins = (shiftEndMs - shiftStartMs) / 60000;
+  const shiftDate = new Date(shiftStartMs); 
 
-
-
-  const shiftStartUtc = new Date(todayShift.start_utc);
-  const shiftEndUtc = new Date(todayShift.end_utc);
-  const totalMins = (shiftEndUtc.getTime() - shiftStartUtc.getTime()) / (1000 * 60);
-  const currentNowMins = (now.getTime() - shiftStartUtc.getTime()) / (1000 * 60);
-
-  const dayDiff = now.getDate() !== shiftStartUtc.getDate() ? 1 : 0; // Simplified for display logic
-  const shiftDate = shiftStartUtc;
-  const startMins = 0; // Everything is relative to start now
-
-  const getMinsFromShiftStart = (dateStr: string | Date) => {
-    const d = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
-    return (d.getTime() - shiftStartUtc.getTime()) / (1000 * 60);
-  };
-
-  // Calculations
-  let workedMins = 0;
-  let remainingMins = 0;
-  let breakMins = consumedBreakMinutes;
-
-  if (isClockedIn && activeSession && currentStatus === 'away' && activeSession.breaks && Array.isArray(activeSession.breaks)) {
+  // --- 2. حساب الاستراحات (الرقم الإجمالي للعدادات) ---
+  const baseBreakMins = consumedBreakMinutes;
+  let liveBreakMins = 0;
+  if (isClockedIn && currentStatus === 'away' && activeSession?.breaks) {
     const openBreak = activeSession.breaks.find((b: any) => !b.end_time);
     if (openBreak) {
-      const openBreakStartMins = getMinsFromShiftStart(openBreak.start_time);
-      const currentNowMinsVal = getMinsFromShiftStart(now);
-      breakMins += Math.max(0, currentNowMinsVal - openBreakStartMins);
+      const startStr = openBreak.start_time.endsWith('Z') ? openBreak.start_time : openBreak.start_time.replace(' ', 'T') + 'Z';
+      liveBreakMins = Math.max(0, (currentNowMs - new Date(startStr).getTime()) / 60000);
     }
   }
-  breakMins = Math.floor(breakMins);
+  const breakMins = Math.floor(baseBreakMins + liveBreakMins);
 
+  // --- 3. بناء التايملان الموزع (Distributed Timeline) ---
+  let workedMins = 0;
+  let remainingMins = 0;
   type SegmentType = 'work' | 'break' | 'missed' | 'remaining';
   const segments: { type: SegmentType, widthPct: number }[] = [];
 
   if (isClockedIn && activeSession) {
-    const checkInDate = new Date(activeSession.check_in);
-    const totalElapsed = (now.getTime() - checkInDate.getTime()) / (1000 * 60);
-    workedMins = Math.max(0, totalElapsed - breakMins);
+    const checkInStr = activeSession.check_in.endsWith('Z') ? activeSession.check_in : activeSession.check_in.replace(' ', 'T') + 'Z';
+    const checkInMs = new Date(checkInStr).getTime();
     
-    remainingMins = Math.max(0, (shiftEndUtc.getTime() - now.getTime()) / (1000 * 60));
+    // أ) حساب الدقائق الإجمالية للعدادات
+    workedMins = Math.max(0, Math.floor(((currentNowMs - checkInMs) / 60000) - breakMins));
+    remainingMins = Math.max(0, Math.floor((shiftEndMs - currentNowMs) / 60000));
 
+    // ب) رسم التايملان الموزع
+    let lastPointMs = shiftStartMs;
 
-
-    let checkInMins = getMinsFromShiftStart(activeSession.check_in);
-    let lastEnd = 0;
-
-    // If clocked in late, add a missed segment
-    if (checkInMins > 0) {
-      const missedWidth = Math.min(checkInMins, totalMins);
-      segments.push({ type: 'missed', widthPct: (missedWidth / totalMins) * 100 });
-      lastEnd = missedWidth;
-    } else if (checkInMins < 0) {
-      // Clocked in early, start from 0 for the timeline
-      checkInMins = 0;
+    // 1. إضافة قطعة التأخير (Missed)
+    if (checkInMs > shiftStartMs) {
+      segments.push({ type: 'missed', widthPct: ((checkInMs - shiftStartMs) / (totalShiftMins * 60000)) * 100 });
+      lastPointMs = checkInMs;
     }
 
+    // 2. توزيع الاستراحات والعمل
     if (activeSession.breaks && Array.isArray(activeSession.breaks)) {
       activeSession.breaks.forEach((b: any) => {
-        const breakStartMins = Math.max(0, getMinsFromShiftStart(b.start_time));
-        const breakEndMins = b.end_time ? Math.max(0, getMinsFromShiftStart(b.end_time)) : Math.max(0, getMinsFromShiftStart(now));
+        const bStartStr = b.start_time.endsWith('Z') ? b.start_time : b.start_time.replace(' ', 'T') + 'Z';
+        const bEndStr = b.end_time ? (b.end_time.endsWith('Z') ? b.end_time : b.end_time.replace(' ', 'T') + 'Z') : null;
+        
+        const bStartMs = new Date(bStartStr).getTime();
+        const bEndMs = bEndStr ? new Date(bEndStr).getTime() : currentNowMs;
 
-        // Add work segment before break
-        if (breakStartMins > lastEnd) {
-          const workWidth = Math.min(breakStartMins - lastEnd, totalMins - lastEnd);
-          if (workWidth > 0) {
-            segments.push({ type: 'work', widthPct: (workWidth / totalMins) * 100 });
-          }
+        // إضافة قطعة عمل قبل هذه الاستراحة
+        if (bStartMs > lastPointMs) {
+          segments.push({ type: 'work', widthPct: ((bStartMs - lastPointMs) / (totalShiftMins * 60000)) * 100 });
         }
-        
-        // Add break segment
-        const breakWidth = Math.min(breakEndMins - Math.max(lastEnd, breakStartMins), totalMins - Math.max(lastEnd, breakStartMins));
-        if (breakWidth > 0) {
-          segments.push({ type: 'break', widthPct: (breakWidth / totalMins) * 100 });
-        }
-        
-        lastEnd = Math.max(lastEnd, breakEndMins);
+
+        // إضافة قطعة الاستراحة نفسها
+        segments.push({ type: 'break', widthPct: ((bEndMs - bStartMs) / (totalShiftMins * 60000)) * 100 });
+        lastPointMs = bEndMs;
       });
     }
 
-    // Add final work segment if currently working
-    const nowMinsFromStart = Math.max(0, getMinsFromShiftStart(now));
-    if (currentStatus === 'working' && nowMinsFromStart > lastEnd) {
-      const workWidth = Math.min(nowMinsFromStart - lastEnd, totalMins - lastEnd);
-      if (workWidth > 0) {
-        segments.push({ type: 'work', widthPct: (workWidth / totalMins) * 100 });
-      }
-      lastEnd = Math.max(lastEnd, nowMinsFromStart);
+    // 3. إضافة آخر قطعة عمل جارية
+    if (currentStatus === 'working' && currentNowMs > lastPointMs) {
+      segments.push({ type: 'work', widthPct: ((currentNowMs - lastPointMs) / (totalShiftMins * 60000)) * 100 });
+      lastPointMs = currentNowMs;
     }
 
-    // Add remaining segment
-    if (lastEnd < totalMins) {
-      segments.push({ type: 'remaining', widthPct: ((totalMins - lastEnd) / totalMins) * 100 });
+    // 4. إضافة الوقت المتبقي (Remaining)
+    if (shiftEndMs > lastPointMs) {
+      segments.push({ type: 'remaining', widthPct: ((shiftEndMs - lastPointMs) / (totalShiftMins * 60000)) * 100 });
     }
   } else {
-    remainingMins = totalMins;
+    remainingMins = Math.floor(totalShiftMins);
     segments.push({ type: 'remaining', widthPct: 100 });
   }
 
-  // "Now" indicator position
-  let nowPct = (currentNowMins / totalMins) * 100;
-  if (nowPct < 0) nowPct = 0;
-  if (nowPct > 100) nowPct = 100;
+  let nowPct = Math.min(100, Math.max(0, ((currentNowMs - shiftStartMs) / (shiftEndMs - shiftStartMs)) * 100));
+
+
 
   return (
     <View style={styles.container}>
