@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS profiles (
 CREATE TABLE IF NOT EXISTS attendance (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
+    shift_id TEXT,
     check_in DATETIME NOT NULL,
     check_out DATETIME,
     date DATE NOT NULL,

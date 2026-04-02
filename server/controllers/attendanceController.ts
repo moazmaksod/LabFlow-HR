@@ -32,8 +32,26 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
         const scheduledTime = shiftDetails.scheduledTime;
         const matchedShift = shiftDetails.shift;
 
+        let shiftId = null;
+        if (matchedShift) {
+            const cleanDate = logicalDate.replace(/-/g, '');
+            const cleanStart = matchedShift.start.replace(/:/g, '');
+            const cleanEnd = matchedShift.end.replace(/:/g, '');
+            shiftId = `${cleanDate}${cleanStart}${cleanEnd}`;
+        } else {
+            const cleanDate = logicalDate.replace(/-/g, '');
+            const formatter = new Intl.DateTimeFormat('en-US', {
+                timeZone: timezone,
+                hour: '2-digit',
+                hour12: false
+            });
+            const currentHour = parseInt(formatter.format(new Date(timestamp)));
+            const period = Math.floor(currentHour / 3);
+            shiftId = `unscheduled_${cleanDate}_P${period}`;
+        }
+
         // Re-entry logic: Is there already a closed attendance for this user and logical date?
-        const existingAttendance = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ? ORDER BY check_in DESC LIMIT 1').get(userId, logicalDate) as any;
+        const existingAttendance = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ? AND shift_id = ? ORDER BY check_in DESC LIMIT 1').get(userId, logicalDate, shiftId) as any;
 
         if (existingAttendance) {
             if (!existingAttendance.check_out) {
@@ -121,10 +139,10 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
 
         const insertTransaction = db.transaction(() => {
             const insert = db.prepare(`
-                INSERT INTO attendance (user_id, check_in, date, location_lat, location_lng, status)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO attendance (user_id, shift_id, check_in, date, location_lat, location_lng, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             `);
-            const info = insert.run(userId, timestamp, logicalDate, lat, lng, status);
+            const info = insert.run(userId, shiftId, timestamp, logicalDate, lat, lng, status);
             const newId = info.lastInsertRowid;
 
             if (isUnscheduled) {

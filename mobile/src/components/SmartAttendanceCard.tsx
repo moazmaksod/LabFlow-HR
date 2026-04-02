@@ -147,75 +147,60 @@ export default function SmartAttendanceCard({
     );
   }
 
-  // --- 1. إعداد الثوابت الزمنية المطلقة ---
   const currentNowMs = now.getTime(); 
   const shiftStartMs = new Date(todayShift.start_utc).getTime();
   const shiftEndMs = new Date(todayShift.end_utc).getTime();
   const totalShiftMins = (shiftEndMs - shiftStartMs) / 60000;
   const shiftDate = new Date(shiftStartMs); 
 
-  // --- 2. حساب الاستراحات (الرقم الإجمالي للعدادات) ---
-  const baseBreakMins = consumedBreakMinutes;
-  let liveBreakMins = 0;
-  if (isClockedIn && currentStatus === 'away' && activeSession?.breaks) {
-    const openBreak = activeSession.breaks.find((b: any) => !b.end_time);
-    if (openBreak) {
-      const startStr = openBreak.start_time.endsWith('Z') ? openBreak.start_time : openBreak.start_time.replace(' ', 'T') + 'Z';
-      liveBreakMins = Math.max(0, (currentNowMs - new Date(startStr).getTime()) / 60000);
-    }
+  let totalSessionBreaksMs = 0;
+  if (isClockedIn && activeSession?.breaks) {
+    activeSession.breaks.forEach((b: any) => {
+      const bStart = new Date(b.start_time.replace(' ', 'T') + (b.start_time.endsWith('Z') ? '' : 'Z')).getTime();
+      const bEnd = b.end_time
+        ? new Date(b.end_time.replace(' ', 'T') + (b.end_time.endsWith('Z') ? '' : 'Z')).getTime()
+        : currentNowMs;
+      totalSessionBreaksMs += Math.max(0, bEnd - bStart);
+    });
   }
-  const breakMins = Math.floor(baseBreakMins + liveBreakMins);
+  const breakMins = Math.floor(totalSessionBreaksMs / 60000);
 
-  // --- 3. بناء التايملان الموزع (Distributed Timeline) ---
   let workedMins = 0;
   let remainingMins = 0;
   type SegmentType = 'work' | 'break' | 'missed' | 'remaining';
   const segments: { type: SegmentType, widthPct: number }[] = [];
 
   if (isClockedIn && activeSession) {
-    const checkInStr = activeSession.check_in.endsWith('Z') ? activeSession.check_in : activeSession.check_in.replace(' ', 'T') + 'Z';
-    const checkInMs = new Date(checkInStr).getTime();
-    
-    // أ) حساب الدقائق الإجمالية للعدادات
+    const checkInMs = new Date(activeSession.check_in.replace(' ', 'T') + (activeSession.check_in.endsWith('Z') ? '' : 'Z')).getTime();
     workedMins = Math.max(0, Math.floor(((currentNowMs - checkInMs) / 60000) - breakMins));
     remainingMins = Math.max(0, Math.floor((shiftEndMs - currentNowMs) / 60000));
 
-    // ب) رسم التايملان الموزع
     let lastPointMs = shiftStartMs;
-
-    // 1. إضافة قطعة التأخير (Missed)
     if (checkInMs > shiftStartMs) {
       segments.push({ type: 'missed', widthPct: ((checkInMs - shiftStartMs) / (totalShiftMins * 60000)) * 100 });
       lastPointMs = checkInMs;
     }
 
-    // 2. توزيع الاستراحات والعمل
-    if (activeSession.breaks && Array.isArray(activeSession.breaks)) {
+    if (activeSession.breaks) {
       activeSession.breaks.forEach((b: any) => {
-        const bStartStr = b.start_time.endsWith('Z') ? b.start_time : b.start_time.replace(' ', 'T') + 'Z';
-        const bEndStr = b.end_time ? (b.end_time.endsWith('Z') ? b.end_time : b.end_time.replace(' ', 'T') + 'Z') : null;
-        
-        const bStartMs = new Date(bStartStr).getTime();
-        const bEndMs = bEndStr ? new Date(bEndStr).getTime() : currentNowMs;
+        const bStartMs = new Date(b.start_time.replace(' ', 'T') + (b.start_time.endsWith('Z') ? '' : 'Z')).getTime();
+        const bEndMs = b.end_time
+          ? new Date(b.end_time.replace(' ', 'T') + (b.end_time.endsWith('Z') ? '' : 'Z')).getTime()
+          : currentNowMs;
 
-        // إضافة قطعة عمل قبل هذه الاستراحة
         if (bStartMs > lastPointMs) {
           segments.push({ type: 'work', widthPct: ((bStartMs - lastPointMs) / (totalShiftMins * 60000)) * 100 });
         }
-
-        // إضافة قطعة الاستراحة نفسها
         segments.push({ type: 'break', widthPct: ((bEndMs - bStartMs) / (totalShiftMins * 60000)) * 100 });
         lastPointMs = bEndMs;
       });
     }
 
-    // 3. إضافة آخر قطعة عمل جارية
     if (currentStatus === 'working' && currentNowMs > lastPointMs) {
       segments.push({ type: 'work', widthPct: ((currentNowMs - lastPointMs) / (totalShiftMins * 60000)) * 100 });
       lastPointMs = currentNowMs;
     }
 
-    // 4. إضافة الوقت المتبقي (Remaining)
     if (shiftEndMs > lastPointMs) {
       segments.push({ type: 'remaining', widthPct: ((shiftEndMs - lastPointMs) / (totalShiftMins * 60000)) * 100 });
     }
