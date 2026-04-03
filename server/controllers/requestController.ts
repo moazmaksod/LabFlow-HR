@@ -54,18 +54,20 @@ export const getRequests = (req: AuthRequest, res: Response): void => {
 
         if (user.role === 'manager') {
             requests = db.prepare(`
-                SELECT r.*, u.name as user_name, a.date as attendance_date, a.check_in as original_check_in, a.check_out as original_check_out
+            SELECT r.*, u.name as user_name, a.date as attendance_date, a.check_in as original_check_in, a.check_out as original_check_out, si.end_time as interruption_end_time
                 FROM requests r
                 JOIN users u ON r.user_id = u.id
                 LEFT JOIN attendance a ON r.attendance_id = a.id
+            LEFT JOIN shift_interruptions si ON r.reference_id = si.id AND r.type = 'permission_to_leave'
                 ORDER BY r.created_at DESC
             `).all();
         } else {
             requests = db.prepare(`
-                SELECT r.*, u.name as user_name, a.date as attendance_date, a.check_in as original_check_in, a.check_out as original_check_out
+                SELECT r.*, u.name as user_name, a.date as attendance_date, a.check_in as original_check_in, a.check_out as original_check_out, si.end_time as interruption_end_time
                 FROM requests r
                 JOIN users u ON r.user_id = u.id
                 LEFT JOIN attendance a ON r.attendance_id = a.id
+                LEFT JOIN shift_interruptions si ON r.reference_id = si.id AND r.type = 'permission_to_leave'
                 WHERE r.user_id = ?
                 ORDER BY r.created_at DESC
             `).all(user.id);

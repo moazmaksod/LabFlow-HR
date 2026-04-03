@@ -215,6 +215,10 @@ export function initDb() {
     if (!finalAttendanceColumns.some(c => c.name === 'paid_permission_minutes')) {
       db.exec("ALTER TABLE attendance ADD COLUMN paid_permission_minutes INTEGER DEFAULT 0;");
     }
+    if (!finalAttendanceColumns.find(c => c.name === 'shift_id')) {
+      db.exec("ALTER TABLE attendance ADD COLUMN shift_id TEXT;");
+    }
+    db.exec("CREATE INDEX IF NOT EXISTS idx_attendance_shift_id ON attendance(shift_id);");
 
     if (!isTestEnv) {
       console.log('Database schema initialized successfully.');

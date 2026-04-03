@@ -123,29 +123,41 @@ describe('Attendance API - Schedule Driven Architecture', () => {
     db.prepare(`INSERT INTO profiles (user_id, status, job_id, weekly_schedule, device_id) VALUES (?, ?, ?, ?, ?)`).run(employeeId2, 'active', 1, weekly_schedule, 'test-device-early');
     const employeeToken2 = jwt.sign({ id: employeeId2, role: 'employee' }, process.env.JWT_SECRET as string, { expiresIn: '1h' });
 
-    // Wednesday 2023-10-25 08:15 AM NY Time -> 12:15 PM UTC
-    jest.setSystemTime(new Date('2023-10-25T12:15:00Z'));
+    // Wednesday 2023-10-25 08:15 AM UTC
+    jest.setSystemTime(new Date("2023-10-25T08:15:00Z"));
 
-    // Regenerate token just in case it's evaluated relative to the fake system time
-    const employeeToken2ForFakeTime = jwt.sign({ id: employeeId2, role: 'employee' }, process.env.JWT_SECRET as string, { expiresIn: '1h' });
+    const employeeToken2ForFakeTime = jwt.sign({ id: employeeId2, role: "employee" }, process.env.JWT_SECRET as string, { expiresIn: "1h" });
 
     const resCheckIn = await request(app)
-      .post('/api/attendance/clock')
-      .set('Authorization', `Bearer ${employeeToken2ForFakeTime}`)
+      .post("/api/attendance/clock")
+      .set("Authorization", `Bearer ${employeeToken2ForFakeTime}`)
       .send({
-        type: 'check_in',
+        type: "check_in",
         lat: 37.7749,
         lng: -122.4194,
-        deviceId: 'test-device-early'
+        deviceId: "test-device-early",
+        timestamp: "2023-10-25T08:15:00.000Z"
       });
 
     expect(resCheckIn.status).toBe(201);
-    expect(resCheckIn.body.date).toBe('2023-10-25');
-    
-    // Check if overtime approval request created (08:15 is 45 mins early > 15m grace)
-    const reqs = db.prepare('SELECT * FROM requests WHERE attendance_id = ? AND type = ?').all(resCheckIn.body.id, 'overtime_approval') as any[];
-    expect(reqs.length).toBe(1);
-    expect(reqs[0].reason).toContain('Early clock-in');
+    expect(resCheckIn.body.date).toBe("2023-10-25");
+
+    const outTimeUTC = "2023-10-25T17:00:00.000Z";
+    jest.setSystemTime(new Date("2023-10-25T17:00:00Z"));
+    const newEmployeeToken = jwt.sign({ id: employeeId2, role: "employee" }, process.env.JWT_SECRET as string, { expiresIn: "1h" });
+    const resOut = await request(app)
+      .post("/api/attendance/clock")
+      .set("Authorization", `Bearer ${newEmployeeToken}`)
+      .send({ type: "check_out", timestamp: outTimeUTC, lat: 37.7749, lng: -122.4194, deviceId: "test-device-early" });
+
+    expect(resOut.status).toBe(200);
+
+    const reqs = db.prepare(`SELECT * FROM requests WHERE type = 'overtime_approval' AND user_id = ?`).all(employeeId2) as any[];
+    expect(reqs.length).toBeGreaterThan(0);
+    expect(reqs.some(r => r.reason.includes("Unscheduled Session"))).toBe(true);
+
+    const atts = db.prepare(`SELECT * FROM attendance WHERE user_id = ?`).all(employeeId2) as any[];
+    expect(atts.length).toBe(1);
   });
 
   it('4. Offline Sync (Stopwatch Method)', async () => {

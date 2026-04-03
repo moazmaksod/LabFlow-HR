@@ -1,5 +1,33 @@
 import { getDateStringInTimezone } from './dateUtils.js';
 
+export const generateShiftId = (
+    shift: any,
+    logicalDateStr: string,
+    isUnscheduled: boolean,
+    timestamp: string,
+    timezone: string
+) => {
+    if (isUnscheduled) {
+        const dateStr = getDateStringInTimezone(timestamp, timezone).replace(/-/g, '');
+        // Get the hour in the given timezone (0-23)
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: timezone,
+            hour: '2-digit',
+            hour12: false
+        });
+        const hourStr = formatter.format(new Date(timestamp));
+        const hour = parseInt(hourStr, 10);
+        // Calculate the 3-hour period (P1 = 00-02, P2 = 03-05, etc.)
+        const period = Math.floor(hour / 3) + 1;
+        return `unscheduled_${dateStr}_P${period}`;
+    } else {
+        const dateStr = logicalDateStr.replace(/-/g, '');
+        const startStr = shift.start.replace(':', '');
+        const endStr = shift.end.replace(':', '');
+        return `${dateStr}_${startStr}_${endStr}`;
+    }
+};
+
 export const getLogicalShiftDetails = (
     schedule: any,
     timestamp: string,

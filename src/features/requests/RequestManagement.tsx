@@ -10,6 +10,9 @@ interface RequestLog {
   type: string | null;
   requested_check_in: string | null;
   requested_check_out: string | null;
+  original_check_in?: string | null;
+  original_check_out?: string | null;
+  interruption_end_time?: string | null;
   status: string;
   created_at: string;
   details?: string;
@@ -102,8 +105,30 @@ export default function RequestManagement() {
     setApprovedMinutes(0);
   };
 
+  let isFrozen = false;
+  let frozenTooltip = '';
+
+  if (selectedRequest && selectedRequest.status === 'pending') {
+    if (selectedRequest.type === 'overtime_approval') {
+        const hasClockedOut = !!selectedRequest.original_check_out || !!selectedRequest.requested_check_out;
+        let hoursPassed = 0;
+        if (selectedRequest.original_check_in) {
+            hoursPassed = (Date.now() - new Date(selectedRequest.original_check_in).getTime()) / (1000 * 60 * 60);
+        }
+        if (!hasClockedOut || hoursPassed < 3) {
+            isFrozen = true;
+            frozenTooltip = "Wait for 3 hours and Clock-out to finalize.";
+        }
+    } else if (selectedRequest.type === 'permission_to_leave') {
+        if (!selectedRequest.interruption_end_time) {
+            isFrozen = true;
+            frozenTooltip = "Wait for the employee to Resume work.";
+        }
+    }
+  }
+
   const handleApprove = () => {
-    if (!selectedRequest) return;
+    if (!selectedRequest || isFrozen) return;
     if (!managerNote.trim()) {
       setError("A manager note is mandatory to approve or reject this request.");
       return;
@@ -119,7 +144,7 @@ export default function RequestManagement() {
   };
 
   const handleReject = () => {
-    if (!selectedRequest) return;
+    if (!selectedRequest || isFrozen) return;
     if (!managerNote.trim()) {
       setError("A manager note is mandatory to approve or reject this request.");
       return;
@@ -397,19 +422,20 @@ export default function RequestManagement() {
                   </div>
                 )}
                 
-                <div className="flex gap-3">
+                <div className="flex gap-3" title={isFrozen ? frozenTooltip : undefined}>
                   {!isRejecting ? (
                     <>
                       <button 
                         onClick={() => setIsRejecting(true)}
-                        className="flex-1 px-4 py-3 bg-destructive/10 text-destructive font-bold rounded-xl hover:bg-destructive/20 transition-all flex items-center justify-center gap-2"
+                        disabled={isFrozen}
+                        className="flex-1 px-4 py-3 bg-destructive/10 text-destructive font-bold rounded-xl hover:bg-destructive/20 transition-all flex items-center justify-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed"
                       >
                         <XCircle className="w-5 h-5" /> Reject
                       </button>
                       <button 
                         onClick={handleApprove}
-                        disabled={updateStatusMutation.isPending || !managerNote.trim()}
-                        className="flex-1 px-4 py-3 bg-primary text-primary-foreground font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2 disabled:opacity-30 disabled:grayscale"
+                        disabled={updateStatusMutation.isPending || !managerNote.trim() || isFrozen}
+                        className="flex-1 px-4 py-3 bg-primary text-primary-foreground font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2 disabled:opacity-30 disabled:grayscale disabled:cursor-not-allowed"
                       >
                         <CheckCircle className="w-5 h-5" /> Approve
                       </button>
@@ -424,8 +450,8 @@ export default function RequestManagement() {
                       </button>
                       <button 
                         onClick={handleReject}
-                        disabled={updateStatusMutation.isPending || !managerNote.trim()}
-                        className="flex-1 px-4 py-3 bg-destructive text-white font-bold rounded-xl hover:bg-destructive/90 shadow-lg shadow-destructive/20 transition-all flex items-center justify-center gap-2 disabled:opacity-30"
+                        disabled={updateStatusMutation.isPending || !managerNote.trim() || isFrozen}
+                        className="flex-1 px-4 py-3 bg-destructive text-white font-bold rounded-xl hover:bg-destructive/90 shadow-lg shadow-destructive/20 transition-all flex items-center justify-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed"
                       >
                         <XCircle className="w-5 h-5" /> Confirm Rejection
                       </button>

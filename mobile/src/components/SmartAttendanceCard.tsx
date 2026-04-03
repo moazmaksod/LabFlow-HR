@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Dimensions, TouchableOpacity, ActivityIndicator
 import { Clock, Calendar, Play, Pause, AlertCircle } from 'lucide-react-native';
 import { useAttendanceStore } from '../store/useAttendanceStore';
 import { useNetworkStore } from '../store/useNetworkStore';
+import { formatDuration } from '../lib/utils';
 
 interface SmartAttendanceCardProps {
   currentShift: any | null;
@@ -21,13 +22,6 @@ const timeToMinutes = (timeStr: string) => {
   if (!timeStr) return 0;
   const [h, m] = timeStr.split(':').map(Number);
   return h * 60 + m;
-};
-
-const formatDuration = (mins: number) => {
-  if (mins <= 0) return '0h 0m';
-  const h = Math.floor(mins / 60);
-  const m = Math.floor(mins % 60);
-  return `${h}h ${m}m`;
 };
 
 const formatTime = (timeStr: string) => {
@@ -169,23 +163,32 @@ export default function SmartAttendanceCard({
   // --- 3. بناء التايملان الموزع (Distributed Timeline) ---
   let workedMins = 0;
   let remainingMins = 0;
-  type SegmentType = 'work' | 'break' | 'missed' | 'remaining';
+  type SegmentType = 'work' | 'break' | 'missed' | 'remaining' | 'overtime';
   const segments: { type: SegmentType, widthPct: number }[] = [];
 
+  // Determine timeline scaling bounds
+  let checkInMs = shiftStartMs;
   if (isClockedIn && activeSession) {
-    const checkInStr = activeSession.check_in.endsWith('Z') ? activeSession.check_in : activeSession.check_in.replace(' ', 'T') + 'Z';
-    const checkInMs = new Date(checkInStr).getTime();
-    
+      const checkInStr = activeSession.check_in.endsWith('Z') ? activeSession.check_in : activeSession.check_in.replace(' ', 'T') + 'Z';
+      checkInMs = new Date(checkInStr).getTime();
+  }
+
+  const timelineStartMs = Math.min(shiftStartMs, checkInMs);
+  // Expand timeline past end time dynamically
+  const timelineEndMs = Math.max(shiftEndMs, currentNowMs);
+  const timelineTotalMins = (timelineEndMs - timelineStartMs) / 60000;
+
+  if (isClockedIn && activeSession) {
     // أ) حساب الدقائق الإجمالية للعدادات
     workedMins = Math.max(0, Math.floor(((currentNowMs - checkInMs) / 60000) - breakMins));
     remainingMins = Math.max(0, Math.floor((shiftEndMs - currentNowMs) / 60000));
 
     // ب) رسم التايملان الموزع
-    let lastPointMs = shiftStartMs;
+    let lastPointMs = timelineStartMs;
 
     // 1. إضافة قطعة التأخير (Missed)
     if (checkInMs > shiftStartMs) {
-      segments.push({ type: 'missed', widthPct: ((checkInMs - shiftStartMs) / (totalShiftMins * 60000)) * 100 });
+      segments.push({ type: 'missed', widthPct: ((checkInMs - shiftStartMs) / (timelineTotalMins * 60000)) * 100 });
       lastPointMs = checkInMs;
     }
 
@@ -200,31 +203,56 @@ export default function SmartAttendanceCard({
 
         // إضافة قطعة عمل قبل هذه الاستراحة
         if (bStartMs > lastPointMs) {
-          segments.push({ type: 'work', widthPct: ((bStartMs - lastPointMs) / (totalShiftMins * 60000)) * 100 });
+          if (lastPointMs < shiftEndMs && bStartMs > shiftEndMs) {
+            segments.push({ type: 'work', widthPct: ((shiftEndMs - lastPointMs) / (timelineTotalMins * 60000)) * 100 });
+            segments.push({ type: 'overtime', widthPct: ((bStartMs - shiftEndMs) / (timelineTotalMins * 60000)) * 100 });
+          } else {
+            const type = lastPointMs >= shiftEndMs ? 'overtime' : 'work';
+            segments.push({ type, widthPct: ((bStartMs - lastPointMs) / (timelineTotalMins * 60000)) * 100 });
+          }
         }
 
         // إضافة قطعة الاستراحة نفسها
-        segments.push({ type: 'break', widthPct: ((bEndMs - bStartMs) / (totalShiftMins * 60000)) * 100 });
+        segments.push({ type: 'break', widthPct: ((bEndMs - bStartMs) / (timelineTotalMins * 60000)) * 100 });
         lastPointMs = bEndMs;
       });
     }
 
     // 3. إضافة آخر قطعة عمل جارية
     if (currentStatus === 'working' && currentNowMs > lastPointMs) {
-      segments.push({ type: 'work', widthPct: ((currentNowMs - lastPointMs) / (totalShiftMins * 60000)) * 100 });
+      if (lastPointMs < shiftEndMs && currentNowMs > shiftEndMs) {
+        segments.push({ type: 'work', widthPct: ((shiftEndMs - lastPointMs) / (timelineTotalMins * 60000)) * 100 });
+        segments.push({ type: 'overtime', widthPct: ((currentNowMs - shiftEndMs) / (timelineTotalMins * 60000)) * 100 });
+      } else {
+        const type = lastPointMs >= shiftEndMs ? 'overtime' : 'work';
+        segments.push({ type, widthPct: ((currentNowMs - lastPointMs) / (timelineTotalMins * 60000)) * 100 });
+      }
       lastPointMs = currentNowMs;
     }
 
     // 4. إضافة الوقت المتبقي (Remaining)
     if (shiftEndMs > lastPointMs) {
-      segments.push({ type: 'remaining', widthPct: ((shiftEndMs - lastPointMs) / (totalShiftMins * 60000)) * 100 });
+      segments.push({ type: 'remaining', widthPct: ((shiftEndMs - lastPointMs) / (timelineTotalMins * 60000)) * 100 });
     }
   } else {
     remainingMins = Math.floor(totalShiftMins);
     segments.push({ type: 'remaining', widthPct: 100 });
   }
 
-  let nowPct = Math.min(100, Math.max(0, ((currentNowMs - shiftStartMs) / (shiftEndMs - shiftStartMs)) * 100));
+  let nowPct = Math.min(100, Math.max(0, ((currentNowMs - timelineStartMs) / (timelineEndMs - timelineStartMs)) * 100));
+
+  const isUnscheduledSession = activeSession?.status === 'unscheduled';
+  const showShiftTransitionButton = isUnscheduledSession && currentNowMs >= shiftStartMs && currentNowMs <= shiftEndMs;
+
+  const startMarkerPct = ((shiftStartMs - timelineStartMs) / (timelineEndMs - timelineStartMs)) * 100;
+  const endMarkerPct = ((shiftEndMs - timelineStartMs) / (timelineEndMs - timelineStartMs)) * 100;
+
+  const handleShiftTransition = async () => {
+      await handleClock('check_out');
+      setTimeout(() => {
+          handleClock('check_in');
+      }, 1000);
+  };
 
 
 
@@ -264,6 +292,7 @@ export default function SmartAttendanceCard({
                   else if (seg.type === 'break') segStyle = styles.segmentBreak;
                   else if (seg.type === 'missed') segStyle = styles.segmentMissed;
                   else if (seg.type === 'remaining') segStyle = styles.segmentRemaining;
+                  else if (seg.type === 'overtime') segStyle = styles.segmentOvertime;
 
                   return (
                     <View 
@@ -273,6 +302,14 @@ export default function SmartAttendanceCard({
                   );
                 })}
               </View>
+
+              {/* Visual Shift Markers */}
+              {timelineStartMs < shiftStartMs && (
+                  <View style={[styles.shiftMarker, { left: `${startMarkerPct}%` }]} />
+              )}
+              {timelineEndMs > shiftEndMs && (
+                  <View style={[styles.shiftMarker, { left: `${endMarkerPct}%` }]} />
+              )}
               
               {/* "Now" Indicator */}
               <View style={[styles.nowIndicator, { left: `${nowPct}%` }]}>
@@ -282,9 +319,15 @@ export default function SmartAttendanceCard({
             </View>
 
             {/* Timeline Labels */}
-            <View style={styles.timelineLabels}>
-              <Text style={styles.timelineLabelText}>{formatTime(todayShift.start)}</Text>
-              <Text style={styles.timelineLabelText}>{formatTime(todayShift.end)}</Text>
+            <View style={[styles.timelineLabels, { position: 'relative', height: 20 }]}>
+              {timelineStartMs < shiftStartMs && (
+                  <Text style={[styles.timelineLabelText, { position: 'absolute', left: 0 }]}>{formatTime(new Date(timelineStartMs).toTimeString().substring(0, 5))}</Text>
+              )}
+              <Text style={[styles.timelineLabelText, { position: 'absolute', left: `${startMarkerPct}%`, transform: [{ translateX: -15 }] }]}>{formatTime(todayShift.start)}</Text>
+              <Text style={[styles.timelineLabelText, { position: 'absolute', left: `${endMarkerPct}%`, transform: [{ translateX: -15 }] }]}>{formatTime(todayShift.end)}</Text>
+              {timelineEndMs > shiftEndMs && (
+                  <Text style={[styles.timelineLabelText, { position: 'absolute', right: 0 }]}>{formatTime(new Date(timelineEndMs).toTimeString().substring(0, 5))}</Text>
+              )}
             </View>
 
             {/* Stats Row */}
@@ -340,6 +383,14 @@ export default function SmartAttendanceCard({
                 Please set your phone's Date & Time to 'Automatic' to log attendance.
               </Text>
             </View>
+          ) : showShiftTransitionButton ? (
+            <TouchableOpacity
+              style={[styles.clockButton, styles.shiftTransitionButton, loading && styles.disabledButton]}
+              onPress={handleShiftTransition}
+              disabled={loading}
+            >
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Official Shift Started - Switch Now</Text>}
+            </TouchableOpacity>
           ) : !isClockedIn ? (
             <TouchableOpacity 
               style={[styles.clockButton, styles.clockInButton, loading && styles.disabledButton]}
@@ -478,6 +529,19 @@ const styles = StyleSheet.create({
   segmentRemaining: {
     backgroundColor: '#e2e8f0',
   },
+  segmentOvertime: {
+    backgroundColor: '#8b5cf6', // Purple for overtime
+  },
+  shiftMarker: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 2,
+    backgroundColor: '#cbd5e1',
+    marginTop: 10,
+    height: 12,
+    zIndex: 5,
+  },
   nowIndicator: {
     position: 'absolute',
     top: 0,
@@ -485,6 +549,7 @@ const styles = StyleSheet.create({
     width: 2,
     marginLeft: -1,
     alignItems: 'center',
+    zIndex: 15,
   },
   nowIndicatorLine: {
     width: 2,
@@ -640,6 +705,9 @@ const styles = StyleSheet.create({
   },
   resumeButton: {
     backgroundColor: '#3b82f6',
+  },
+  shiftTransitionButton: {
+    backgroundColor: '#8b5cf6',
   },
   buttonText: {
     color: '#fff',

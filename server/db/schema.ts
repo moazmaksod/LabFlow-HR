@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS attendance (
     approved_overtime_minutes INTEGER DEFAULT 0,
     is_paid_permission BOOLEAN DEFAULT 0,
     paid_permission_minutes INTEGER DEFAULT 0,
+    shift_id TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -213,6 +214,7 @@ CREATE INDEX IF NOT EXISTS idx_profiles_job_id ON profiles(job_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_user_id ON attendance(user_id);
 CREATE INDEX IF NOT EXISTS idx_requests_user_id ON requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_requests_attendance_id ON requests(attendance_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_shift_id ON attendance(shift_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_shift_interruptions_attendance_id ON shift_interruptions(attendance_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_name, entity_id);
