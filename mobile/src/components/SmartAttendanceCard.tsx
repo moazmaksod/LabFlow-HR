@@ -150,7 +150,17 @@ export default function SmartAttendanceCard({
   const currentNowMs = now.getTime(); 
   const shiftStartMs = new Date(todayShift.start_utc).getTime();
   const shiftEndMs = new Date(todayShift.end_utc).getTime();
-  const totalShiftMins = (shiftEndMs - shiftStartMs) / 60000;
+
+  let checkInMs = shiftStartMs;
+  if (isClockedIn && activeSession?.check_in) {
+    checkInMs = new Date(activeSession.check_in.replace(' ', 'T') + (activeSession.check_in.endsWith('Z') ? '' : 'Z')).getTime();
+  }
+
+  // Adjust timeline bounds: earliest of shiftStart/checkIn to latest of shiftEnd/currentNow
+  const timelineStartMs = Math.min(shiftStartMs, checkInMs);
+  const timelineEndMs = Math.max(shiftEndMs, currentNowMs);
+  const totalTimelineMins = (timelineEndMs - timelineStartMs) / 60000;
+
   const shiftDate = new Date(shiftStartMs); 
 
   let totalSessionBreaksMs = 0;
@@ -167,17 +177,22 @@ export default function SmartAttendanceCard({
 
   let workedMins = 0;
   let remainingMins = 0;
-  type SegmentType = 'work' | 'break' | 'missed' | 'remaining';
+  type SegmentType = 'work' | 'break' | 'missed' | 'remaining' | 'overtime';
   const segments: { type: SegmentType, widthPct: number }[] = [];
 
+  // Calculate positions for Official Start and End Markers
+  const officialStartPct = ((shiftStartMs - timelineStartMs) / (totalTimelineMins * 60000)) * 100;
+  const officialEndPct = ((shiftEndMs - timelineStartMs) / (totalTimelineMins * 60000)) * 100;
+
   if (isClockedIn && activeSession) {
-    const checkInMs = new Date(activeSession.check_in.replace(' ', 'T') + (activeSession.check_in.endsWith('Z') ? '' : 'Z')).getTime();
     workedMins = Math.max(0, Math.floor(((currentNowMs - checkInMs) / 60000) - breakMins));
     remainingMins = Math.max(0, Math.floor((shiftEndMs - currentNowMs) / 60000));
 
-    let lastPointMs = shiftStartMs;
-    if (checkInMs > shiftStartMs) {
-      segments.push({ type: 'missed', widthPct: ((checkInMs - shiftStartMs) / (totalShiftMins * 60000)) * 100 });
+    let lastPointMs = timelineStartMs;
+
+    // Add missed segment if checkIn is after timelineStart (which means checkIn > shiftStart)
+    if (checkInMs > timelineStartMs) {
+      segments.push({ type: 'missed', widthPct: ((checkInMs - timelineStartMs) / (totalTimelineMins * 60000)) * 100 });
       lastPointMs = checkInMs;
     }
 
@@ -189,29 +204,32 @@ export default function SmartAttendanceCard({
           : currentNowMs;
 
         if (bStartMs > lastPointMs) {
-          segments.push({ type: 'work', widthPct: ((bStartMs - lastPointMs) / (totalShiftMins * 60000)) * 100 });
+          // If we are past official shift end, render as 'overtime' visually (optional, mapping to work for now)
+          segments.push({ type: 'work', widthPct: ((bStartMs - lastPointMs) / (totalTimelineMins * 60000)) * 100 });
         }
-        segments.push({ type: 'break', widthPct: ((bEndMs - bStartMs) / (totalShiftMins * 60000)) * 100 });
+        segments.push({ type: 'break', widthPct: ((bEndMs - bStartMs) / (totalTimelineMins * 60000)) * 100 });
         lastPointMs = bEndMs;
       });
     }
 
     if (currentStatus === 'working' && currentNowMs > lastPointMs) {
-      segments.push({ type: 'work', widthPct: ((currentNowMs - lastPointMs) / (totalShiftMins * 60000)) * 100 });
+      segments.push({ type: 'work', widthPct: ((currentNowMs - lastPointMs) / (totalTimelineMins * 60000)) * 100 });
       lastPointMs = currentNowMs;
     }
 
-    if (shiftEndMs > lastPointMs) {
-      segments.push({ type: 'remaining', widthPct: ((shiftEndMs - lastPointMs) / (totalShiftMins * 60000)) * 100 });
+    if (timelineEndMs > lastPointMs) {
+      segments.push({ type: 'remaining', widthPct: ((timelineEndMs - lastPointMs) / (totalTimelineMins * 60000)) * 100 });
     }
   } else {
-    remainingMins = Math.floor(totalShiftMins);
-    segments.push({ type: 'remaining', widthPct: 100 });
+    remainingMins = Math.floor((shiftEndMs - shiftStartMs) / 60000);
+    // Before clock in, timeline is just the shift bounds
+    if (shiftStartMs > timelineStartMs) {
+       segments.push({ type: 'remaining', widthPct: ((shiftStartMs - timelineStartMs) / (totalTimelineMins * 60000)) * 100 });
+    }
+    segments.push({ type: 'remaining', widthPct: ((shiftEndMs - Math.max(timelineStartMs, shiftStartMs)) / (totalTimelineMins * 60000)) * 100 });
   }
 
-  let nowPct = Math.min(100, Math.max(0, ((currentNowMs - shiftStartMs) / (shiftEndMs - shiftStartMs)) * 100));
-
-
+  let nowPct = Math.min(100, Math.max(0, ((currentNowMs - timelineStartMs) / (timelineEndMs - timelineStartMs)) * 100));
 
   return (
     <View style={styles.container}>
@@ -258,6 +276,14 @@ export default function SmartAttendanceCard({
                   );
                 })}
               </View>
+
+              {/* Official Markers */}
+              {officialStartPct > 0 && officialStartPct < 100 && (
+                <View style={[styles.officialMarker, { left: `${officialStartPct}%` }]} />
+              )}
+              {officialEndPct > 0 && officialEndPct < 100 && (
+                <View style={[styles.officialMarker, { left: `${officialEndPct}%` }]} />
+              )}
               
               {/* "Now" Indicator */}
               <View style={[styles.nowIndicator, { left: `${nowPct}%` }]}>
@@ -462,6 +488,14 @@ const styles = StyleSheet.create({
   },
   segmentRemaining: {
     backgroundColor: '#e2e8f0',
+  },
+  officialMarker: {
+    position: 'absolute',
+    top: 10,
+    height: 12,
+    width: 2,
+    backgroundColor: '#0f172a',
+    opacity: 0.3,
   },
   nowIndicator: {
     position: 'absolute',
