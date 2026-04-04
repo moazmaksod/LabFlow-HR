@@ -44,7 +44,7 @@ export default function TimezoneClock() {
           hour12: true
         });
 
-        const dateFormatter = new Intl.DateTimeFormat('en-US', {
+        const dateFormatter = new Intl.DateTimeFormat('en-GB', {
           timeZone: selectedTimezone,
           weekday: 'long',
           day: 'numeric',

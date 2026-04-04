@@ -75,12 +75,13 @@ export default function SmartAttendanceCard({
   const isClockedIn = currentStatus === 'working' || currentStatus === 'away';
 
   if (!todayShift) {
+    let headerTitle = isClockedIn ? 'Active Shift' : 'No Shift';
     return (
       <View style={styles.container}>
         <View style={styles.timelineCard}>
           <View style={styles.timelineHeader}>
             <View>
-              <Text style={styles.timelineTitle}>No Shift Today</Text>
+              <Text style={styles.timelineTitle}>{headerTitle}</Text>
               <Text style={styles.timelineSubtitle}>Enjoy your day off!</Text>
             </View>
             <View style={[styles.statusBadge, styles.statusNone]}>
@@ -102,7 +103,7 @@ export default function SmartAttendanceCard({
               onPress={() => handleClock('check_in')}
               disabled={loading}
             >
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Clock In</Text>}
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Unscheduled Clock In</Text>}
             </TouchableOpacity>
           ) : (
             <>
@@ -147,6 +148,8 @@ export default function SmartAttendanceCard({
   const shiftEndMs = new Date(todayShift.end_utc).getTime();
   const totalShiftMins = (shiftEndMs - shiftStartMs) / 60000;
   const shiftDate = new Date(shiftStartMs); 
+
+  let headerTitle = isClockedIn ? 'Active Shift' : 'Next Shift';
 
   // --- 2. حساب الاستراحات (الرقم الإجمالي للعدادات) ---
   const baseBreakMins = consumedBreakMinutes;
@@ -242,7 +245,7 @@ export default function SmartAttendanceCard({
   let nowPct = Math.min(100, Math.max(0, ((currentNowMs - timelineStartMs) / (timelineEndMs - timelineStartMs)) * 100));
 
   const isUnscheduledSession = activeSession?.status === 'unscheduled';
-  const showShiftTransitionButton = isUnscheduledSession && currentNowMs >= shiftStartMs && currentNowMs <= shiftEndMs;
+  const showShiftTransitionButton = !!todayShift && isUnscheduledSession && currentNowMs >= shiftStartMs && currentNowMs <= shiftEndMs;
 
   const startMarkerPct = ((shiftStartMs - timelineStartMs) / (timelineEndMs - timelineStartMs)) * 100;
   const endMarkerPct = ((shiftEndMs - timelineStartMs) / (timelineEndMs - timelineStartMs)) * 100;
@@ -262,7 +265,7 @@ export default function SmartAttendanceCard({
         <View style={styles.timelineHeader}>
           <View>
             <Text style={styles.timelineTitle}>
-              {isClockedIn ? 'Active Shift' : 'Target Shift'}
+              {headerTitle}
             </Text>
             <Text style={styles.timelineSubtitle}>
               {shiftDate.toLocaleDateString('en-GB', { 

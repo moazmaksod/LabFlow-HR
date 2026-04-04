@@ -288,7 +288,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
 
             db.prepare(`
                 UPDATE attendance
-                SET check_in = ?, check_out = ?, location_lat = ?, location_lng = ?, status = ?, shift_id = COALESCE(shift_id, ?)
+                SET check_in = ?, check_out = ?, location_lat = ?, location_lng = ?, status = ?, shift_id = ?
                 WHERE id = ?
             `).run(newCheckInStr, newCheckOutStr, lat, lng, officialStatus, officialShiftId, activeSession.id);
 
