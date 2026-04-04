@@ -69,14 +69,14 @@ export default function TimezoneClock() {
   const [timeStr, dateStr] = time.includes('\n') ? time.split('\n') : [time, ''];
 
   return (
-    <div className="flex flex-col px-3 py-1.5 rounded-md bg-muted/50 text-sm font-medium text-muted-foreground border border-border">
+    <div className="flex flex-col px-3 py-1.5 rounded-md bg-muted/50 text-sm font-medium text-muted-foreground border border-border items-center justify-center">
       <div className="flex items-center gap-2">
         <Clock className="w-4 h-4" />
         <span>{timeStr}</span>
         <span className="text-xs opacity-70 ml-1">({settings?.company_timezone || 'UTC'})</span>
       </div>
       {dateStr && (
-        <span className="text-xs opacity-80 mt-1 ml-6">{dateStr}</span>
+        <span className="text-xs opacity-80 mt-0.5">{dateStr}</span>
       )}
     </div>
   );
