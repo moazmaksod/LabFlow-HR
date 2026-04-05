@@ -5,6 +5,7 @@ import { logAudit } from '../services/auditService.js';
 import fs from 'fs';
 import path from 'path';
 import { getLogicalShiftDetails } from '../utils/shiftUtils.js';
+import { generateShiftInstances } from '../services/shiftInstanceService.js';
 
 let cachedTz: string | null = null;
 let tzExpiry = 0;
@@ -28,7 +29,7 @@ export const getUsers = (req: Request, res: Response): void => {
         const users = db.prepare(`
             SELECT
                 u.id, u.name, u.email, u.role, u.created_at,
-                p.status, p.job_id, p.weekly_schedule, p.device_id,
+                p.status, p.job_id, p.device_id,
                 j.title as job_title,
                 (SELECT current_status FROM attendance a WHERE a.user_id = u.id AND a.check_out IS NULL ORDER BY a.check_in DESC LIMIT 1) as raw_current_status,
                 (SELECT date FROM attendance a WHERE a.user_id = u.id AND a.check_out IS NULL ORDER BY a.check_in DESC LIMIT 1) as current_attendance_date
@@ -41,26 +42,20 @@ export const getUsers = (req: Request, res: Response): void => {
 
         // Refine current_status strictly based on the schedule
         users.forEach(user => {
-            let schedule = null;
-            if (user.weekly_schedule) {
-                try {
-                    schedule = JSON.parse(user.weekly_schedule);
-                } catch (e) {
-                    console.error('Error parsing weekly schedule:', e);
-                }
-            }
-
-            // Remove weekly_schedule from payload as it's large and unnecessary here
-            delete user.weekly_schedule;
-
             if (user.raw_current_status) {
-                // We only consider the status valid if the logic date matches the current shift date
-                const shiftDetails = getLogicalShiftDetails(schedule, currentServerTime, timezone, 'check_in');
+                // Fetch the current active logical shift for the user
+                const currentShift = db.prepare(`
+                    SELECT logical_date
+                    FROM shift_instances
+                    WHERE user_id = ?
+                      AND ? BETWEEN start_time AND end_time
+                    LIMIT 1
+                `).get(user.id, currentServerTime) as any;
 
                 // If the user's open attendance record date matches the current logical shift date,
                 // or if there is no scheduled shift at all but they are working, we show their status.
                 // Otherwise, the open shift is stale.
-                if (user.current_attendance_date === shiftDetails.logicalDate || !shiftDetails.shift) {
+                if (user.current_attendance_date === currentShift?.logical_date || !currentShift) {
                     user.current_status = user.raw_current_status;
                 } else {
                     user.current_status = null;
@@ -189,37 +184,34 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
         const timezone = getCachedTimezone();
         const currentServerTime = new Date().toISOString();
 
-        let parsedSchedule = null;
-        try {
-            if (user.weekly_schedule) {
-                parsedSchedule = JSON.parse(user.weekly_schedule);
-            }
-        } catch (e) {
-            console.error('Error parsing weekly_schedule', e);
-        }
-
-        const shiftDetails = getLogicalShiftDetails(parsedSchedule, currentServerTime, timezone, 'check_in');
+        const currentShiftRecord = db.prepare(`
+            SELECT * FROM shift_instances
+            WHERE user_id = ?
+              AND ? <= end_time
+            ORDER BY start_time ASC
+            LIMIT 1
+        `).get(userId, currentServerTime) as any;
 
         let current_shift = null;
-        if (shiftDetails.shift && shiftDetails.scheduledTime) {
-            const shiftStartUtc = shiftDetails.scheduledTime.toISOString();
-
-            // Calculate end time
-            const [startH, startM] = shiftDetails.shift.start.split(':').map(Number);
-            const [endH, endM] = shiftDetails.shift.end.split(':').map(Number);
-            let durationMins = (endH * 60 + endM) - (startH * 60 + startM);
-            if (durationMins < 0) durationMins += 24 * 60; // night shift
-
-            const shiftEndUtc = new Date(shiftDetails.scheduledTime.getTime() + durationMins * 60 * 1000).toISOString();
+        if (currentShiftRecord) {
+            // Need to calculate local start/end times based on the timezone for the response payload
+            const formatter = new Intl.DateTimeFormat('en-US', {
+                timeZone: timezone,
+                hour: '2-digit', minute: '2-digit',
+                hour12: false
+            });
+            const startLocal = formatter.format(new Date(currentShiftRecord.start_time));
+            const endLocal = formatter.format(new Date(currentShiftRecord.end_time));
 
             current_shift = {
-                start: shiftDetails.shift.start,
-                end: shiftDetails.shift.end,
-                date: shiftDetails.logicalDate,
-                start_utc: shiftStartUtc,
-                end_utc: shiftEndUtc
+                start: startLocal,
+                end: endLocal,
+                date: currentShiftRecord.logical_date,
+                start_utc: currentShiftRecord.start_time,
+                end_utc: currentShiftRecord.end_time
             };
         }
+
         user.current_shift = current_shift;
         user.next_shift = null; // We don't need next_shift anymore, current_shift handles the nearest shift
 
@@ -314,6 +306,13 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
         });
 
         updateTransaction();
+
+        // Trigger shift generation if weekly_schedule was provided
+        if (body.weekly_schedule !== undefined) {
+            const timezone = getCachedTimezone();
+            const schedStr = typeof body.weekly_schedule === 'string' ? body.weekly_schedule : JSON.stringify(body.weekly_schedule);
+            generateShiftInstances(Number(id), schedStr, timezone);
+        }
 
         const updatedUser = db.prepare(`
             SELECT

@@ -22,16 +22,31 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
     return R * c;
 };
 
-// getClosestShift has been moved and refactored as getLogicalShiftDetails in shiftUtils.ts
-export { getLogicalShiftDetails } from '../utils/shiftUtils.js';
-import { generateShiftId } from '../utils/shiftUtils.js';
+import { getDateStringInTimezone } from '../utils/dateUtils.js';
 
 function processAttendanceEvent(userId: number, type: string, timestamp: string, lat: number, lng: number, userProfile: any, timezone: string, schedule: any) {
     if (type === 'check_in') {
-        const shiftDetails = getLogicalShiftDetails(schedule, timestamp, timezone, 'check_in');
-        const logicalDate = shiftDetails.logicalDate;
-        const scheduledTime = shiftDetails.scheduledTime;
-        const matchedShift = shiftDetails.shift;
+        let settings = getSettingsCache();
+        if (!settings) {
+            settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+            setSettingsCache(settings);
+        }
+        const gracePeriod = settings?.late_grace_period !== undefined ? settings.late_grace_period : (userProfile.grace_period || 15);
+
+        // Find the applicable shift instance for this check-in
+        const shiftInstance = db.prepare(`
+            SELECT * FROM shift_instances
+            WHERE user_id = ?
+              AND ? BETWEEN datetime(start_time, '-' || ? || ' minutes') AND end_time
+            ORDER BY start_time ASC
+            LIMIT 1
+        `).get(userId, timestamp, gracePeriod) as any;
+
+        const logicalDate = shiftInstance ? shiftInstance.logical_date : getDateStringInTimezone(timestamp, timezone);
+        const scheduledTime = shiftInstance ? new Date(shiftInstance.start_time) : null;
+
+        // Generate an unscheduled ID if there's no shift instance
+        const shiftId = shiftInstance ? shiftInstance.id.toString() : `unscheduled_${logicalDate.replace(/-/g, '')}_${new Date(timestamp).getTime()}`;
 
         // Re-entry logic: Is there already a closed attendance for this user and logical date?
         const existingAttendance = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ? ORDER BY check_in DESC LIMIT 1').get(userId, logicalDate) as any;
@@ -99,14 +114,8 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
 
         // Pure Schedule-Driven Logic:
         const clockInTime = new Date(timestamp);
-        let settings = getSettingsCache();
-        if (!settings) {
-            settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
-            setSettingsCache(settings);
-        }
-        const gracePeriod = settings?.late_grace_period !== undefined ? settings.late_grace_period : (userProfile.grace_period || 15);
 
-        if (!matchedShift || !scheduledTime) {
+        if (!shiftInstance || !scheduledTime) {
             status = 'unscheduled';
             isUnscheduled = true;
         } else {
@@ -119,8 +128,6 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                 otMinutes = Math.floor(Math.abs(diffMinutes));
             }
         }
-
-        const shiftId = generateShiftId(matchedShift, logicalDate, isUnscheduled, timestamp, timezone);
 
         const insertTransaction = db.transaction(() => {
             const insert = db.prepare(`
@@ -181,8 +188,19 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
         const checkInTime = new Date(activeSession.check_in);
 
         // Retrospective splitting: evaluate session against official shift boundaries
-        const shiftDetails = getLogicalShiftDetails(schedule, timestamp, timezone, 'check_out', activeSession.check_in);
-        const shiftStart = shiftDetails.scheduledTime ? new Date(shiftDetails.scheduledTime) : null;
+        // Look up the shift instance that matches the check-in time
+        const shiftInstance = db.prepare(`
+            SELECT * FROM shift_instances
+            WHERE user_id = ?
+              AND ? <= end_time
+            ORDER BY start_time ASC
+            LIMIT 1
+        `).get(userId, activeSession.check_in) as any;
+
+        const shiftStart = shiftInstance ? new Date(shiftInstance.start_time) : null;
+        const shiftEnd = shiftInstance ? new Date(shiftInstance.end_time) : null;
+        const logicalDate = shiftInstance ? shiftInstance.logical_date : getDateStringInTimezone(timestamp, timezone);
+
         let settings = getSettingsCache();
         if (!settings) {
             settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
@@ -194,7 +212,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
 
         const updateTransaction = db.transaction(() => {
             // Case 1: Pure Unscheduled Session (No official shift)
-            if (!shiftStart || !shiftDetails.shift) {
+            if (!shiftStart || !shiftEnd || !shiftInstance) {
                 db.prepare(`
                     UPDATE attendance
                     SET check_out = ?, location_lat = ?, location_lng = ?
@@ -213,12 +231,6 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             }
 
             // Case 2: Session overlaps with an official shift
-
-            // To get shiftEnd accurately, we must use `getLogicalShiftDetails` which correctly applies timezone conversions.
-            // We can trick it by providing a timestamp that is slightly after the shift start, but using actionType='check_out'.
-            // Because check_out logic fetches the end time of the current shift.
-            const endShiftDetails = getLogicalShiftDetails(schedule, shiftStart.toISOString(), timezone, 'check_out', shiftStart.toISOString());
-            const shiftEnd = endShiftDetails.scheduledTime ? new Date(endShiftDetails.scheduledTime) : new Date(shiftStart.getTime() + 8 * 60 * 60 * 1000); // fallback to 8 hours
 
             let earlySegmentStart: Date | null = null;
             let earlySegmentEnd: Date | null = null;
@@ -261,8 +273,8 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             let newCheckInStr = officialSegmentStart.toISOString();
             let newCheckOutStr = officialSegmentEnd.toISOString();
 
-            // Generate official shift_id if not present
-            const officialShiftId = generateShiftId(shiftDetails.shift, shiftDetails.logicalDate, false, newCheckInStr, timezone);
+            // The official shift_id is just the shift_instances id
+            const officialShiftId = shiftInstance.id.toString();
 
             let officialStatus = activeSession.status;
             if (officialStatus === 'unscheduled') {
@@ -298,7 +310,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             if (earlySegmentStart && earlySegmentEnd) {
                 const earlyMins = Math.floor((earlySegmentEnd.getTime() - earlySegmentStart.getTime()) / 60000);
                 if (earlyMins > 0) {
-                    const earlyShiftId = generateShiftId(null, shiftDetails.logicalDate, true, earlySegmentStart.toISOString(), timezone);
+                    const earlyShiftId = `unscheduled_${logicalDate.replace(/-/g, '')}_${earlySegmentStart.getTime()}`;
                     const insertEarly = db.prepare(`
                         INSERT INTO attendance (user_id, check_in, check_out, date, location_lat, location_lng, status, shift_id)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -316,7 +328,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             if (lateSegmentStart && lateSegmentEnd) {
                 const lateMins = Math.floor((lateSegmentEnd.getTime() - lateSegmentStart.getTime()) / 60000);
                 if (lateMins > 0) {
-                    const lateShiftId = generateShiftId(null, shiftDetails.logicalDate, true, lateSegmentStart.toISOString(), timezone);
+                    const lateShiftId = `unscheduled_${logicalDate.replace(/-/g, '')}_${lateSegmentStart.getTime()}`;
                     const insertLate = db.prepare(`
                         INSERT INTO attendance (user_id, check_in, check_out, date, location_lat, location_lng, status, shift_id)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)

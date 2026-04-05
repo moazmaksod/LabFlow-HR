@@ -196,6 +196,16 @@ CREATE TABLE IF NOT EXISTS payroll_transactions (
     FOREIGN KEY (payroll_id) REFERENCES payrolls(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS shift_instances (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    start_time DATETIME NOT NULL,
+    end_time DATETIME NOT NULL,
+    logical_date DATE NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('Scheduled', 'Completed', 'Cancelled')) DEFAULT 'Scheduled',
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS audit_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     entity_name TEXT NOT NULL,
@@ -218,6 +228,8 @@ CREATE INDEX IF NOT EXISTS idx_attendance_shift_id ON attendance(shift_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_shift_interruptions_attendance_id ON shift_interruptions(attendance_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_name, entity_id);
+CREATE INDEX IF NOT EXISTS idx_shift_instances_user_id ON shift_instances(user_id);
+CREATE INDEX IF NOT EXISTS idx_shift_instances_status ON shift_instances(status);
 
 -- Triggers for updated_at (with safety condition to prevent infinite loops)
 CREATE TRIGGER IF NOT EXISTS update_users_updated_at AFTER UPDATE ON users

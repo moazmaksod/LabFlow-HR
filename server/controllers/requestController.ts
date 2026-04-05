@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
 import db from '../db/index.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
-import { getLogicalShiftDetails } from '../utils/shiftUtils.js';
 import { getDateStringInTimezone } from '../utils/dateUtils.js';
 import { getOrCreateDraftPayroll } from './payrollController.js';
 import { logAudit } from '../services/auditService.js';
@@ -20,10 +19,10 @@ export const createRequest = (req: AuthRequest, res: Response): void => {
 
         if (attendance_id) {
             const existingPending = db.prepare(`
-                SELECT id FROM requests 
+                SELECT id FROM requests
                 WHERE user_id = ? AND attendance_id = ? AND status = 'pending' AND type = ?
             `).get(userId, attendance_id, requestType);
-            
+
             if (existingPending) {
                 res.status(400).json({ error: 'A pending request of this type already exists for this attendance record.' });
                 return;
@@ -34,10 +33,10 @@ export const createRequest = (req: AuthRequest, res: Response): void => {
             INSERT INTO requests (user_id, attendance_id, requested_check_in, requested_check_out, type, reason, status)
             VALUES (?, ?, ?, ?, ?, ?, 'pending')
         `);
-        
+
         const info = insert.run(userId, attendance_id || null, requested_check_in || null, requested_check_out || null, requestType, reason);
         const newReq = db.prepare('SELECT * FROM requests WHERE id = ?').get(info.lastInsertRowid);
-        
+
         logAudit('requests', info.lastInsertRowid as number, 'CREATE', userId, null, newReq);
 
         res.status(201).json(newReq);
@@ -102,10 +101,10 @@ export const createAttendanceCorrection = (req: AuthRequest, res: Response): voi
         }
 
         const existingCorrection = db.prepare(`
-            SELECT id FROM requests 
+            SELECT id FROM requests
             WHERE user_id = ? AND attendance_id = ? AND type = 'attendance_correction'
         `).get(userId, attendance_id);
-        
+
         if (existingCorrection) {
             res.status(400).json({ error: 'An attendance correction request has already been submitted for this record. Only one correction is allowed per shift.' });
             return;
@@ -129,8 +128,14 @@ export const createAttendanceCorrection = (req: AuthRequest, res: Response): voi
                 const checkOut = new_clock_out || attendanceRecord.check_out;
 
                 if (checkIn) {
-                    const { shift: startShift, scheduledTime: startScheduled } = getLogicalShiftDetails(schedule, checkIn, timezone, 'check_in');
-                    if (startShift && startScheduled) {
+                    const shiftInstance = db.prepare(`
+                        SELECT * FROM shift_instances
+                        WHERE user_id = ? AND ? BETWEEN datetime(start_time, '-' || ? || ' minutes') AND end_time
+                        ORDER BY start_time ASC LIMIT 1
+                    `).get(userId, checkIn, userProfile.grace_period || 15) as any;
+
+                    if (shiftInstance) {
+                        const startScheduled = new Date(shiftInstance.start_time);
                         const diff = (new Date(checkIn).getTime() - startScheduled.getTime()) / (1000 * 60);
                         if (diff > (userProfile.grace_period || 15)) {
                             missingMinutes += Math.floor(diff);
@@ -139,8 +144,14 @@ export const createAttendanceCorrection = (req: AuthRequest, res: Response): voi
                 }
 
                 if (checkOut) {
-                    const { shift: endShift, scheduledTime: endScheduled } = getLogicalShiftDetails(schedule, checkOut, timezone, 'check_out', checkIn);
-                    if (endShift && endScheduled) {
+                    const shiftInstance = db.prepare(`
+                        SELECT * FROM shift_instances
+                        WHERE user_id = ? AND ? <= end_time
+                        ORDER BY start_time ASC LIMIT 1
+                    `).get(userId, checkIn) as any;
+
+                    if (shiftInstance) {
+                        const endScheduled = new Date(shiftInstance.end_time);
                         const diff = (endScheduled.getTime() - new Date(checkOut).getTime()) / (1000 * 60);
                         if (diff > (userProfile.grace_period || 15)) {
                             missingMinutes += Math.floor(diff);
@@ -153,15 +164,15 @@ export const createAttendanceCorrection = (req: AuthRequest, res: Response): voi
         }
 
         const details = JSON.stringify({ new_clock_in, new_clock_out, breaks, missing_minutes: missingMinutes });
-        
+
         const insert = db.prepare(`
             INSERT INTO requests (user_id, attendance_id, type, details, reason, status)
             VALUES (?, ?, 'attendance_correction', ?, ?, 'pending')
         `);
-        
+
         const info = insert.run(userId, attendance_id, details, reason);
         const newReq = db.prepare('SELECT * FROM requests WHERE id = ?').get(info.lastInsertRowid);
-        
+
         res.status(201).json(newReq);
     } catch (error) {
         console.error('Error creating attendance correction request:', error);
@@ -209,8 +220,8 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
         const transaction = db.transaction(() => {
             // Update the request status, manager note and is_paid_permission
             db.prepare('UPDATE requests SET status = ?, manager_note = ?, is_paid_permission = ?, paid_permission_minutes = ? WHERE id = ?').run(
-                status, 
-                manager_note || null, 
+                status,
+                manager_note || null,
                 is_paid_permission ? 1 : 0,
                 paid_permission_minutes || 0,
                 id
@@ -235,16 +246,16 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
 
                 if (requestRecord.type === 'overtime_approval' && requestRecord.attendance_id) {
                     // Update approved overtime minutes
-                    const minutesToApprove = approved_minutes !== undefined ? approved_minutes : 
+                    const minutesToApprove = approved_minutes !== undefined ? approved_minutes :
                         (requestRecord.details ? JSON.parse(requestRecord.details).requested_overtime_minutes : 0);
-                    
+
                     db.prepare('UPDATE attendance SET approved_overtime_minutes = ? WHERE id = ?').run(
                         minutesToApprove,
                         requestRecord.attendance_id
                     );
                 } else if (requestRecord.type === 'attendance_correction' && requestRecord.details) {
                     const details = JSON.parse(requestRecord.details);
-                    
+
                     // Fetch original attendance to save it in the request details for auditing
                     const originalAttendance = db.prepare('SELECT check_in, check_out FROM attendance WHERE id = ?').get(requestRecord.attendance_id) as any;
                     if (originalAttendance) {
@@ -257,8 +268,8 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                     }
 
                     const updateQuery = `
-                        UPDATE attendance 
-                        SET check_in = COALESCE(?, check_in), 
+                        UPDATE attendance
+                        SET check_in = COALESCE(?, check_in),
                             check_out = COALESCE(?, check_out),
                             status = ?
                         WHERE id = ?
@@ -267,7 +278,7 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                     // Recalculate status based on new check_in
                     let newStatus = 'on_time';
                     const finalCheckIn = details.new_clock_in || (originalAttendance ? originalAttendance.check_in : null);
-                    
+
                     if (finalCheckIn) {
                         const userProfile = db.prepare(`
                             SELECT p.weekly_schedule, j.grace_period
@@ -279,30 +290,31 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                         const settingsForTz = db.prepare('SELECT company_timezone FROM settings WHERE id = 1').get() as any;
                         const timezone = settingsForTz?.company_timezone || 'UTC';
 
-                        if (userProfile && userProfile.weekly_schedule) {
-                            try {
-                                const schedule = JSON.parse(userProfile.weekly_schedule);
-                                const { shift: closestShift, scheduledTime } = getLogicalShiftDetails(schedule, finalCheckIn, timezone, 'check_in');
-                                if (closestShift && scheduledTime) {
-                                    const clockInTime = new Date(finalCheckIn);
-                                    const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
-                                    const gracePeriod = userProfile.grace_period || 15;
+                        if (userProfile) {
+                            const gracePeriod = userProfile.grace_period || 15;
+                            const shiftInstance = db.prepare(`
+                                SELECT * FROM shift_instances
+                                WHERE user_id = ? AND ? BETWEEN datetime(start_time, '-' || ? || ' minutes') AND end_time
+                                ORDER BY start_time ASC LIMIT 1
+                            `).get(requestRecord.user_id, finalCheckIn, gracePeriod) as any;
 
-                                    if (diffMinutes > gracePeriod) {
-                                        newStatus = 'late_in';
-                                    }
-                                } else {
-                                    newStatus = 'unscheduled';
+                            if (shiftInstance) {
+                                const scheduledTime = new Date(shiftInstance.start_time);
+                                const clockInTime = new Date(finalCheckIn);
+                                const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
+
+                                if (diffMinutes > gracePeriod) {
+                                    newStatus = 'late_in';
                                 }
-                            } catch (e) {
-                                console.error('Error recalculating status during correction approval:', e);
+                            } else {
+                                newStatus = 'unscheduled';
                             }
                         }
                     }
 
                     db.prepare(updateQuery).run(
-                        details.new_clock_in || null, 
-                        details.new_clock_out || null, 
+                        details.new_clock_in || null,
+                        details.new_clock_out || null,
                         newStatus,
                         requestRecord.attendance_id
                     );
@@ -365,7 +377,7 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                         // Recalculate status based on new check_in
                         let newStatus = 'on_time';
                         const finalCheckIn = requestRecord.requested_check_in || (originalAttendance ? originalAttendance.check_in : null);
-                        
+
                         if (finalCheckIn) {
                             const userProfile = db.prepare(`
                                 SELECT p.weekly_schedule, j.grace_period
@@ -377,38 +389,39 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                             const settingsForTz = db.prepare('SELECT company_timezone FROM settings WHERE id = 1').get() as any;
                             const timezone = settingsForTz?.company_timezone || 'UTC';
 
-                            if (userProfile && userProfile.weekly_schedule) {
-                                try {
-                                    const schedule = JSON.parse(userProfile.weekly_schedule);
-                                    const { shift: closestShift, scheduledTime } = getLogicalShiftDetails(schedule, finalCheckIn, timezone, 'check_in');
-                                    if (closestShift && scheduledTime) {
-                                        const clockInTime = new Date(finalCheckIn);
-                                        const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
-                                        const gracePeriod = userProfile.grace_period || 15;
+                            if (userProfile) {
+                                const gracePeriod = userProfile.grace_period || 15;
+                                const shiftInstance = db.prepare(`
+                                    SELECT * FROM shift_instances
+                                    WHERE user_id = ? AND ? BETWEEN datetime(start_time, '-' || ? || ' minutes') AND end_time
+                                    ORDER BY start_time ASC LIMIT 1
+                                `).get(requestRecord.user_id, finalCheckIn, gracePeriod) as any;
 
-                                        if (diffMinutes > gracePeriod) {
-                                            newStatus = 'late_in';
-                                        }
-                                    } else {
-                                        newStatus = 'unscheduled';
+                                if (shiftInstance) {
+                                    const scheduledTime = new Date(shiftInstance.start_time);
+                                    const clockInTime = new Date(finalCheckIn);
+                                    const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
+
+                                    if (diffMinutes > gracePeriod) {
+                                        newStatus = 'late_in';
                                     }
-                                } catch (e) {
-                                    console.error('Error recalculating status during manual clock approval:', e);
+                                } else {
+                                    newStatus = 'unscheduled';
                                 }
                             }
                         }
 
                         // Update existing attendance
                         const updateQuery = `
-                            UPDATE attendance 
-                            SET check_in = COALESCE(?, check_in), 
+                            UPDATE attendance
+                            SET check_in = COALESCE(?, check_in),
                                 check_out = COALESCE(?, check_out),
                                 status = ?
                             WHERE id = ?
                         `;
                         db.prepare(updateQuery).run(
-                            requestRecord.requested_check_in, 
-                            requestRecord.requested_check_out, 
+                            requestRecord.requested_check_in,
+                            requestRecord.requested_check_out,
                             newStatus,
                             requestRecord.attendance_id
                         );
@@ -417,7 +430,7 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                         // Determine date from check_in or check_out
                         const timeString = requestRecord.requested_check_in || requestRecord.requested_check_out;
                         const date = new Date(timeString).toISOString().split('T')[0];
-                        
+
                         // Recalculate status based on check_in
                         let newStatus = 'on_time';
                         if (requestRecord.requested_check_in) {
@@ -431,23 +444,24 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                             const settingsForTz = db.prepare('SELECT company_timezone FROM settings WHERE id = 1').get() as any;
                             const timezone = settingsForTz?.company_timezone || 'UTC';
 
-                            if (userProfile && userProfile.weekly_schedule) {
-                                try {
-                                    const schedule = JSON.parse(userProfile.weekly_schedule);
-                                    const { shift: closestShift, scheduledTime } = getLogicalShiftDetails(schedule, requestRecord.requested_check_in, timezone, 'check_in');
-                                    if (closestShift && scheduledTime) {
-                                        const clockInTime = new Date(requestRecord.requested_check_in);
-                                        const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
-                                        const gracePeriod = userProfile.grace_period || 15;
+                            if (userProfile) {
+                                const gracePeriod = userProfile.grace_period || 15;
+                                const shiftInstance = db.prepare(`
+                                    SELECT * FROM shift_instances
+                                    WHERE user_id = ? AND ? BETWEEN datetime(start_time, '-' || ? || ' minutes') AND end_time
+                                    ORDER BY start_time ASC LIMIT 1
+                                `).get(requestRecord.user_id, requestRecord.requested_check_in, gracePeriod) as any;
 
-                                        if (diffMinutes > gracePeriod) {
-                                            newStatus = 'late_in';
-                                        }
-                                    } else {
-                                        newStatus = 'unscheduled';
+                                if (shiftInstance) {
+                                    const scheduledTime = new Date(shiftInstance.start_time);
+                                    const clockInTime = new Date(requestRecord.requested_check_in);
+                                    const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
+
+                                    if (diffMinutes > gracePeriod) {
+                                        newStatus = 'late_in';
                                     }
-                                } catch (e) {
-                                    console.error('Error calculating status for new manual clock:', e);
+                                } else {
+                                    newStatus = 'unscheduled';
                                 }
                             }
                         }
@@ -456,9 +470,9 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                             INSERT INTO attendance (user_id, check_in, check_out, date, status)
                             VALUES (?, ?, ?, ?, ?)
                         `).run(
-                            requestRecord.user_id, 
-                            requestRecord.requested_check_in, 
-                            requestRecord.requested_check_out, 
+                            requestRecord.user_id,
+                            requestRecord.requested_check_in,
+                            requestRecord.requested_check_out,
                             date,
                             newStatus
                         );
@@ -485,7 +499,7 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
             } else if (requestRecord.type === 'permission_to_leave') {
                 const minutes = paid_permission_minutes || 0;
                 const hours = minutes / 60;
-                
+
                 if (status === 'approved' && !is_paid_permission && hours > 0) {
                     const amount = hours * hourlyRate;
                     db.prepare(`
@@ -513,9 +527,9 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
         transaction();
 
         const updatedRequest = db.prepare(`
-            SELECT r.*, u.name as user_name 
-            FROM requests r 
-            JOIN users u ON r.user_id = u.id 
+            SELECT r.*, u.name as user_name
+            FROM requests r
+            JOIN users u ON r.user_id = u.id
             WHERE r.id = ?
         `).get(id);
 
@@ -534,7 +548,7 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                 logAudit('shift_interruptions', requestRecord.reference_id, 'UPDATE', actorId, oldInterruption, newInterruption);
             }
         }
-        
+
         res.json(updatedRequest);
     } catch (error) {
         console.error('Error updating request status:', error);

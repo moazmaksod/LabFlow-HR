@@ -3,8 +3,8 @@ import * as path from 'path';
 import { schema } from './schema.js';
 
 // Connect to SQLite DB (file-based for persistence)
-const dbPath = process.env.DB_PATH === ':memory:' 
-  ? ':memory:' 
+const dbPath = process.env.DB_PATH === ':memory:'
+  ? ':memory:'
   : path.resolve(process.cwd(), process.env.DB_PATH || 'labflow.db');
 
 const isTestEnv = process.env.NODE_ENV === 'test';
@@ -12,8 +12,8 @@ const isTestEnv = process.env.NODE_ENV === 'test';
 
 const isBenchmarkOrTest = isTestEnv || dbPath.includes('temp') || dbPath === ':memory:';
 
-const db = new Database(dbPath, { 
-    verbose: isBenchmarkOrTest ? undefined : console.log 
+const db = new Database(dbPath, {
+    verbose: isBenchmarkOrTest ? undefined : console.log
 });
 
 // Strictly enforce Foreign Keys
@@ -27,13 +27,16 @@ export function initDb() {
       console.log('Initializing database schema...');
     }
     db.exec(schema);
-    
+
     // Migration: Add new columns to jobs and profiles
     const jobColumns = db.prepare("PRAGMA table_info(jobs)").all() as any[];
     const profileColumns = db.prepare("PRAGMA table_info(profiles)").all() as any[];
     const attendanceColumns = db.prepare("PRAGMA table_info(attendance)").all() as any[];
     const requestColumns = db.prepare("PRAGMA table_info(requests)").all() as any[];
     const settingsColumns = db.prepare("PRAGMA table_info(settings)").all() as any[];
+
+    // Shift instances migration: no specific data migration needed,
+    // table and indexes created by db.exec(schema)
 
     // Settings migrations
     if (!settingsColumns.some(c => c.name === 'company_name')) {
@@ -139,7 +142,7 @@ export function initDb() {
       db.exec(`
         PRAGMA foreign_keys=off;
         BEGIN TRANSACTION;
-        
+
         CREATE TABLE attendance_new (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -155,9 +158,9 @@ export function initDb() {
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
-        
+
         INSERT INTO attendance_new SELECT * FROM attendance;
-        
+
         -- Update legacy statuses
         UPDATE attendance_new SET status = 'on_time' WHERE status = 'present';
         UPDATE attendance_new SET status = 'late_in' WHERE status = 'late';
@@ -165,13 +168,13 @@ export function initDb() {
 
         DROP TABLE attendance;
         ALTER TABLE attendance_new RENAME TO attendance;
-        
+
         CREATE INDEX IF NOT EXISTS idx_attendance_user_id ON attendance(user_id);
-        
+
         CREATE TRIGGER IF NOT EXISTS update_attendance_updated_at AFTER UPDATE ON attendance
         FOR EACH ROW WHEN NEW.updated_at <= OLD.updated_at
         BEGIN UPDATE attendance SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;
-        
+
         COMMIT;
         PRAGMA foreign_keys=on;
       `);

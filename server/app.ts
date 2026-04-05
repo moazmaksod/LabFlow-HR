@@ -29,4 +29,31 @@ app.use('/api/payroll', payrollRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/audit', auditRoutes);
 
+import db from './db/index.js';
+
+// Auto-Completion Maintenance for Shift Instances
+function autoCompleteShifts() {
+    try {
+        const now = new Date().toISOString();
+        const result = db.prepare(`
+            UPDATE shift_instances
+            SET status = 'Completed'
+            WHERE status = 'Scheduled' AND end_time < ?
+        `).run(now);
+
+        if (result.changes > 0) {
+            console.log(`Auto-completed ${result.changes} shift instances.`);
+        }
+    } catch (e) {
+        console.error('Error auto-completing shifts:', e);
+    }
+}
+
+// Run the auto-complete job every 30 minutes
+if (process.env.NODE_ENV !== 'test') {
+    setInterval(autoCompleteShifts, 30 * 60 * 1000);
+    // Run once on startup
+    autoCompleteShifts();
+}
+
 export default app;
