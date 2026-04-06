@@ -2,7 +2,6 @@ import { Request, Response } from 'express';
 import db from '../db/index.js';
 import { getDateStringInTimezone } from '../utils/dateUtils.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
-import { getLogicalShiftDetails } from '../utils/shiftUtils.js';
 import { logAudit } from '../services/auditService.js';
 import { getSettingsCache, setSettingsCache } from '../utils/cache.js';
 
@@ -21,8 +20,6 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
 
     return R * c;
 };
-
-import { getDateStringInTimezone } from '../utils/dateUtils.js';
 
 function processAttendanceEvent(userId: number, type: string, timestamp: string, lat: number, lng: number, userProfile: any, timezone: string, schedule: any) {
     if (type === 'check_in') {
@@ -188,14 +185,11 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
         const checkInTime = new Date(activeSession.check_in);
 
         // Retrospective splitting: evaluate session against official shift boundaries
-        // Look up the shift instance that matches the check-in time
-        const shiftInstance = db.prepare(`
-            SELECT * FROM shift_instances
-            WHERE user_id = ?
-              AND ? <= end_time
-            ORDER BY start_time ASC
-            LIMIT 1
-        `).get(userId, activeSession.check_in) as any;
+        // Look up the exact shift instance using the relational shift_id stored on check-in
+        let shiftInstance = null;
+        if (activeSession.shift_id && !activeSession.shift_id.startsWith('unscheduled_')) {
+            shiftInstance = db.prepare('SELECT * FROM shift_instances WHERE id = ?').get(activeSession.shift_id) as any;
+        }
 
         const shiftStart = shiftInstance ? new Date(shiftInstance.start_time) : null;
         const shiftEnd = shiftInstance ? new Date(shiftInstance.end_time) : null;

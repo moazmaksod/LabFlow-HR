@@ -4,7 +4,6 @@ import { AuthRequest } from '../middlewares/authMiddleware.js';
 import { logAudit } from '../services/auditService.js';
 import fs from 'fs';
 import path from 'path';
-import { getLogicalShiftDetails } from '../utils/shiftUtils.js';
 import { generateShiftInstances } from '../services/shiftInstanceService.js';
 
 let cachedTz: string | null = null;
@@ -306,13 +305,6 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
         });
 
         updateTransaction();
-
-        // Trigger shift generation if weekly_schedule was provided
-        if (body.weekly_schedule !== undefined) {
-            const timezone = getCachedTimezone();
-            const schedStr = typeof body.weekly_schedule === 'string' ? body.weekly_schedule : JSON.stringify(body.weekly_schedule);
-            generateShiftInstances(Number(id), schedStr, timezone);
-        }
 
         const updatedUser = db.prepare(`
             SELECT

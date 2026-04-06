@@ -123,34 +123,23 @@ export const createAttendanceCorrection = (req: AuthRequest, res: Response): voi
         let missingMinutes = 0;
         if (userProfile && userProfile.weekly_schedule) {
             try {
-                const schedule = JSON.parse(userProfile.weekly_schedule);
                 const checkIn = new_clock_in || attendanceRecord.check_in;
                 const checkOut = new_clock_out || attendanceRecord.check_out;
 
-                if (checkIn) {
-                    const shiftInstance = db.prepare(`
-                        SELECT * FROM shift_instances
-                        WHERE user_id = ? AND ? BETWEEN datetime(start_time, '-' || ? || ' minutes') AND end_time
-                        ORDER BY start_time ASC LIMIT 1
-                    `).get(userId, checkIn, userProfile.grace_period || 15) as any;
+                let shiftInstance = null;
+                if (attendanceRecord.shift_id && !attendanceRecord.shift_id.startsWith('unscheduled_')) {
+                    shiftInstance = db.prepare('SELECT * FROM shift_instances WHERE id = ?').get(attendanceRecord.shift_id) as any;
+                }
 
-                    if (shiftInstance) {
+                if (shiftInstance) {
+                    if (checkIn) {
                         const startScheduled = new Date(shiftInstance.start_time);
                         const diff = (new Date(checkIn).getTime() - startScheduled.getTime()) / (1000 * 60);
                         if (diff > (userProfile.grace_period || 15)) {
                             missingMinutes += Math.floor(diff);
                         }
                     }
-                }
-
-                if (checkOut) {
-                    const shiftInstance = db.prepare(`
-                        SELECT * FROM shift_instances
-                        WHERE user_id = ? AND ? <= end_time
-                        ORDER BY start_time ASC LIMIT 1
-                    `).get(userId, checkIn) as any;
-
-                    if (shiftInstance) {
+                    if (checkOut) {
                         const endScheduled = new Date(shiftInstance.end_time);
                         const diff = (endScheduled.getTime() - new Date(checkOut).getTime()) / (1000 * 60);
                         if (diff > (userProfile.grace_period || 15)) {
@@ -279,7 +268,9 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                     let newStatus = 'on_time';
                     const finalCheckIn = details.new_clock_in || (originalAttendance ? originalAttendance.check_in : null);
 
-                    if (finalCheckIn) {
+                    const fullOriginalAttendance = db.prepare('SELECT * FROM attendance WHERE id = ?').get(requestRecord.attendance_id) as any;
+
+                    if (finalCheckIn && fullOriginalAttendance) {
                         const userProfile = db.prepare(`
                             SELECT p.weekly_schedule, j.grace_period
                             FROM profiles p
@@ -287,16 +278,12 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                             WHERE p.user_id = ?
                         `).get(requestRecord.user_id) as any;
 
-                        const settingsForTz = db.prepare('SELECT company_timezone FROM settings WHERE id = 1').get() as any;
-                        const timezone = settingsForTz?.company_timezone || 'UTC';
-
                         if (userProfile) {
                             const gracePeriod = userProfile.grace_period || 15;
-                            const shiftInstance = db.prepare(`
-                                SELECT * FROM shift_instances
-                                WHERE user_id = ? AND ? BETWEEN datetime(start_time, '-' || ? || ' minutes') AND end_time
-                                ORDER BY start_time ASC LIMIT 1
-                            `).get(requestRecord.user_id, finalCheckIn, gracePeriod) as any;
+                            let shiftInstance = null;
+                            if (fullOriginalAttendance.shift_id && !fullOriginalAttendance.shift_id.startsWith('unscheduled_')) {
+                                shiftInstance = db.prepare('SELECT * FROM shift_instances WHERE id = ?').get(fullOriginalAttendance.shift_id) as any;
+                            }
 
                             if (shiftInstance) {
                                 const scheduledTime = new Date(shiftInstance.start_time);
@@ -378,7 +365,10 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                         let newStatus = 'on_time';
                         const finalCheckIn = requestRecord.requested_check_in || (originalAttendance ? originalAttendance.check_in : null);
 
-                        if (finalCheckIn) {
+                        // We need the full original attendance record to check its shift_id
+                        const fullOriginalAttendance = db.prepare('SELECT * FROM attendance WHERE id = ?').get(requestRecord.attendance_id) as any;
+
+                        if (finalCheckIn && fullOriginalAttendance) {
                             const userProfile = db.prepare(`
                                 SELECT p.weekly_schedule, j.grace_period
                                 FROM profiles p
@@ -386,16 +376,12 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                                 WHERE p.user_id = ?
                             `).get(requestRecord.user_id) as any;
 
-                            const settingsForTz = db.prepare('SELECT company_timezone FROM settings WHERE id = 1').get() as any;
-                            const timezone = settingsForTz?.company_timezone || 'UTC';
-
                             if (userProfile) {
                                 const gracePeriod = userProfile.grace_period || 15;
-                                const shiftInstance = db.prepare(`
-                                    SELECT * FROM shift_instances
-                                    WHERE user_id = ? AND ? BETWEEN datetime(start_time, '-' || ? || ' minutes') AND end_time
-                                    ORDER BY start_time ASC LIMIT 1
-                                `).get(requestRecord.user_id, finalCheckIn, gracePeriod) as any;
+                                let shiftInstance = null;
+                                if (fullOriginalAttendance.shift_id && !fullOriginalAttendance.shift_id.startsWith('unscheduled_')) {
+                                    shiftInstance = db.prepare('SELECT * FROM shift_instances WHERE id = ?').get(fullOriginalAttendance.shift_id) as any;
+                                }
 
                                 if (shiftInstance) {
                                     const scheduledTime = new Date(shiftInstance.start_time);
@@ -446,6 +432,9 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
 
                             if (userProfile) {
                                 const gracePeriod = userProfile.grace_period || 15;
+
+                                // Since this is a CREATE NEW manual clock, there is no prior attendance record.
+                                // We MUST look up the intended shift instance by checking the window as originally intended.
                                 const shiftInstance = db.prepare(`
                                     SELECT * FROM shift_instances
                                     WHERE user_id = ? AND ? BETWEEN datetime(start_time, '-' || ? || ' minutes') AND end_time
