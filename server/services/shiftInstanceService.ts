@@ -1,19 +1,24 @@
 import db from '../db/index.js';
 
-export function generateShiftInstances(userId: number, weeklyScheduleRaw: string | null, timezone: string): void {
+export function generateShiftInstances(userId: number, weeklyScheduleRaw: any, timezone: string): void {
+    console.log(`[DEBUG] generateShiftInstances triggered for user ${userId}`);
+
     if (!weeklyScheduleRaw) {
+        console.log(`[DEBUG] Aborting: No weeklyScheduleRaw provided for user ${userId}`);
         return;
     }
 
     let schedule: Record<string, { start: string; end: string }[]> | null = null;
     try {
-        schedule = JSON.parse(weeklyScheduleRaw);
+        // STRICT FIX: Safely handle both String and Object payloads coming from the controller
+        schedule = typeof weeklyScheduleRaw === 'string' ? JSON.parse(weeklyScheduleRaw) : weeklyScheduleRaw;
     } catch (e) {
-        console.error(`Error parsing weekly schedule for user ${userId}:`, e);
+        console.error(`[ERROR] CRITICAL: Failed to parse schedule for user ${userId}:`, e);
         return;
     }
 
-    if (!schedule) {
+    if (!schedule || Object.keys(schedule).length === 0) {
+        console.log(`[DEBUG] Aborting: Parsed schedule is empty for user ${userId}`);
         return;
     }
 
@@ -28,29 +33,16 @@ export function generateShiftInstances(userId: number, weeklyScheduleRaw: string
         const parts = formatter.formatToParts(date);
         const getPart = (type: string) => parts.find(p => p.type === type)?.value || '00';
         return new Date(Date.UTC(
-            parseInt(getPart('year')),
-            parseInt(getPart('month')) - 1,
-            parseInt(getPart('day')),
-            parseInt(getPart('hour')),
-            parseInt(getPart('minute')),
-            parseInt(getPart('second'))
+            parseInt(getPart('year')), parseInt(getPart('month')) - 1, parseInt(getPart('day')),
+            parseInt(getPart('hour')), parseInt(getPart('minute')), parseInt(getPart('second'))
         ));
     };
 
     const fromLocalToUTC = (localDate: Date) => {
-        // We have a Date object that represents the local time as if it were UTC.
-        // E.g., if local time is 10:00, localDate.getUTCHours() === 10.
-        // We want to find the true UTC Date such that when formatted in 'timezone', it gives this local time.
-
         let guessUTC = new Date(Date.UTC(
-            localDate.getUTCFullYear(),
-            localDate.getUTCMonth(),
-            localDate.getUTCDate(),
-            localDate.getUTCHours(),
-            localDate.getUTCMinutes(),
-            localDate.getUTCSeconds()
+            localDate.getUTCFullYear(), localDate.getUTCMonth(), localDate.getUTCDate(),
+            localDate.getUTCHours(), localDate.getUTCMinutes(), localDate.getUTCSeconds()
         ));
-
         for (let i = 0; i < 4; i++) {
             const gLocal = getLocalTimeUTC(guessUTC);
             const diff = localDate.getTime() - gLocal.getTime();
@@ -62,52 +54,58 @@ export function generateShiftInstances(userId: number, weeklyScheduleRaw: string
     const now = new Date();
     const localNow = getLocalTimeUTC(now);
 
-    const generateTransaction = db.transaction(() => {
-        // 1. Delete future 'Scheduled' records
-        db.prepare(`
-            DELETE FROM shift_instances
-            WHERE user_id = ? AND status = 'Scheduled' AND start_time > ?
-        `).run(userId, now.toISOString());
+    try {
+        const generateTransaction = db.transaction(() => {
+            // 1. Clean up future scheduled shifts
+            db.prepare(`
+                DELETE FROM shift_instances
+                WHERE user_id = ? AND status = 'Scheduled' AND start_time > ?
+            `).run(userId, now.toISOString());
 
-        // 2. Generate future shifts for 30 days
-        const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+            const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+            const insertStmt = db.prepare(`
+                INSERT INTO shift_instances (user_id, start_time, end_time, logical_date, status)
+                VALUES (?, ?, ?, ?, 'Scheduled')
+            `);
 
-        const insertStmt = db.prepare(`
-            INSERT INTO shift_instances (user_id, start_time, end_time, logical_date, status)
-            VALUES (?, ?, ?, ?, 'Scheduled')
-        `);
+            let insertedCount = 0;
 
-        // Generate shifts from today until 30 days into the future
-        for (let offset = 0; offset <= 30; offset++) {
-            const d = new Date(Date.UTC(localNow.getUTCFullYear(), localNow.getUTCMonth(), localNow.getUTCDate() + offset));
-            const dayName = daysOfWeek[d.getUTCDay()];
-            const logicalDateStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+            // 2. Generate exactly 30 days into the future
+            for (let offset = 0; offset <= 30; offset++) {
+                const d = new Date(Date.UTC(localNow.getUTCFullYear(), localNow.getUTCMonth(), localNow.getUTCDate() + offset));
+                const dayName = daysOfWeek[d.getUTCDay()];
+                const logicalDateStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 
-            const daySchedule = schedule![dayName];
-            if (Array.isArray(daySchedule)) {
-                daySchedule.forEach(shift => {
-                    const [startH, startM] = shift.start.split(':').map(Number);
-                    const [endH, endM] = shift.end.split(':').map(Number);
+                const daySchedule = schedule![dayName];
+                if (Array.isArray(daySchedule)) {
+                    daySchedule.forEach(shift => {
+                        const [startH, startM] = shift.start.split(':').map(Number);
+                        const [endH, endM] = shift.end.split(':').map(Number);
 
-                    const shiftStartLocal = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), startH, startM, 0));
-                    const shiftEndLocal = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), endH, endM, 0));
+                        const shiftStartLocal = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), startH, startM, 0));
+                        const shiftEndLocal = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), endH, endM, 0));
 
-                    // Midnight handling: If end time is before start time, it crosses midnight
-                    if (endH < startH || (endH === startH && endM < startM)) {
-                        shiftEndLocal.setUTCDate(shiftEndLocal.getUTCDate() + 1);
-                    }
+                        // Midnight crossing fix
+                        if (endH < startH || (endH === startH && endM < startM)) {
+                            shiftEndLocal.setUTCDate(shiftEndLocal.getUTCDate() + 1);
+                        }
 
-                    const shiftStartUTC = fromLocalToUTC(shiftStartLocal);
-                    const shiftEndUTC = fromLocalToUTC(shiftEndLocal);
+                        const shiftStartUTC = fromLocalToUTC(shiftStartLocal);
+                        const shiftEndUTC = fromLocalToUTC(shiftEndLocal);
 
-                    // Only insert if it's in the future relative to the deletion point
-                    if (shiftStartUTC > now) {
-                        insertStmt.run(userId, shiftStartUTC.toISOString(), shiftEndUTC.toISOString(), logicalDateStr);
-                    }
-                });
+                        // CRITICAL LOGICAL FIX: Check if the shift ENDS in the future, not just starts.
+                        if (shiftEndUTC > now) {
+                            insertStmt.run(userId, shiftStartUTC.toISOString(), shiftEndUTC.toISOString(), logicalDateStr);
+                            insertedCount++;
+                        }
+                    });
+                }
             }
-        }
-    });
+            console.log(`[SUCCESS] Generated ${insertedCount} shift instances for user ${userId} in the database.`);
+        });
 
-    generateTransaction();
+        generateTransaction();
+    } catch (err) {
+        console.error(`[ERROR] CRITICAL: DB Transaction completely failed for user ${userId}:`, err);
+    }
 }
