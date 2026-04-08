@@ -402,7 +402,7 @@ function handleClockAction(userId: number, type: string, lat: number, lng: numbe
         }
     }
 
-    const timezone = settings?.company_timezone || 'UTC';
+    const timezone = process.env.APP_TIMEZONE || 'UTC';
 
     let schedule = null;
     if (userProfile.weekly_schedule) {
@@ -621,8 +621,7 @@ export const getAttendanceStats = (req: Request, res: Response): void => {
             LIMIT 7
         `).all();
 
-        const settingsForTz = db.prepare('SELECT company_timezone FROM settings WHERE id = 1').get() as any;
-        const timezone = settingsForTz?.company_timezone || 'UTC';
+        const timezone = process.env.APP_TIMEZONE || 'UTC';
         const todayDateStr = getDateStringInTimezone(new Date(), timezone);
 
         const todayStats = db.prepare(`

@@ -133,7 +133,6 @@ CREATE TABLE IF NOT EXISTS settings (
     company_name TEXT NOT NULL DEFAULT 'LabFlow',
     company_logo_url TEXT,
     brand_primary_color TEXT NOT NULL DEFAULT '#4f46e5',
-    company_timezone TEXT NOT NULL DEFAULT 'UTC',
     support_contact TEXT,
 
     -- Payroll

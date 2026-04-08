@@ -11,7 +11,7 @@ beforeAll(async () => {
   initDb();
   
   // Seed settings
-  db.prepare(`INSERT INTO settings (id, office_lat, office_lng, geofence_radius) VALUES (1, 37.7749, -122.4194, 50)`).run();
+  db.prepare(`UPDATE settings SET office_lat = 37.7749, office_lng = -122.4194, geofence_radius = 50 WHERE id = 1`).run();
 
   // Create manager
   const salt = await bcrypt.genSalt(10);

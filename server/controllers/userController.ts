@@ -6,22 +6,9 @@ import fs from 'fs';
 import path from 'path';
 import { generateShiftInstances } from '../services/shiftInstanceService.js';
 
-let cachedTz: string | null = null;
-let tzExpiry = 0;
-
-const getCachedTimezone = () => {
-    const now = Date.now();
-    if (cachedTz && now < tzExpiry) return cachedTz;
-
-    const settings = db.prepare('SELECT company_timezone FROM settings WHERE id = 1').get() as any;
-    cachedTz = settings?.company_timezone || 'UTC';
-    tzExpiry = now + 5 * 60 * 1000;
-    return cachedTz;
-};
-
 export const getUsers = (req: Request, res: Response): void => {
     try {
-        const timezone = getCachedTimezone();
+        const timezone = process.env.APP_TIMEZONE || 'UTC';
         const currentServerTime = new Date().toISOString();
 
         // Get users with their profile and job info, excluding managers
@@ -180,7 +167,7 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
             return;
         }
 
-        const timezone = getCachedTimezone();
+        const timezone = process.env.APP_TIMEZONE || 'UTC';
         const currentServerTime = new Date().toISOString();
 
         const currentShiftRecord = db.prepare(`

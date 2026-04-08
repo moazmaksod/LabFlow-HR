@@ -61,14 +61,15 @@ describe('Attendance Interruptions API', () => {
         );
 
         // Create settings
-        db.prepare(`INSERT INTO settings (id, office_lat, office_lng, geofence_radius, company_timezone) VALUES (1, 0, 0, 1000000, 'UTC')`).run();
+        process.env.APP_TIMEZONE = 'UTC';
+        db.prepare(`UPDATE settings SET office_lat = 0, office_lng = 0, geofence_radius = 1000000 WHERE id = 1`).run();
 
         employeeToken = jwt.sign({ id: employeeId, role: 'employee' }, JWT_SECRET);
     });
 
     it('should create a pending_manager request when stepping away with 0 break balance', async () => {
         const timestamp = new Date().toISOString();
-        
+
         // 1. Check in first
         await request(app)
             .post('/attendance/clock')
@@ -105,7 +106,7 @@ describe('Attendance Interruptions API', () => {
 
     it('should resume work and close the interruption', async () => {
         const timestamp = new Date().toISOString();
-        
+
         const response = await request(app)
             .post('/attendance/resume-work')
             .set('Authorization', `Bearer ${employeeToken}`)
@@ -126,13 +127,13 @@ describe('Attendance Interruptions API', () => {
     it('should auto_approve when stepping away with break balance > 0', async () => {
         // Update profile to have break balance
         db.prepare('UPDATE profiles SET lunch_break_minutes = 30 WHERE user_id = ?').run(employeeId);
-        
+
         // Clear previous interruption for clean test
         db.prepare('DELETE FROM shift_interruptions').run();
         db.prepare('UPDATE attendance SET current_status = ? WHERE user_id = ?').run('working', employeeId);
 
         const timestamp = new Date().toISOString();
-        
+
         const response = await request(app)
             .post('/attendance/step-away')
             .set('Authorization', `Bearer ${employeeToken}`)

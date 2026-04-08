@@ -223,6 +223,21 @@ export function initDb() {
     }
     db.exec("CREATE INDEX IF NOT EXISTS idx_attendance_shift_id ON attendance(shift_id);");
 
+    // Settings bootstrapping is done in schema default values.
+    // We should ensure settings table has 1 row with these defaults.
+    const settingsCount = db.prepare('SELECT COUNT(*) as count FROM settings').get() as any;
+    if (settingsCount.count === 0) {
+      db.prepare(`
+        INSERT INTO settings (id, late_grace_period, geofence_radius, office_lat, office_lng)
+        VALUES (1, ?, ?, ?, ?)
+      `).run(
+        process.env.DEFAULT_LATE_GRACE_PERIOD || 0,
+        process.env.DEFAULT_GEOFENCE_RADIUS || 100,
+        process.env.DEFAULT_GEOFENCE_LAT || 30.0444,
+        process.env.DEFAULT_GEOFENCE_LNG || 31.2357
+      );
+    }
+
     if (!isTestEnv) {
       console.log('Database schema initialized successfully.');
     }

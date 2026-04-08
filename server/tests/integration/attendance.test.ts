@@ -8,9 +8,10 @@ let employeeToken: string;
 let employeeId: number | bigint;
 
 beforeAll(async () => {
+  process.env.APP_TIMEZONE = 'America/New_York';
   initDb();
 
-  db.prepare(`INSERT INTO settings (id, office_lat, office_lng, geofence_radius, company_timezone) VALUES (1, 37.7749, -122.4194, 50, 'America/New_York')`).run();
+  db.prepare(`UPDATE settings SET office_lat = 37.7749, office_lng = -122.4194, geofence_radius = 50 WHERE id = 1`).run();
 
   db.prepare(`INSERT INTO jobs (id, title, hourly_rate, required_hours, grace_period) VALUES (1, 'Night Worker', 20, 8, 15)`).run();
 
