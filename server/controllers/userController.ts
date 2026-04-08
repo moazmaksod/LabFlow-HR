@@ -8,7 +8,7 @@ import { generateShiftInstances } from '../services/shiftInstanceService.js';
 
 export const getUsers = (req: Request, res: Response): void => {
     try {
-        const timezone = process.env.APP_TIMEZONE || 'UTC';
+        const timezone = process.env.APP_TIMEZONE!;
         const currentServerTime = new Date().toISOString();
 
         // Get users with their profile and job info, excluding managers
@@ -167,7 +167,7 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
             return;
         }
 
-        const timezone = process.env.APP_TIMEZONE || 'UTC';
+        const timezone = process.env.APP_TIMEZONE!;
         const currentServerTime = new Date().toISOString();
 
         const currentShiftRecord = db.prepare(`

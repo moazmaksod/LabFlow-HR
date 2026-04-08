@@ -11,7 +11,6 @@ interface Settings {
   company_name: string;
   company_logo_url: string;
   brand_primary_color: string;
-  company_timezone: string;
   support_contact: string;
   payroll_cycle_type: string;
   custom_payroll_cycle_days: number;
@@ -35,16 +34,6 @@ interface Settings {
   send_daily_report: number;
   maintenance_mode: number;
 }
-
-const TIMEZONE_GROUPS = {
-  "UTC": ["UTC"],
-  "Africa": ["Africa/Cairo", "Africa/Casablanca", "Africa/Johannesburg", "Africa/Lagos", "Africa/Nairobi"],
-  "America": ["America/Chicago", "America/Los_Angeles", "America/Mexico_City", "America/New_York", "America/Sao_Paulo", "America/Toronto"],
-  "Asia": ["Asia/Bangkok", "Asia/Dubai", "Asia/Hong_Kong", "Asia/Jakarta", "Asia/Karachi", "Asia/Kolkata", "Asia/Riyadh", "Asia/Seoul", "Asia/Shanghai", "Asia/Singapore", "Asia/Tokyo"],
-  "Australia": ["Australia/Brisbane", "Australia/Melbourne", "Australia/Perth", "Australia/Sydney"],
-  "Europe": ["Europe/Amsterdam", "Europe/Berlin", "Europe/Istanbul", "Europe/London", "Europe/Madrid", "Europe/Moscow", "Europe/Paris", "Europe/Rome"],
-  "Pacific": ["Pacific/Auckland", "Pacific/Fiji", "Pacific/Honolulu"]
-};
 
 export default function SettingsView() {
   const { t } = useTranslation();
@@ -282,23 +271,6 @@ export default function SettingsView() {
                         className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
                         placeholder="Email or Phone"
                       />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-muted-foreground mb-2">Company Timezone</label>
-                      <select
-                        name="company_timezone"
-                        value={formData.company_timezone || 'UTC'}
-                        onChange={handleChange}
-                        className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
-                      >
-                        {Object.entries(TIMEZONE_GROUPS).map(([region, zones]) => (
-                          <optgroup key={region} label={region}>
-                            {zones.map(zone => (
-                              <option key={zone} value={zone}>{zone}</option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </select>
                     </div>
                   </div>
                 </>

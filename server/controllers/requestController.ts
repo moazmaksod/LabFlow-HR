@@ -117,7 +117,7 @@ export const createAttendanceCorrection = (req: AuthRequest, res: Response): voi
         `).get(userId) as any;
 
         const settingsRecord = db.prepare('SELECT late_grace_period FROM settings WHERE id = 1').get() as any;
-        const timezone = process.env.APP_TIMEZONE || 'UTC';
+        const timezone = process.env.APP_TIMEZONE!;
         const gracePeriod = settingsRecord?.late_grace_period !== undefined ? settingsRecord.late_grace_period : 0;
 
         let missingMinutes = 0;

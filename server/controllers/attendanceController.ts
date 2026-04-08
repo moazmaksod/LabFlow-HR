@@ -402,7 +402,7 @@ function handleClockAction(userId: number, type: string, lat: number, lng: numbe
         }
     }
 
-    const timezone = process.env.APP_TIMEZONE || 'UTC';
+    const timezone = process.env.APP_TIMEZONE!;
 
     let schedule = null;
     if (userProfile.weekly_schedule) {
@@ -621,7 +621,7 @@ export const getAttendanceStats = (req: Request, res: Response): void => {
             LIMIT 7
         `).all();
 
-        const timezone = process.env.APP_TIMEZONE || 'UTC';
+        const timezone = process.env.APP_TIMEZONE!;
         const todayDateStr = getDateStringInTimezone(new Date(), timezone);
 
         const todayStats = db.prepare(`

@@ -9,15 +9,15 @@ import settingsRoutes from './routes/settingsRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
 
 // Configuration Fail-Fast Validation
-const APP_TIMEZONE = process.env.APP_TIMEZONE;
-if (!APP_TIMEZONE) {
-    console.error('FATAL ERROR: APP_TIMEZONE environment variable is not defined.');
+const tz = process.env.APP_TIMEZONE;
+if (!tz) {
+    console.error('FATAL ERROR: APP_TIMEZONE environment variable is missing.');
     process.exit(1);
 }
 try {
-    Intl.DateTimeFormat(undefined, { timeZone: APP_TIMEZONE });
+    Intl.DateTimeFormat(undefined, { timeZone: tz });
 } catch (e) {
-    console.error(`FATAL ERROR: Invalid APP_TIMEZONE provided ('${APP_TIMEZONE}'). Must be a valid IANA timezone.`);
+    console.error(`FATAL ERROR: Invalid APP_TIMEZONE '${tz}'. Must be a valid IANA timezone.`);
     process.exit(1);
 }
 
