@@ -28,7 +28,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
             setSettingsCache(settings);
         }
-        const gracePeriod = settings?.late_grace_period !== undefined ? settings.late_grace_period : (userProfile.grace_period || 15);
+        const gracePeriod = settings?.late_grace_period !== undefined ? settings.late_grace_period : 0;
 
         // Find the applicable shift instance for this check-in
         const shiftInstance = db.prepare(`
@@ -200,7 +200,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
             setSettingsCache(settings);
         }
-        const gracePeriod = settings?.late_grace_period !== undefined ? settings.late_grace_period : (userProfile.grace_period || 15);
+        const gracePeriod = settings?.late_grace_period !== undefined ? settings.late_grace_period : 0;
 
         let updatedRecord: any = null;
 
@@ -350,7 +350,7 @@ function handleClockAction(userId: number, type: string, lat: number, lng: numbe
     let userProfile = prefetchedProfile;
     if (!userProfile) {
         userProfile = db.prepare(`
-            SELECT p.status, p.device_id, p.weekly_schedule, j.grace_period, p.allow_overtime, p.max_overtime_hours
+            SELECT p.status, p.device_id, p.weekly_schedule, p.allow_overtime, p.max_overtime_hours
             FROM profiles p
             LEFT JOIN jobs j ON p.job_id = j.id
             WHERE p.user_id = ?
@@ -470,7 +470,7 @@ export const syncOfflineLogs = (req: AuthRequest, res: Response): void => {
                 let profile = profileMap.get(userId);
                 if (!profile) {
                     profile = db.prepare(`
-                        SELECT p.status, p.device_id, p.weekly_schedule, j.grace_period, p.allow_overtime, p.max_overtime_hours
+                        SELECT p.status, p.device_id, p.weekly_schedule, p.allow_overtime, p.max_overtime_hours
                         FROM profiles p
                         LEFT JOIN jobs j ON p.job_id = j.id
                         WHERE p.user_id = ?

@@ -111,14 +111,14 @@ export const createAttendanceCorrection = (req: AuthRequest, res: Response): voi
         }
 
         const userProfile = db.prepare(`
-            SELECT p.weekly_schedule, j.grace_period
+            SELECT p.weekly_schedule
             FROM profiles p
-            LEFT JOIN jobs j ON p.job_id = j.id
             WHERE p.user_id = ?
         `).get(userId) as any;
 
-        const settingsForTz = db.prepare('SELECT company_timezone FROM settings WHERE id = 1').get() as any;
-        const timezone = settingsForTz?.company_timezone || 'UTC';
+        const settingsRecord = db.prepare('SELECT company_timezone, late_grace_period FROM settings WHERE id = 1').get() as any;
+        const timezone = settingsRecord?.company_timezone || 'UTC';
+        const gracePeriod = settingsRecord?.late_grace_period !== undefined ? settingsRecord.late_grace_period : 0;
 
         let missingMinutes = 0;
         if (userProfile && userProfile.weekly_schedule) {
@@ -135,14 +135,14 @@ export const createAttendanceCorrection = (req: AuthRequest, res: Response): voi
                     if (checkIn) {
                         const startScheduled = new Date(shiftInstance.start_time);
                         const diff = (new Date(checkIn).getTime() - startScheduled.getTime()) / (1000 * 60);
-                        if (diff > (userProfile.grace_period || 15)) {
+                        if (diff > gracePeriod) {
                             missingMinutes += Math.floor(diff);
                         }
                     }
                     if (checkOut) {
                         const endScheduled = new Date(shiftInstance.end_time);
                         const diff = (endScheduled.getTime() - new Date(checkOut).getTime()) / (1000 * 60);
-                        if (diff > (userProfile.grace_period || 15)) {
+                        if (diff > gracePeriod) {
                             missingMinutes += Math.floor(diff);
                         }
                     }
@@ -272,14 +272,15 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
 
                     if (finalCheckIn && fullOriginalAttendance) {
                         const userProfile = db.prepare(`
-                            SELECT p.weekly_schedule, j.grace_period
+                            SELECT p.weekly_schedule
                             FROM profiles p
-                            LEFT JOIN jobs j ON p.job_id = j.id
                             WHERE p.user_id = ?
                         `).get(requestRecord.user_id) as any;
 
                         if (userProfile) {
-                            const gracePeriod = userProfile.grace_period || 15;
+                            const settingsRecord = db.prepare('SELECT late_grace_period FROM settings WHERE id = 1').get() as any;
+                            const gracePeriod = settingsRecord?.late_grace_period !== undefined ? settingsRecord.late_grace_period : 0;
+
                             let shiftInstance = null;
                             if (fullOriginalAttendance.shift_id && !fullOriginalAttendance.shift_id.startsWith('unscheduled_')) {
                                 shiftInstance = db.prepare('SELECT * FROM shift_instances WHERE id = ?').get(fullOriginalAttendance.shift_id) as any;
@@ -370,14 +371,15 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
 
                         if (finalCheckIn && fullOriginalAttendance) {
                             const userProfile = db.prepare(`
-                                SELECT p.weekly_schedule, j.grace_period
+                                SELECT p.weekly_schedule
                                 FROM profiles p
-                                LEFT JOIN jobs j ON p.job_id = j.id
                                 WHERE p.user_id = ?
                             `).get(requestRecord.user_id) as any;
 
                             if (userProfile) {
-                                const gracePeriod = userProfile.grace_period || 15;
+                                const settingsRecord = db.prepare('SELECT late_grace_period FROM settings WHERE id = 1').get() as any;
+                                const gracePeriod = settingsRecord?.late_grace_period !== undefined ? settingsRecord.late_grace_period : 0;
+
                                 let shiftInstance = null;
                                 if (fullOriginalAttendance.shift_id && !fullOriginalAttendance.shift_id.startsWith('unscheduled_')) {
                                     shiftInstance = db.prepare('SELECT * FROM shift_instances WHERE id = ?').get(fullOriginalAttendance.shift_id) as any;
@@ -421,18 +423,15 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                         let newStatus = 'on_time';
                         if (requestRecord.requested_check_in) {
                             const userProfile = db.prepare(`
-                                SELECT p.weekly_schedule, j.grace_period
+                                SELECT p.weekly_schedule
                                 FROM profiles p
-                                LEFT JOIN jobs j ON p.job_id = j.id
                                 WHERE p.user_id = ?
                             `).get(requestRecord.user_id) as any;
 
-                            const settingsForTz = db.prepare('SELECT company_timezone FROM settings WHERE id = 1').get() as any;
-                            const timezone = settingsForTz?.company_timezone || 'UTC';
+                            const settingsRecord = db.prepare('SELECT company_timezone, late_grace_period FROM settings WHERE id = 1').get() as any;
+                            const gracePeriod = settingsRecord?.late_grace_period !== undefined ? settingsRecord.late_grace_period : 0;
 
                             if (userProfile) {
-                                const gracePeriod = userProfile.grace_period || 15;
-
                                 // Since this is a CREATE NEW manual clock, there is no prior attendance record.
                                 // We MUST look up the intended shift instance by checking the window as originally intended.
                                 const shiftInstance = db.prepare(`
