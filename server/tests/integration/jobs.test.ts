@@ -9,10 +9,10 @@ let employeeToken: string;
 
 beforeAll(async () => {
   initDb();
-  
+
   const salt = await bcrypt.genSalt(10);
   const hash = await bcrypt.hash('password123', salt);
-  
+
   // Create manager
   const managerInsert = db.prepare(`INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)`).run('Manager', 'manager_jobs@test.com', hash, 'manager');
   managerToken = jwt.sign({ id: managerInsert.lastInsertRowid, role: 'manager' }, process.env.JWT_SECRET as string, { expiresIn: '1h' });
@@ -46,7 +46,7 @@ describe('Jobs API', () => {
         employment_type: 'any',
         grace_period: 15
       });
-    
+
     expect(res.status).toBe(201);
     expect(res.body).toHaveProperty('id');
     expect(res.body.title).toBe('Software Engineer');
@@ -65,7 +65,7 @@ describe('Jobs API', () => {
         shift_start: '10:00',
         shift_end: '14:00'
       });
-    
+
     expect(res.status).toBe(403);
     expect(res.body).toHaveProperty('error', 'Forbidden: Insufficient permissions');
   });
@@ -78,7 +78,7 @@ describe('Jobs API', () => {
         title: 'Incomplete Job'
         // Missing hourly_rate, required_hours, etc.
       });
-    
+
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error', 'Missing required fields');
   });
@@ -87,7 +87,7 @@ describe('Jobs API', () => {
     const res = await request(app)
       .get('/api/jobs')
       .set('Authorization', `Bearer ${employeeToken}`);
-    
+
     expect(res.status).toBe(403);
   });
 
@@ -95,7 +95,7 @@ describe('Jobs API', () => {
     const res = await request(app)
       .get('/api/jobs')
       .set('Authorization', `Bearer ${managerToken}`);
-    
+
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body.length).toBeGreaterThan(0);
@@ -112,13 +112,13 @@ describe('Jobs API', () => {
         hourly_rate: 10,
         required_hours_per_week: 10
       });
-    
+
     const jobId = createRes.body.id;
 
     const res = await request(app)
       .delete(`/api/jobs/${jobId}`)
       .set('Authorization', `Bearer ${managerToken}`);
-    
+
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('message', 'Job deleted successfully');
   });
@@ -293,7 +293,7 @@ describe('Jobs API', () => {
     const res = await request(app)
       .delete(`/api/jobs/${jobId}`)
       .set('Authorization', `Bearer ${managerToken}`);
-    
+
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('employees are assigned');
   });

@@ -1,8 +1,10 @@
 import request from 'supertest';
-import app from '../../app.js';
 import db, { initDb } from '../../db/index.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+
+process.env.APP_TIMEZONE = 'America/New_York';
+import app from '../../app.js';
 
 let employeeToken: string;
 let employeeId: number | bigint;
@@ -11,9 +13,9 @@ beforeAll(async () => {
   process.env.APP_TIMEZONE = 'America/New_York';
   initDb();
 
-  db.prepare(`UPDATE settings SET office_lat = 37.7749, office_lng = -122.4194, geofence_radius = 50 WHERE id = 1`).run();
+  db.prepare(`UPDATE settings SET office_lat = 37.7749, office_lng = -122.4194, geofence_radius = 50, late_grace_period = 15 WHERE id = 1`).run();
 
-  db.prepare(`INSERT INTO jobs (id, title, hourly_rate, required_hours, grace_period) VALUES (1, 'Night Worker', 20, 8, 15)`).run();
+  db.prepare(`INSERT INTO jobs (id, title, hourly_rate, required_hours) VALUES (1, 'Night Worker', 20, 8)`).run();
 
   const salt = await bcrypt.genSalt(10);
   const hash = await bcrypt.hash('password123', salt);

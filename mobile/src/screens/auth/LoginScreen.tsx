@@ -14,7 +14,7 @@ export default function LoginScreen({ navigation }: any) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
-  
+
   const login = useAuthStore((state) => state.login);
 
   useEffect(() => {
@@ -25,7 +25,7 @@ export default function LoginScreen({ navigation }: any) {
     const hasHardware = await LocalAuthentication.hasHardwareAsync();
     const isEnrolled = await LocalAuthentication.isEnrolledAsync();
     const savedCredentials = await SecureStore.getItemAsync(BIOMETRIC_CREDENTIALS_KEY);
-    
+
     setIsBiometricAvailable(hasHardware && isEnrolled && !!savedCredentials);
   };
 
@@ -41,15 +41,15 @@ export default function LoginScreen({ navigation }: any) {
     setLoading(true);
     try {
       const deviceId = await getUniqueDeviceId();
-      const response = await api.post('/auth/login', { 
-        email: loginEmail, 
+      const response = await api.post('/auth/login', {
+        email: loginEmail,
         password: loginPassword,
-        deviceId 
+        deviceId
       });
-      
+
       // Save credentials for future biometric login
       await SecureStore.setItemAsync(
-        BIOMETRIC_CREDENTIALS_KEY, 
+        BIOMETRIC_CREDENTIALS_KEY,
         JSON.stringify({ email: loginEmail, password: loginPassword })
       );
 
@@ -63,8 +63,8 @@ export default function LoginScreen({ navigation }: any) {
           `Reason: ${errorData.suspension_reason || 'No reason provided.'}`
         );
       } else {
-        const message = error.isNetworkError 
-          ? 'Network unavailable. Please check your connection and try again.' 
+        const message = error.isNetworkError
+          ? 'Network unavailable. Please check your connection and try again.'
           : (errorData?.error || 'Invalid credentials');
         Alert.alert('Login Failed', message);
       }
@@ -145,13 +145,13 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderColor: '#e4e4e7', borderRadius: 8, padding: 12, fontSize: 16, backgroundColor: '#fafafa' },
   button: { backgroundColor: '#18181b', padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 8 },
   buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  biometricButton: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    padding: 16, 
-    borderRadius: 8, 
-    borderWidth: 1, 
+  biometricButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 8,
+    borderWidth: 1,
     borderColor: '#e4e4e7',
     gap: 8,
     marginTop: 8

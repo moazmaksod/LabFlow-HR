@@ -19,7 +19,6 @@ export const createJob = (req: Request, res: Response): void => {
             title,
             hourly_rate,
             required_hours_per_week,
-            grace_period,
             default_annual_leave_days,
             default_sick_leave_days,
             allow_overtime,
@@ -37,13 +36,12 @@ export const createJob = (req: Request, res: Response): void => {
                 hourly_rate,
                 required_hours,
                 required_hours_per_week,
-                grace_period,
                 default_annual_leave_days,
                 default_sick_leave_days,
                 allow_overtime,
                 employment_type
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         const info = insert.run(
@@ -51,7 +49,6 @@ export const createJob = (req: Request, res: Response): void => {
             hourly_rate,
             0,
             required_hours_per_week || 40,
-            grace_period || 15,
             default_annual_leave_days ?? 21,
             default_sick_leave_days ?? 7,
             allow_overtime !== undefined ? (allow_overtime ? 1 : 0) : 1,
@@ -76,7 +73,6 @@ export const updateJob = (req: Request, res: Response): void => {
             title,
             hourly_rate,
             required_hours_per_week,
-            grace_period,
             default_annual_leave_days,
             default_sick_leave_days,
             allow_overtime,
@@ -98,7 +94,6 @@ export const updateJob = (req: Request, res: Response): void => {
                     hourly_rate = ?,
                     required_hours = ?,
                     required_hours_per_week = ?,
-                    grace_period = ?,
                     default_annual_leave_days = ?,
                     default_sick_leave_days = ?,
                     allow_overtime = ?,
@@ -111,7 +106,6 @@ export const updateJob = (req: Request, res: Response): void => {
                 hourly_rate,
                 0,
                 required_hours_per_week || 40,
-                grace_period || 15,
                 default_annual_leave_days ?? 21,
                 default_sick_leave_days ?? 7,
                 allow_overtime !== undefined ? (allow_overtime ? 1 : 0) : 1,

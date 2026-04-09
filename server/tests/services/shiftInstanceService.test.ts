@@ -7,7 +7,7 @@ beforeAll(() => {
     initDb();
 
     // Insert a dummy user and job
-    db.prepare(`INSERT INTO jobs (id, title, hourly_rate, required_hours, grace_period) VALUES (1, 'Test Job', 20, 8, 15)`).run();
+    db.prepare(`INSERT INTO jobs (id, title, hourly_rate, required_hours) VALUES (1, 'Test Job', 20, 8)`).run();
     const empInsert = db.prepare(`INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)`).run('Test User', 'test@test.com', 'hash', 'employee');
     testUserId = empInsert.lastInsertRowid;
     db.prepare(`INSERT INTO profiles (user_id, status, job_id, weekly_schedule, device_id) VALUES (?, ?, ?, ?, ?)`).run(testUserId, 'active', 1, null, 'test-device');

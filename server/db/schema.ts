@@ -19,7 +19,6 @@ CREATE TABLE IF NOT EXISTS jobs (
     hourly_rate REAL NOT NULL,
     required_hours REAL NOT NULL,
     required_hours_per_week INTEGER,
-    grace_period INTEGER NOT NULL DEFAULT 15, -- In minutes
     default_annual_leave_days INTEGER DEFAULT 21,
     default_sick_leave_days INTEGER DEFAULT 7,
     allow_overtime BOOLEAN DEFAULT 1,

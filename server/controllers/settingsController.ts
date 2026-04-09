@@ -19,6 +19,10 @@ export const getSettings = (req: Request, res: Response): void => {
             res.status(404).json({ error: 'Settings not found' });
             return;
         }
+
+        // Attach environment-driven timezone to the settings payload
+        settings.company_timezone = process.env.APP_TIMEZONE!;
+
         res.json(settings);
     } catch (error) {
         console.error('Error fetching settings:', error);
@@ -54,8 +58,12 @@ export const updateSettings = (req: AuthRequest, res: Response): void => {
 
             update.run(...values);
 
-            const updatedSettings = db.prepare('SELECT * FROM settings WHERE id = 1').get();
+            const updatedSettings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
             logAudit('settings', 1, 'UPDATE', req.user!.id, oldSettings, updatedSettings);
+
+            // Re-inject environment-driven timezone
+            updatedSettings.company_timezone = process.env.APP_TIMEZONE!;
+
             return updatedSettings;
         });
 

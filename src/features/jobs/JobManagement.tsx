@@ -33,7 +33,7 @@ export default function JobManagement() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingJobId, setEditingJobId] = useState<number | null>(null);
   const [hasScheduleError, setHasScheduleError] = useState(false);
-  
+
   const defaultSchedule: WeeklySchedule = {};
   DAYS.forEach(day => {
     defaultSchedule[day] = [];
@@ -100,7 +100,6 @@ export default function JobManagement() {
       title: '',
       hourly_rate: '',
       required_hours_per_week: '40',
-      grace_period: '15',
       default_annual_leave_days: '21',
       default_sick_leave_days: '7',
       allow_overtime: true,
@@ -115,7 +114,6 @@ export default function JobManagement() {
       title: job.title,
       hourly_rate: job.hourly_rate.toString(),
       required_hours_per_week: job.required_hours_per_week ? job.required_hours_per_week.toString() : '40',
-      grace_period: job.grace_period.toString(),
       default_annual_leave_days: job.default_annual_leave_days !== null && job.default_annual_leave_days !== undefined ? job.default_annual_leave_days.toString() : '21',
       default_sick_leave_days: job.default_sick_leave_days !== null && job.default_sick_leave_days !== undefined ? job.default_sick_leave_days.toString() : '7',
       allow_overtime: job.allow_overtime === false ? false : true,
@@ -130,7 +128,6 @@ export default function JobManagement() {
       ...formData,
       hourly_rate: Number(formData.hourly_rate),
       required_hours_per_week: Number(formData.required_hours_per_week),
-      grace_period: Number(formData.grace_period),
       default_annual_leave_days: Number(formData.default_annual_leave_days),
       default_sick_leave_days: Number(formData.default_sick_leave_days)
     };
@@ -155,7 +152,7 @@ export default function JobManagement() {
           <h2 className="text-3xl font-black tracking-tight">Job Roles & Templates</h2>
           <p className="text-muted-foreground font-medium mt-1">Configure default settings and schedules for different positions.</p>
         </div>
-        <button 
+        <button
           onClick={() => {
             if (isFormOpen) {
               resetForm();
@@ -164,8 +161,8 @@ export default function JobManagement() {
             }
           }}
           className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg ${
-            isFormOpen 
-              ? 'bg-muted text-muted-foreground hover:bg-muted/80' 
+            isFormOpen
+              ? 'bg-muted text-muted-foreground hover:bg-muted/80'
               : 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-primary/20'
           }`}
         >
@@ -175,7 +172,7 @@ export default function JobManagement() {
       </div>
 
       {isFormOpen && (
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="bg-card border border-border rounded-3xl p-8 shadow-xl space-y-8"
@@ -228,16 +225,6 @@ export default function JobManagement() {
                           className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all"
                         />
                       </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Grace Period (min)</label>
-                        <input
-                          required
-                          type="number"
-                          value={formData.grace_period}
-                          onChange={e => setFormData({...formData, grace_period: e.target.value})}
-                          className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all"
-                        />
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -287,9 +274,9 @@ export default function JobManagement() {
 
             <div className="flex justify-end gap-4 pt-4 border-t border-border">
               <button type="button" onClick={resetForm} className="px-8 py-2.5 text-sm font-bold hover:bg-muted rounded-xl transition-colors">Cancel</button>
-              <button 
-                type="submit" 
-                disabled={createJobMutation.isPending || updateJobMutation.isPending} 
+              <button
+                type="submit"
+                disabled={createJobMutation.isPending || updateJobMutation.isPending}
                 className="px-8 py-2.5 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 disabled:opacity-50"
               >
                 {createJobMutation.isPending || updateJobMutation.isPending ? 'Saving...' : (editingJobId ? 'Update Job Role' : 'Create Job Role')}
@@ -323,7 +310,6 @@ export default function JobManagement() {
                   <th className="px-8 py-5 font-black">Weekly Hours</th>
                   <th className="px-8 py-5 font-black">Employment Type</th>
                   <th className="px-8 py-5 font-black">Leave (Annual/Sick)</th>
-                  <th className="px-8 py-5 font-black">Grace Period</th>
                   <th className="px-8 py-5 font-black text-right">Actions</th>
                 </tr>
               </thead>
@@ -340,17 +326,16 @@ export default function JobManagement() {
                       <span className="px-2 py-0.5 bg-muted rounded text-[10px] font-bold uppercase tracking-tighter capitalize">{job.employment_type || 'full-time'}</span>
                     </td>
                     <td className="px-8 py-5 font-medium">{job.default_annual_leave_days ?? 21} / {job.default_sick_leave_days ?? 7} days</td>
-                    <td className="px-8 py-5 font-medium">{job.grace_period}m</td>
                     <td className="px-8 py-5 text-right">
                       <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button 
+                        <button
                           onClick={() => handleEdit(job)}
                           className="p-2.5 bg-background border border-border rounded-xl text-muted-foreground hover:text-primary hover:border-primary/30 transition-all"
                           title="Edit Job Role"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
-                        <button 
+                        <button
                           onClick={() => handleDelete(job.id, job.title)}
                           className="p-2.5 bg-background border border-border rounded-xl text-muted-foreground hover:text-destructive hover:border-destructive/30 transition-all"
                           title="Delete Job Role"

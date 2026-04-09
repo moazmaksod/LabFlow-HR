@@ -1,9 +1,11 @@
 import request from 'supertest';
 import express from 'express';
 import db from '../../db/index.js';
-import attendanceRoutes from '../../routes/attendanceRoutes.js';
 import { schema } from '../../db/schema.js';
 import jwt from 'jsonwebtoken';
+
+process.env.APP_TIMEZONE = 'UTC';
+import attendanceRoutes from '../../routes/attendanceRoutes.js';
 
 const app = express();
 app.use(express.json());
@@ -43,7 +45,7 @@ describe('Attendance Interruptions API', () => {
         employeeId = userInsert.lastInsertRowid as number;
 
         // Ensure job exists
-        db.prepare(`INSERT INTO jobs (id, title, hourly_rate, required_hours, grace_period) VALUES (1, 'Test', 20, 8, 15)`).run();
+        db.prepare(`INSERT INTO jobs (id, title, hourly_rate, required_hours) VALUES (1, 'Test', 20, 8)`).run();
 
         const weekly_schedule = JSON.stringify({
             monday: [{ start: "00:00", end: "23:59" }],

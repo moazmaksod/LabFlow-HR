@@ -29,9 +29,9 @@ export default function TimezoneClock() {
   });
 
   useEffect(() => {
-    // For web frontend, we should ideally fetch APP_TIMEZONE via an endpoint or just let the backend
-    // handle tz formatting. Since we no longer sync it via settings, we default to local display.
-    const selectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (!settings?.company_timezone) return;
+
+    const selectedTimezone = settings.company_timezone;
 
     const updateTime = () => {
       try {
@@ -63,7 +63,7 @@ export default function TimezoneClock() {
     const interval = setInterval(updateTime, 1000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [settings?.company_timezone]);
 
   if (!time) return null;
 
@@ -74,7 +74,7 @@ export default function TimezoneClock() {
       <div className="flex items-center gap-2">
         <Clock className="w-4 h-4" />
         <span>{timeStr}</span>
-        <span className="text-xs opacity-70 ml-1">Local</span>
+        <span className="text-xs opacity-70 ml-1">({settings?.company_timezone})</span>
       </div>
       {dateStr && (
         <span className="text-xs opacity-80 mt-0.5">{dateStr}</span>
