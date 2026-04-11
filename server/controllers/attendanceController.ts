@@ -43,9 +43,9 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
         const scheduledTime = shiftInstance ? new Date(shiftInstance.start_time) : null;
 
         // Generate an unscheduled ID if there's no shift instance
-        const shiftId = shiftInstance ? shiftInstance.id.toString() : `unscheduled_${logicalDate.replace(/-/g, '')}_${new Date(timestamp).getTime()}`;
+        let shiftId = shiftInstance ? shiftInstance.id.toString() : `unscheduled_${logicalDate.replace(/-/g, '')}_${new Date(timestamp).getTime()}`;
 
-        // Re-entry logic: Is there already a closed attendance for this user and logical date?
+// Re-entry logic: Is there already a closed attendance for this user and logical date?
         const existingAttendance = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ? ORDER BY check_in DESC LIMIT 1').get(userId, logicalDate) as any;
 
         if (existingAttendance) {
@@ -53,57 +53,85 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                 return { status: 400, error: 'You already have an active session for this shift. Please check out first.' };
             }
 
-            // Auto-Resume existing session
-            const resumeTransaction = db.transaction(() => {
-                db.prepare(`
-                    UPDATE attendance
-                    SET check_out = NULL,
-                        current_status = ?,
-                        status = CASE WHEN status = 'early_out' THEN 'on_time' ELSE status END
-                    WHERE id = ?
-                `).run('working', existingAttendance.id);
+            // --- THE FIX: SMART RESUME GUARD ---
+            let isOldShiftExpired = false;
+            let isSwitchingToNewShift = false;
 
-                // 1. Void the Old Request (early_leave_approval)
-                const oldRequest = db.prepare(`
-                    SELECT id FROM requests
-                    WHERE attendance_id = ? AND type = 'early_leave_approval' AND status != 'rejected'
-                `).get(existingAttendance.id) as any;
-
-                if (oldRequest) {
-                    db.prepare(`
-                        UPDATE requests
-                        SET status = 'rejected',
-                            manager_note = COALESCE(manager_note, '') || '\nSYSTEM: Auto-canceled because the employee returned. Replaced by a shift interruption request.'
-                        WHERE id = ?
-                    `).run(oldRequest.id);
-
-                    // 2. Payroll Ledger Reversal
-                    db.prepare(`
-                        UPDATE payroll_transactions
-                        SET status = 'voided', amount = 0, manager_notes = COALESCE(manager_notes, '') || '\nSYSTEM: Voided due to employee return'
-                        WHERE reference_id = ?
-                    `).run(oldRequest.id);
+            if (existingAttendance.shift_id && !existingAttendance.shift_id.startsWith('unscheduled_')) {
+                const oldShiftInstance = db.prepare('SELECT end_time FROM shift_instances WHERE id = ?').get(existingAttendance.shift_id) as any;
+                if (oldShiftInstance) {
+                    const oldEndTime = new Date(oldShiftInstance.end_time).getTime();
+                    // If the old official shift has already ended (even including grace period), it is expired.
+                    if (new Date(timestamp).getTime() > (oldEndTime + (gracePeriod * 60000))) {
+                        isOldShiftExpired = true;
+                    }
                 }
+            }
 
-                const insertInterruption = db.prepare(`
-                    INSERT INTO shift_interruptions (attendance_id, start_time, end_time, type, status)
-                    VALUES (?, ?, ?, 'step_away', 'pending_manager')
-                `);
-                const info = insertInterruption.run(existingAttendance.id, existingAttendance.check_out, timestamp);
-                const interruptionId = info.lastInsertRowid;
+            if (shiftInstance && existingAttendance.shift_id !== shiftInstance.id.toString()) {
+                isSwitchingToNewShift = true;
+            }
 
-                db.prepare(`
-                    INSERT INTO requests (user_id, attendance_id, type, reference_id, reason, status)
-                    VALUES (?, ?, 'shift_interruption_review', ?, 'Auto-resumed shift gap review', 'pending')
-                `).run(userId, existingAttendance.id, interruptionId);
-            });
+            // We must NOT resume if:
+            // 1. Moving to a different official shift.
+            // 2. The old session was unscheduled AND a new official shift is ready.
+            // 3. The old official shift has completely expired (prevents resuming a finished day as 'overtime').
+            if (isSwitchingToNewShift || (existingAttendance.status === 'unscheduled' && shiftInstance) || isOldShiftExpired) {
+                console.log(`Guard triggered for user ${userId}: Skipping Auto-Resume (Expired or Switching). Starting a new check-in.`);
+                // Do nothing. Let it fall through to create a NEW check-in record.
+            } else {
+                // Auto-Resume existing session (Normal behavior for breaks within the active shift duration)
+                const resumeTransaction = db.transaction(() => {
+                    db.prepare(`
+                        UPDATE attendance
+                        SET check_out = NULL,
+                            current_status = ?,
+                            status = CASE WHEN status = 'early_out' THEN 'on_time' ELSE status END
+                        WHERE id = ?
+                    `).run('working', existingAttendance.id);
 
-            resumeTransaction();
+                    // 1. Void the Old Request (early_leave_approval)
+                    const oldRequest = db.prepare(`
+                        SELECT id FROM requests
+                        WHERE attendance_id = ? AND type = 'early_leave_approval' AND status != 'rejected'
+                    `).get(existingAttendance.id) as any;
 
-            const updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(existingAttendance.id);
-            return { status: 200, data: updatedRecord };
+                    if (oldRequest) {
+                        db.prepare(`
+                            UPDATE requests
+                            SET status = 'rejected',
+                                manager_note = COALESCE(manager_note, '') || '\nSYSTEM: Auto-canceled because the employee returned. Replaced by a shift interruption request.'
+                            WHERE id = ?
+                        `).run(oldRequest.id);
+
+                        // 2. Payroll Ledger Reversal
+                        db.prepare(`
+                            UPDATE payroll_transactions
+                            SET status = 'voided', amount = 0, manager_notes = COALESCE(manager_notes, '') || '\nSYSTEM: Voided due to employee return'
+                            WHERE reference_id = ?
+                        `).run(oldRequest.id);
+                    }
+
+                    const insertInterruption = db.prepare(`
+                        INSERT INTO shift_interruptions (attendance_id, start_time, end_time, type, status)
+                        VALUES (?, ?, ?, 'step_away', 'pending_manager')
+                    `);
+                    const info = insertInterruption.run(existingAttendance.id, existingAttendance.check_out, timestamp);
+                    const interruptionId = info.lastInsertRowid;
+
+                    db.prepare(`
+                        INSERT INTO requests (user_id, attendance_id, type, reference_id, reason, status)
+                        VALUES (?, ?, 'shift_interruption_review', ?, 'Auto-resumed shift gap review', 'pending')
+                    `).run(userId, existingAttendance.id, interruptionId);
+                });
+
+                resumeTransaction();
+
+                const updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(existingAttendance.id);
+                return { status: 200, data: updatedRecord };
+            }
         }
-
+        
         // Normal Check-in logic
         let status = 'on_time';
         let isUnscheduled = false;
@@ -119,10 +147,18 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
 
             if (diffMinutes > gracePeriod) {
+                // دخول متأخر بعد فترة السماح
                 status = 'late_in';
             } else if (diffMinutes < -gracePeriod) {
-                // Early Entry: status remains 'on_time' but otMinutes > 0 triggers request
-                otMinutes = Math.floor(Math.abs(diffMinutes));
+                // دخول مبكر جداً (قبل فترة السماح) -> يعتبر Unscheduled
+                status = 'unscheduled';
+                isUnscheduled = true;
+                shiftId = `unscheduled_${logicalDate.replace(/-/g, '')}_${clockInTime.getTime()}`;
+            } else if (diffMinutes < 0 && diffMinutes >= -gracePeriod) {
+                // THE FIX: دخول مبكر ضمن فترة السماح.
+                // الحالة تبقى 'on_time'، ولن نولد له Unscheduled ID، ولن نولد له Overtime request.
+                // سيعتبر كأنه بدأ الشفت في موعده بالضبط.
+                // otMinutes ستبقى 0، ولن يتم إدخال طلب أوفر تايم.
             }
         }
 

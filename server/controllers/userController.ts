@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import { generateShiftInstances } from '../services/shiftInstanceService.js';
 
+
 export const getUsers = (req: Request, res: Response): void => {
     try {
         const timezone = process.env.APP_TIMEZONE!;
@@ -463,6 +464,15 @@ export const updateUserProfile = (req: Request, res: Response): void => {
 
         updateTransaction();
 
+        if (body.weekly_schedule) {
+            try {
+                // Generate new future shifts based on the updated schedule
+                generateShiftInstances(Number(id), body.weekly_schedule, process.env.APP_TIMEZONE!);
+            } catch (err) {
+                console.error(`Failed to regenerate shifts for user ${id} after profile update:`, err);
+            }
+        }
+        
         const updatedUser = db.prepare(`
             SELECT
                 u.id, u.name, u.email, u.role,

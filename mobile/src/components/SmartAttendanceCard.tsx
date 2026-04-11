@@ -245,17 +245,10 @@ export default function SmartAttendanceCard({
   let nowPct = Math.min(100, Math.max(0, ((currentNowMs - timelineStartMs) / (timelineEndMs - timelineStartMs)) * 100));
 
   const isUnscheduledSession = activeSession?.status === 'unscheduled';
-  const showShiftTransitionButton = !!todayShift && isUnscheduledSession && currentNowMs >= shiftStartMs && currentNowMs <= shiftEndMs;
 
   const startMarkerPct = ((shiftStartMs - timelineStartMs) / (timelineEndMs - timelineStartMs)) * 100;
   const endMarkerPct = ((shiftEndMs - timelineStartMs) / (timelineEndMs - timelineStartMs)) * 100;
 
-  const handleShiftTransition = async () => {
-      await handleClock('check_out');
-      setTimeout(() => {
-          handleClock('check_in');
-      }, 1000);
-  };
 
 
 
@@ -386,14 +379,6 @@ export default function SmartAttendanceCard({
                 Please set your phone's Date & Time to 'Automatic' to log attendance.
               </Text>
             </View>
-          ) : showShiftTransitionButton ? (
-            <TouchableOpacity
-              style={[styles.clockButton, styles.shiftTransitionButton, loading && styles.disabledButton]}
-              onPress={handleShiftTransition}
-              disabled={loading}
-            >
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Official Shift Started - Switch Now</Text>}
-            </TouchableOpacity>
           ) : !isClockedIn ? (
             <TouchableOpacity 
               style={[styles.clockButton, styles.clockInButton, loading && styles.disabledButton]}

@@ -28,14 +28,25 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
     try {
         const decoded = jwt.verify(token, JWT_SECRET) as { id: number; role: string };
         
-        // Verify user still exists in DB
-        const user = db.prepare('SELECT id FROM users WHERE id = ?').get(decoded.id);
+        // 🛡️ SECURITY FIX: Fetch BOTH id AND role fresh from the database on every request.
+        //
+        // VULNERABILITY FIXED: Previously this query only fetched `id`, causing `req.user`
+        // to be set from the JWT's stale `decoded.role`. This meant role changes (e.g.,
+        // demoting an employee to 'pending', or suspending an account) would not take
+        // effect until the token expired (up to 7 days). A terminated or demoted employee
+        // could retain full API access for the duration of their token's lifetime.
+        //
+        // The token still validates cryptographic integrity and expiry — the DB lookup
+        // ensures the role reflects the current authoritative state.
+        const user = db.prepare('SELECT id, role FROM users WHERE id = ?').get(decoded.id) as { id: number; role: string } | undefined;
+
         if (!user) {
             res.status(401).json({ error: 'Unauthorized: User no longer exists' });
             return;
         }
 
-        req.user = decoded;
+        // Use the fresh role from DB, not the potentially stale role from the token
+        req.user = { id: user.id, role: user.role };
         next();
     } catch (error) {
         res.status(401).json({ error: 'Unauthorized: Invalid or expired token' });
