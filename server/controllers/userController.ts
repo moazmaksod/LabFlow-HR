@@ -1,3 +1,5 @@
+import { evaluateUserAttendance } from "../services/attendanceEvaluationService.js";
+
 import { Request, Response } from 'express';
 import db from '../db/index.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
@@ -146,6 +148,8 @@ export const updateUserRole = (req: Request, res: Response): void => {
 export const getProfile = (req: AuthRequest, res: Response): void => {
     try {
         const userId = req.user!.id;
+        evaluateUserAttendance(userId, process.env.APP_TIMEZONE!);
+
         const user = db.prepare(`
             SELECT
                 u.id, u.name, u.email, u.role,
@@ -321,6 +325,8 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
 export const getUserById = (req: Request, res: Response): void => {
     try {
         const { id } = req.params;
+        evaluateUserAttendance(Number(id), process.env.APP_TIMEZONE!);
+
         const user = db.prepare(`
             SELECT
                 u.id, u.name, u.email, u.role,
