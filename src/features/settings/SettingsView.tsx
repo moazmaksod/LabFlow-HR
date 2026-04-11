@@ -10,6 +10,7 @@ interface Settings {
   id: number;
   company_name: string;
   company_logo_url: string;
+  company_favicon_url: string;
   brand_primary_color: string;
   support_contact: string;
   payroll_cycle_type: string;
@@ -52,6 +53,7 @@ export default function SettingsView() {
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingFavicon, setUploadingFavicon] = useState(false);
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['settings'],
@@ -100,6 +102,40 @@ export default function SettingsView() {
     if (e.target.files && e.target.files[0]) {
       setUploadingLogo(true);
       uploadLogoMutation.mutate(e.target.files[0]);
+    }
+  };
+
+  const uploadFaviconMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const form = new FormData();
+      form.append('favicon', file);
+      const res = await axios.post('/api/settings/favicon', form, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return res.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      setFormData(data.settings);
+      setSuccessMsg('Favicon uploaded successfully!');
+      setTimeout(() => setSuccessMsg(''), 3000);
+    },
+    onError: (error: any) => {
+      setErrorMsg(error.response?.data?.error || 'Failed to upload favicon');
+      setTimeout(() => setErrorMsg(''), 3000);
+    },
+    onSettled: () => {
+      setUploadingFavicon(false);
+    }
+  });
+
+  const handleFaviconUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setUploadingFavicon(true);
+      uploadFaviconMutation.mutate(e.target.files[0]);
     }
   };
 
@@ -221,7 +257,7 @@ export default function SettingsView() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <label className="block text-sm font-medium text-muted-foreground mb-2">Company Name</label>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Company Name / Website Title</label>
                       <input
                         type="text"
                         name="company_name"
@@ -244,6 +280,24 @@ export default function SettingsView() {
                             className="hidden"
                             onChange={handleLogoUpload}
                             disabled={uploadingLogo}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Website Favicon</label>
+                      <div className="flex items-center gap-4">
+                        {formData.company_favicon_url && (
+                          <img src={formData.company_favicon_url} alt="Company Favicon" className="h-8 w-8 object-contain bg-background rounded" />
+                        )}
+                        <label className="cursor-pointer px-4 py-2 bg-muted text-muted-foreground border border-input rounded-xl hover:bg-accent transition-colors text-sm font-medium">
+                          {uploadingFavicon ? 'Uploading...' : 'Choose File'}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleFaviconUpload}
+                            disabled={uploadingFavicon}
                           />
                         </label>
                       </div>

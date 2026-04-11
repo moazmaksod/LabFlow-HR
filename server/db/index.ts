@@ -47,6 +47,9 @@ export function initDb() {
       `);
       db.exec(schema);
     }
+    if (!settingsColumns.some(c => c.name === 'company_favicon_url')) {
+      db.exec("ALTER TABLE settings ADD COLUMN company_favicon_url TEXT;");
+    }
 
     // Jobs migrations
     if (!jobColumns.some(c => c.name === 'required_hours_per_week')) {

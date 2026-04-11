@@ -131,6 +131,7 @@ CREATE TABLE IF NOT EXISTS settings (
     -- Identity
     company_name TEXT NOT NULL DEFAULT 'LabFlow',
     company_logo_url TEXT,
+    company_favicon_url TEXT,
     brand_primary_color TEXT NOT NULL DEFAULT '#4f46e5',
     support_contact TEXT,
 

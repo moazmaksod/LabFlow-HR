@@ -30,6 +30,60 @@ export const getSettings = (req: Request, res: Response): void => {
     }
 };
 
+export const uploadFavicon = (req: AuthRequest, res: Response): void => {
+    try {
+        if (!req.file) {
+            res.status(400).json({ error: 'No file uploaded' });
+            return;
+        }
+
+        const faviconUrl = `/uploads/favicons/${req.file.filename}`;
+
+        const updateTransaction = db.transaction(() => {
+            const oldSettings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+
+            if (!oldSettings) {
+                return null;
+            }
+
+            if (oldSettings.company_favicon_url && oldSettings.company_favicon_url.startsWith('/uploads/favicons/')) {
+                const oldPath = path.join(process.cwd(), 'public', oldSettings.company_favicon_url);
+                if (fs.existsSync(oldPath)) {
+                    try {
+                        fs.unlinkSync(oldPath);
+                    } catch (e) {
+                        console.error('Failed to delete old favicon:', e);
+                    }
+                }
+            }
+
+            const update = db.prepare(`
+                UPDATE settings
+                SET company_favicon_url = ?
+                WHERE id = 1
+            `);
+
+            update.run(faviconUrl);
+
+            const updatedSettings = db.prepare('SELECT * FROM settings WHERE id = 1').get();
+            logAudit('settings', 1, 'UPDATE', req.user!.id, oldSettings, updatedSettings);
+            return updatedSettings;
+        });
+
+        const updatedSettings = updateTransaction();
+        if (!updatedSettings) {
+             res.status(404).json({ error: 'Settings not found' });
+             return;
+        }
+
+        setSettingsCache(updatedSettings);
+        res.json({ message: 'Favicon uploaded successfully', settings: updatedSettings });
+    } catch (error) {
+        console.error('Error uploading favicon:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const updateSettings = (req: AuthRequest, res: Response): void => {
     try {
         const body = req.body;
