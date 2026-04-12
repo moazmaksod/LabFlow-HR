@@ -24,7 +24,6 @@ export default function RequestManagement() {
   const [filterStatus, setFilterStatus] = useState('pending');
   const [filterEmployee, setFilterEmployee] = useState('');
   const [filterType, setFilterType] = useState('all');
-  const [filterReason, setFilterReason] = useState('');
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
   const [selectedRequest, setSelectedRequest] = useState<RequestLog | null>(null);
@@ -86,8 +85,6 @@ export default function RequestManagement() {
       const typeStr = req.type || 'manual_clock';
       if (typeStr !== filterType) return false;
     }
-
-    if (filterReason && !req.reason.toLowerCase().includes(filterReason.toLowerCase())) return false;
 
     const reqDate = new Date(req.created_at).getTime();
 
@@ -334,33 +331,32 @@ export default function RequestManagement() {
             </div>
           </div>
         )}
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          <input
-            type="text"
-            placeholder="Filter Employee..."
-            value={filterEmployee}
-            onChange={(e) => setFilterEmployee(e.target.value)}
-            className="px-3 py-2 bg-background border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
-          />
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            className="px-3 py-2 bg-background border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
-          >
-            <option value="all">All Types</option>
-            <option value="manual_clock">Manual Clock</option>
-            <option value="permission_to_leave">Permission to Leave</option>
-            <option value="overtime_approval">Overtime</option>
-            <option value="early_leave_approval">Early Leave</option>
-            <option value="attendance_correction">Attendance Correction</option>
-          </select>
-          <input
-            type="text"
-            placeholder="Filter Reason..."
-            value={filterReason}
-            onChange={(e) => setFilterReason(e.target.value)}
-            className="px-3 py-2 bg-background border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
-          />
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="flex flex-col">
+            <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1">Employee</label>
+            <input
+              type="text"
+              placeholder="Search..."
+              value={filterEmployee}
+              onChange={(e) => setFilterEmployee(e.target.value)}
+              className="px-3 py-1.5 bg-background border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+          <div className="flex flex-col">
+            <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1">Type</label>
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="px-3 py-1.5 bg-background border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="all">All</option>
+              <option value="manual_clock">Manual Clock</option>
+              <option value="permission_to_leave">Permission to Leave</option>
+              <option value="overtime_approval">Overtime</option>
+              <option value="early_leave_approval">Early Leave</option>
+              <option value="attendance_correction">Attendance Correction</option>
+            </select>
+          </div>
           <div className="flex flex-col">
             <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1">From Date</label>
             <input
@@ -379,16 +375,19 @@ export default function RequestManagement() {
               className="px-3 py-1.5 bg-background border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
             />
           </div>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-3 py-2 bg-background border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
-          >
-            <option value="pending">Status: Pending Only</option>
-            <option value="approved">Status: Approved</option>
-            <option value="rejected">Status: Rejected</option>
-            <option value="all">Status: All</option>
-          </select>
+          <div className="flex flex-col">
+            <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1">Status</label>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="px-3 py-1.5 bg-background border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="pending">Pending Only</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+              <option value="all">All</option>
+            </select>
+          </div>
         </div>
       </div>
 
