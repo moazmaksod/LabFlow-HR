@@ -475,9 +475,15 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
             const payrollId = getOrCreateDraftPayroll(requestRecord.user_id, dateStr, actorId);
 
             if (requestRecord.type === 'overtime_approval') {
-                const requestedMinutes = requestRecord.details ? JSON.parse(requestRecord.details).requested_overtime_minutes : 0;
+                let requestedMinutes = 0;
+                if (requestRecord.details) {
+                    try {
+                        const parsedDetails = JSON.parse(requestRecord.details);
+                        requestedMinutes = parsedDetails.requested_overtime_minutes || parsedDetails.raw_overtime_minutes || 0;
+                    } catch (e) {}
+                }
                 const minutes = status === 'approved' ? (approved_minutes !== undefined ? approved_minutes : requestedMinutes) : requestedMinutes;
-                const hours = minutes / 60;
+                const hours = isNaN(minutes) || minutes === null ? 0 : minutes / 60;
                 const amount = status === 'approved' ? hours * (hourlyRate * 1.5) : 0; // Overtime is 1.5x
 
                 db.prepare(`

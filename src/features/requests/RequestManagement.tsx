@@ -266,7 +266,16 @@ export default function RequestManagement() {
     }
     setBulkError(null);
     for (const id of Array.from(selectedRequestIds)) {
-      await updateStatusMutation.mutateAsync({ id: id as number, status: 'rejected', manager_note: bulkManagerNote });
+      const req = requests?.find(r => r.id === id);
+      let payload: any = { id: id as number, status: 'rejected', manager_note: bulkManagerNote };
+
+      if (req?.type === 'overtime_approval' && req.details) {
+        try {
+          const details = JSON.parse(req.details);
+          payload.approved_minutes = details.requested_overtime_minutes || details.raw_overtime_minutes || 0;
+        } catch (e) {}
+      }
+      await updateStatusMutation.mutateAsync(payload);
     }
     setSelectedRequestIds(new Set());
     setBulkManagerNote('');
