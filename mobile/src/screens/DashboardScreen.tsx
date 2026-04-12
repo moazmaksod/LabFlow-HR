@@ -11,19 +11,87 @@ import { getUniqueDeviceId } from '../utils/device';
 import { useAttendanceStore } from '../store/useAttendanceStore';
 import SmartAttendanceCard from '../components/SmartAttendanceCard';
 import LiveServerClock from '../components/LiveServerClock';
+import NetInfo from '@react-native-community/netinfo';
+import { useSettingsStore } from '../store/useSettingsStore';
+import * as TaskManager from 'expo-task-manager';
+import * as BackgroundFetch from 'expo-background-fetch';
+
+const WIFI_DROPOUT_TASK = 'BACKGROUND_WIFI_DROPOUT_TASK';
+
+TaskManager.defineTask(WIFI_DROPOUT_TASK, async () => {
+  try {
+    const settings = useSettingsStore.getState().settings;
+    const { currentStatus } = useAttendanceStore.getState();
+
+    // Only monitor if we are actively working and validation is enabled
+    if (currentStatus !== 'working' || !settings?.wifi_validation_toggle) {
+      return BackgroundFetch.BackgroundFetchResult.NoData;
+    }
+
+    const networkState = await NetInfo.fetch();
+    let isConnectedToCompanyWifi = false;
+
+    if (networkState.type === 'wifi') {
+      let validSsid = true;
+      let validBssid = true;
+
+      if (settings.company_wifi_ssid && networkState.details?.ssid) {
+        validSsid = networkState.details.ssid === settings.company_wifi_ssid;
+      }
+      if (settings.company_wifi_bssid && networkState.details?.bssid) {
+        validBssid = networkState.details.bssid === settings.company_wifi_bssid;
+      }
+
+      if (validSsid && validBssid) {
+        isConnectedToCompanyWifi = true;
+      }
+    }
+
+    if (!isConnectedToCompanyWifi) {
+      // Background execution of executeClock requires pulling logic out or re-instantiating api call here.
+      // Doing optimistic offline save if API fails inside background task.
+      const deviceId = await getUniqueDeviceId();
+      const localNow = Date.now();
+      const { serverTimeOffset } = useNetworkStore.getState();
+      const timestamp = new Date(localNow + serverTimeOffset).toISOString();
+
+      try {
+        await api.post('/attendance/clock', {
+          type: 'check_out',
+          timestamp,
+          lat: 0,
+          lng: 0,
+          deviceId,
+        });
+      } catch (e) {
+        saveOfflineLog('check_out', timestamp, 0, 0, deviceId);
+      }
+      useAttendanceStore.getState().setStatus('none');
+      useAttendanceStore.getState().setLastActionTimestamp(timestamp);
+
+      // Stop tracking once clocked out
+      await BackgroundFetch.unregisterTaskAsync(WIFI_DROPOUT_TASK);
+      return BackgroundFetch.BackgroundFetchResult.NewData;
+    }
+
+    return BackgroundFetch.BackgroundFetchResult.NoData;
+  } catch (error) {
+    return BackgroundFetch.BackgroundFetchResult.Failed;
+  }
+});
 
 export default function DashboardScreen() {
   const { user, logout } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [unsyncedCount, setUnsyncedCount] = useState(0);
   const { isSyncing, syncOfflineRecords, isConnected } = useNetworkStore();
-  
-  const { 
-    currentStatus, 
-    setStatus, 
-    userProfile, 
-    setUserProfile, 
-    consumedBreakMinutes, 
+
+  const {
+    currentStatus,
+    setStatus,
+    userProfile,
+    setUserProfile,
+    consumedBreakMinutes,
     setConsumedBreakMinutes,
     setLastActionTimestamp,
     activeSession,
@@ -61,7 +129,7 @@ export default function DashboardScreen() {
       setActiveSession(session || null);
       if (session) {
         setStatus(session.current_status || 'working');
-        
+
         let consumed = 0;
         if (session.breaks && Array.isArray(session.breaks)) {
           session.breaks.forEach((b: any) => {
@@ -97,9 +165,65 @@ export default function DashboardScreen() {
     }, [checkUnsyncedLogs, fetchStatus, fetchProfile])
   );
 
+  useEffect(() => {
+    const registerBackgroundFetchAsync = async () => {
+      try {
+        const settings = useSettingsStore.getState().settings;
+        if (currentStatus === 'working' && settings?.wifi_validation_toggle) {
+          const isRegistered = await TaskManager.isTaskRegisteredAsync(WIFI_DROPOUT_TASK);
+          if (!isRegistered) {
+            await BackgroundFetch.registerTaskAsync(WIFI_DROPOUT_TASK, {
+              minimumInterval: 5 * 60, // 5 minutes buffer
+              stopOnTerminate: false, // android only,
+              startOnBoot: true, // android only
+            });
+          }
+        } else {
+           const isRegistered = await TaskManager.isTaskRegisteredAsync(WIFI_DROPOUT_TASK);
+           if (isRegistered) {
+             await BackgroundFetch.unregisterTaskAsync(WIFI_DROPOUT_TASK);
+           }
+        }
+      } catch (err) {
+        console.error("Background fetch registration failed:", err);
+      }
+    };
+
+    registerBackgroundFetchAsync();
+  }, [currentStatus]);
+
   const executeClock = async (type: 'check_in' | 'check_out') => {
     setLoading(true);
     try {
+      const settings = useSettingsStore.getState().settings;
+
+      if (type === 'check_in' && settings?.wifi_validation_toggle) {
+        const networkState = await NetInfo.fetch();
+        if (networkState.type !== 'wifi') {
+          Alert.alert('Network Security Error', 'You must be connected to the company Wi-Fi to clock in.');
+          setLoading(false);
+          return;
+        }
+
+        if (settings.company_wifi_ssid) {
+          // Fail closed: if we require an SSID but can't read it from details, deny access
+          if (!networkState.details?.ssid || networkState.details.ssid !== settings.company_wifi_ssid) {
+             Alert.alert('Network Security Error', `You must be connected to the company Wi-Fi (${settings.company_wifi_ssid}) to clock in.`);
+             setLoading(false);
+             return;
+          }
+        }
+
+        if (settings.company_wifi_bssid) {
+           // Fail closed: if we require a BSSID but can't read it, deny access
+           if (!networkState.details?.bssid || networkState.details.bssid !== settings.company_wifi_bssid) {
+             Alert.alert('Network Security Error', 'Wi-Fi router MAC address mismatch. Please connect to the correct company router.');
+             setLoading(false);
+             return;
+           }
+        }
+      }
+
       const deviceId = await getUniqueDeviceId();
       // 1. Request Location Permissions
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -235,13 +359,13 @@ export default function DashboardScreen() {
             }
 
             const response = await api.post('/attendance/step-away', { timestamp, deviceId });
-            
+
             if (!response.data.hasBreakBalance) {
               Alert.alert('Notice', 'You have no break balance. A permission request has been sent to your manager.');
             } else {
               Alert.alert('Success', 'You have stepped away.');
             }
-            
+
             setStatus('away');
             setLastActionTimestamp(timestamp);
             fetchStatus(); // Refresh to update consumed time
@@ -341,19 +465,19 @@ export default function DashboardScreen() {
     if (!hireDate) return 'Not set';
     const start = new Date(hireDate);
     const now = new Date();
-    
+
     let years = now.getFullYear() - start.getFullYear();
     let months = now.getMonth() - start.getMonth();
-    
+
     if (months < 0) {
       years--;
       months += 12;
     }
-    
+
     const parts = [];
     if (years > 0) parts.push(`${years} year${years > 1 ? 's' : ''}`);
     if (months > 0) parts.push(`${months} month${months > 1 ? 's' : ''}`);
-    
+
     return parts.length > 0 ? parts.join(', ') : 'Less than a month';
   };
 
@@ -410,8 +534,8 @@ export default function DashboardScreen() {
             Unsynced Records: {unsyncedCount}
           </Text>
         </View>
-        <TouchableOpacity 
-          style={[styles.syncButton, unsyncedCount === 0 && styles.syncButtonDisabled]} 
+        <TouchableOpacity
+          style={[styles.syncButton, unsyncedCount === 0 && styles.syncButtonDisabled]}
           onPress={handleSync}
           disabled={isSyncing || unsyncedCount === 0}
           accessibilityLabel="Sync offline logs"
@@ -439,16 +563,16 @@ const styles = StyleSheet.create({
   tenureText: { fontSize: 12, color: '#a1a1aa', fontWeight: '500' },
   subtitle: { fontSize: 16, color: '#71717a' },
   iconButton: { padding: 8, borderRadius: 12, backgroundColor: '#fff', elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
-  card: { 
-    backgroundColor: '#fff', 
-    padding: 24, 
-    borderRadius: 20, 
-    marginBottom: 16, 
-    shadowColor: '#000', 
-    shadowOffset: { width: 0, height: 2 }, 
-    shadowOpacity: 0.05, 
-    shadowRadius: 10, 
-    elevation: 2 
+  card: {
+    backgroundColor: '#fff',
+    padding: 24,
+    borderRadius: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2
   },
   detailsCard: {
     backgroundColor: '#fff',
@@ -505,10 +629,10 @@ const styles = StyleSheet.create({
     color: '#18181b',
   },
   syncCard: {
-    backgroundColor: '#fff', 
-    padding: 24, 
-    borderRadius: 20, 
-    marginBottom: 24, 
+    backgroundColor: '#fff',
+    padding: 24,
+    borderRadius: 20,
+    marginBottom: 24,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

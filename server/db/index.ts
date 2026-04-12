@@ -47,6 +47,11 @@ export function initDb() {
       `);
       db.exec(schema);
     }
+    if (!settingsColumns.some(c => c.name === 'wifi_validation_toggle')) {
+      db.exec("ALTER TABLE settings ADD COLUMN wifi_validation_toggle BOOLEAN NOT NULL DEFAULT 0;");
+      db.exec("ALTER TABLE settings ADD COLUMN company_wifi_ssid TEXT;");
+      db.exec("ALTER TABLE settings ADD COLUMN company_wifi_bssid TEXT;");
+    }
 
     // Jobs migrations
     if (!jobColumns.some(c => c.name === 'required_hours_per_week')) {
