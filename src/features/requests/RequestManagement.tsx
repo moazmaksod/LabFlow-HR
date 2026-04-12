@@ -22,6 +22,11 @@ interface RequestLog {
 export default function RequestManagement() {
   const queryClient = useQueryClient();
   const [filterStatus, setFilterStatus] = useState('pending');
+  const [filterEmployee, setFilterEmployee] = useState('');
+  const [filterType, setFilterType] = useState('all');
+  const [filterReason, setFilterReason] = useState('');
+  const [filterRequestedIn, setFilterRequestedIn] = useState('');
+  const [filterRequestedOut, setFilterRequestedOut] = useState('');
   const [selectedRequest, setSelectedRequest] = useState<RequestLog | null>(null);
   const [managerNote, setManagerNote] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +36,10 @@ export default function RequestManagement() {
   const [maxPaidMinutes, setMaxPaidMinutes] = useState<number>(0);
   const [penaltyHours, setPenaltyHours] = useState<number>(0);
   const [isRejecting, setIsRejecting] = useState(false);
+  const [selectedRequestIds, setSelectedRequestIds] = useState<Set<number>>(new Set());
+  const [bulkManagerNote, setBulkManagerNote] = useState('');
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const [isBulkRejecting, setIsBulkRejecting] = useState(false);
 
   const { data: requests, isLoading } = useQuery<RequestLog[]>({
     queryKey: ['requests'],
@@ -53,16 +62,57 @@ export default function RequestManagement() {
     }
   });
 
+
+  const getRequestedIn = (req: RequestLog) => {
+    if (req.type === 'attendance_correction' && req.details) {
+      try {
+        const details = JSON.parse(req.details);
+        if (details.new_clock_in) return details.new_clock_in;
+      } catch (e) {}
+    }
+    return req.requested_check_in;
+  };
+
+  const getRequestedOut = (req: RequestLog) => {
+    if (req.type === 'attendance_correction' && req.details) {
+      try {
+        const details = JSON.parse(req.details);
+        if (details.new_clock_out) return details.new_clock_out;
+      } catch (e) {}
+    }
+    return req.requested_check_out;
+  };
+
   const formatTime = (isoString: string | null) => {
     if (!isoString) return '-';
-    return new Date(isoString).toLocaleString([], { 
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
+    return new Date(isoString).toLocaleString([], {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
     });
   };
 
   const filteredRequests = requests?.filter(req => {
-    if (filterStatus === 'all') return true;
-    return req.status === filterStatus;
+    if (filterStatus !== 'all' && req.status !== filterStatus) return false;
+
+    if (filterEmployee && !req.user_name.toLowerCase().includes(filterEmployee.toLowerCase())) return false;
+
+    if (filterType !== 'all') {
+      const typeStr = req.type || 'manual_clock';
+      if (typeStr !== filterType) return false;
+    }
+
+    if (filterReason && !req.reason.toLowerCase().includes(filterReason.toLowerCase())) return false;
+
+    if (filterRequestedIn) {
+      const timeInStr = formatTime(getRequestedIn(req)).toLowerCase();
+      if (!timeInStr.includes(filterRequestedIn.toLowerCase())) return false;
+    }
+
+    if (filterRequestedOut) {
+      const timeOutStr = formatTime(getRequestedOut(req)).toLowerCase();
+      if (!timeOutStr.includes(filterRequestedOut.toLowerCase())) return false;
+    }
+
+    return true;
   });
 
   const openModal = (req: RequestLog) => {
@@ -74,7 +124,7 @@ export default function RequestManagement() {
     setPenaltyHours(0);
     setIsRejecting(false);
     setError(null);
-    
+
     if (req.type === 'overtime_approval' && req.details) {
       try {
         const details = JSON.parse(req.details);
@@ -133,8 +183,8 @@ export default function RequestManagement() {
       setError("A manager note is mandatory to approve or reject this request.");
       return;
     }
-    updateStatusMutation.mutate({ 
-      id: selectedRequest.id, 
+    updateStatusMutation.mutate({
+      id: selectedRequest.id,
       status: 'approved',
       manager_note: managerNote,
       approved_minutes: selectedRequest.type === 'overtime_approval' ? approvedMinutes : undefined,
@@ -149,28 +199,193 @@ export default function RequestManagement() {
       setError("A manager note is mandatory to approve or reject this request.");
       return;
     }
-    updateStatusMutation.mutate({ 
-      id: selectedRequest.id, 
+    updateStatusMutation.mutate({
+      id: selectedRequest.id,
       status: 'rejected',
       manager_note: managerNote,
       penalty_hours: penaltyHours
     });
   };
 
+  const checkIsFrozen = (req: RequestLog) => {
+    if (req.status !== 'pending') return true;
+    if (req.type === 'overtime_approval') {
+        const hasClockedOut = !!req.original_check_out || !!req.requested_check_out;
+        let hoursPassed = 0;
+        if (req.original_check_in) {
+            hoursPassed = (Date.now() - new Date(req.original_check_in).getTime()) / (1000 * 60 * 60);
+        }
+        if (!hasClockedOut || hoursPassed < 3) {
+            return true;
+        }
+    } else if (req.type === 'permission_to_leave') {
+        if (!req.interruption_end_time) {
+            return true;
+        }
+    }
+    return false;
+  };
+
+  const handleBulkApprove = async () => {
+    if (selectedRequestIds.size === 0) return;
+    if (!bulkManagerNote.trim()) {
+      setBulkError("A manager note is mandatory to approve these requests.");
+      return;
+    }
+    setBulkError(null);
+    for (const id of Array.from(selectedRequestIds)) {
+      const req = requests?.find(r => r.id === id);
+      let payload: any = { id: id as number, status: 'approved', manager_note: bulkManagerNote };
+
+      if (req?.type === 'overtime_approval' && req.details) {
+        try {
+          const details = JSON.parse(req.details);
+          payload.approved_minutes = details.requested_overtime_minutes || details.raw_overtime_minutes || 0;
+        } catch (e) {}
+      } else if ((req?.type === 'early_leave_approval' || req?.type === 'attendance_correction') && req.details) {
+        try {
+          const details = JSON.parse(req.details);
+          const missing = details.missing_minutes || details.early_leave_minutes || 0;
+          if (missing > 0) {
+              payload.is_paid_permission = true;
+              payload.paid_permission_minutes = missing;
+          }
+        } catch (e) {}
+      }
+      await updateStatusMutation.mutateAsync(payload);
+    }
+    setSelectedRequestIds(new Set());
+    setBulkManagerNote('');
+  };
+
+  const handleBulkReject = async () => {
+    if (selectedRequestIds.size === 0) return;
+    if (!bulkManagerNote.trim()) {
+      setBulkError("A manager note is mandatory to reject these requests.");
+      return;
+    }
+    setBulkError(null);
+    for (const id of Array.from(selectedRequestIds)) {
+      await updateStatusMutation.mutateAsync({ id: id as number, status: 'rejected', manager_note: bulkManagerNote });
+    }
+    setSelectedRequestIds(new Set());
+    setBulkManagerNote('');
+    setIsBulkRejecting(false);
+  };
+
+
   return (
     <div className="space-y-6 relative">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold tracking-tight">Requests & Approvals</h2>
-        <select 
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          className="px-4 py-2 bg-card border border-border rounded-lg text-sm font-medium shadow-sm"
-        >
-          <option value="pending">Pending Only</option>
-          <option value="approved">Approved</option>
-          <option value="rejected">Rejected</option>
-          <option value="all">All Requests</option>
-        </select>
+      </div>
+
+      <div className="bg-card border border-border rounded-xl shadow-sm p-4 space-y-4">
+        {selectedRequestIds.size > 0 && (
+          <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between mb-4 animate-in fade-in slide-in-from-top-2">
+            <div className="flex-1 w-full">
+              <label className="text-sm font-bold text-foreground mb-1 block">Bulk Justification <span className="text-destructive">*</span></label>
+              <input
+                type="text"
+                placeholder="Manager note for all selected requests..."
+                value={bulkManagerNote}
+                onChange={(e) => {
+                  setBulkManagerNote(e.target.value);
+                  if (e.target.value.trim()) setBulkError(null);
+                }}
+                className={`w-full px-3 py-2 bg-background border rounded-lg outline-none focus:ring-2 focus:ring-primary/20 ${bulkError ? 'border-destructive' : 'border-border'}`}
+              />
+              {bulkError && <p className="text-xs text-destructive mt-1 font-medium">{bulkError}</p>}
+            </div>
+            <div className="flex items-center gap-2 shrink-0 pt-6 md:pt-0">
+              {!isBulkRejecting ? (
+                <>
+                  <button
+                    onClick={() => setIsBulkRejecting(true)}
+                    className="px-4 py-2 bg-destructive/10 text-destructive text-sm font-medium rounded-lg hover:bg-destructive/20 transition-colors"
+                  >
+                    Reject Selected ({selectedRequestIds.size})
+                  </button>
+                  <button
+                    onClick={handleBulkApprove}
+                    disabled={updateStatusMutation.isPending}
+                    className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+                  >
+                    Approve Selected ({selectedRequestIds.size})
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setIsBulkRejecting(false)}
+                    className="px-4 py-2 bg-muted text-muted-foreground text-sm font-medium rounded-lg hover:bg-muted/80 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleBulkReject}
+                    disabled={updateStatusMutation.isPending}
+                    className="px-4 py-2 bg-destructive text-white text-sm font-medium rounded-lg hover:bg-destructive/90 transition-colors disabled:opacity-50"
+                  >
+                    Confirm Reject ({selectedRequestIds.size})
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <input
+            type="text"
+            placeholder="Filter Employee..."
+            value={filterEmployee}
+            onChange={(e) => setFilterEmployee(e.target.value)}
+            className="px-3 py-2 bg-background border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+          />
+          <select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+            className="px-3 py-2 bg-background border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+          >
+            <option value="all">All Types</option>
+            <option value="manual_clock">Manual Clock</option>
+            <option value="permission_to_leave">Permission to Leave</option>
+            <option value="overtime_approval">Overtime</option>
+            <option value="early_leave_approval">Early Leave</option>
+            <option value="attendance_correction">Attendance Correction</option>
+          </select>
+          <input
+            type="text"
+            placeholder="Filter Reason..."
+            value={filterReason}
+            onChange={(e) => setFilterReason(e.target.value)}
+            className="px-3 py-2 bg-background border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+          />
+          <input
+            type="text"
+            placeholder="Filter Req. In..."
+            value={filterRequestedIn}
+            onChange={(e) => setFilterRequestedIn(e.target.value)}
+            className="px-3 py-2 bg-background border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+          />
+          <input
+            type="text"
+            placeholder="Filter Req. Out..."
+            value={filterRequestedOut}
+            onChange={(e) => setFilterRequestedOut(e.target.value)}
+            className="px-3 py-2 bg-background border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+          />
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="px-3 py-2 bg-background border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+          >
+            <option value="pending">Status: Pending Only</option>
+            <option value="approved">Status: Approved</option>
+            <option value="rejected">Status: Rejected</option>
+            <option value="all">Status: All</option>
+          </select>
+        </div>
       </div>
 
       <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
@@ -186,6 +401,26 @@ export default function RequestManagement() {
             <table className="w-full text-sm text-left">
               <thead className="text-xs text-muted-foreground uppercase bg-muted/50">
                 <tr>
+                  <th className="px-6 py-3 font-medium w-10">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
+                      checked={filteredRequests?.length > 0 && Array.from(selectedRequestIds).length === filteredRequests?.filter(req => !checkIsFrozen(req) && req.status === 'pending').length && filteredRequests?.filter(req => !checkIsFrozen(req) && req.status === 'pending').length > 0}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          const newSet = new Set<number>();
+                          filteredRequests?.forEach(req => {
+                            if (!checkIsFrozen(req) && req.status === 'pending') {
+                              newSet.add(req.id);
+                            }
+                          });
+                          setSelectedRequestIds(newSet);
+                        } else {
+                          setSelectedRequestIds(new Set());
+                        }
+                      }}
+                    />
+                  </th>
                   <th className="px-6 py-3 font-medium">Employee</th>
                   <th className="px-6 py-3 font-medium">Type</th>
                   <th className="px-6 py-3 font-medium">Reason</th>
@@ -198,10 +433,30 @@ export default function RequestManagement() {
               <tbody className="divide-y divide-border">
                 {filteredRequests?.map((req) => (
                   <tr key={req.id} className="hover:bg-muted/50 transition-colors">
+                    <td className="px-6 py-4">
+                      {req.status === 'pending' && !checkIsFrozen(req) ? (
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
+                          checked={selectedRequestIds.has(req.id)}
+                          onChange={(e) => {
+                            const newSet = new Set(selectedRequestIds);
+                            if (e.target.checked) {
+                              newSet.add(req.id);
+                            } else {
+                              newSet.delete(req.id);
+                            }
+                            setSelectedRequestIds(newSet);
+                          }}
+                        />
+                      ) : (
+                        <div className="w-4 h-4" />
+                      )}
+                    </td>
                     <td className="px-6 py-4 font-medium">{req.user_name}</td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                        req.type === 'permission_to_leave' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' : 
+                        req.type === 'permission_to_leave' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
                         req.type === 'overtime_approval' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' :
                         req.type === 'early_leave_approval' ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400' :
                         'bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-400'
@@ -210,8 +465,8 @@ export default function RequestManagement() {
                       </span>
                     </td>
                     <td className="px-6 py-4 max-w-xs truncate" title={req.reason}>{req.reason}</td>
-                    <td className="px-6 py-4 font-mono text-xs">{formatTime(req.requested_check_in)}</td>
-                    <td className="px-6 py-4 font-mono text-xs">{formatTime(req.requested_check_out)}</td>
+                    <td className="px-6 py-4 font-mono text-xs">{formatTime(getRequestedIn(req))}</td>
+                    <td className="px-6 py-4 font-mono text-xs">{formatTime(getRequestedOut(req))}</td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                         req.status === 'approved' ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' :
@@ -224,14 +479,14 @@ export default function RequestManagement() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       {req.status === 'pending' ? (
-                        <button 
+                        <button
                           onClick={() => openModal(req)}
                           className="px-3 py-1.5 bg-primary text-primary-foreground text-xs font-medium rounded-md hover:bg-primary/90 transition-colors flex items-center gap-1 ml-auto"
                         >
                           <FileText className="w-3 h-3" /> Review
                         </button>
                       ) : (
-                        <button 
+                        <button
                           onClick={() => openModal(req)}
                           className="px-3 py-1.5 bg-muted text-muted-foreground text-xs font-medium rounded-md hover:bg-muted/80 transition-colors flex items-center gap-1 ml-auto"
                         >
@@ -257,13 +512,13 @@ export default function RequestManagement() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="p-6 overflow-y-auto flex-1 space-y-4">
               <div>
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Employee</label>
                 <p className="font-medium">{selectedRequest.user_name}</p>
               </div>
-              
+
               <div>
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Type</label>
                 <p className="capitalize">{selectedRequest.type?.replace(/_/g, ' ') || 'Manual Clock'}</p>
@@ -325,8 +580,8 @@ export default function RequestManagement() {
               {selectedRequest.type === 'overtime_approval' && (
                 <div className="space-y-2 pt-2">
                   <label className="text-sm font-medium">Approved Overtime (Minutes)</label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     value={approvedMinutes}
                     onChange={(e) => setApprovedMinutes(Number(e.target.value))}
                     disabled={selectedRequest.status !== 'pending'}
@@ -339,8 +594,8 @@ export default function RequestManagement() {
               {(selectedRequest.type === 'early_leave_approval' || selectedRequest.type === 'attendance_correction') && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-3 p-3 bg-primary/5 rounded-lg border border-primary/10">
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       id="paid-permission"
                       checked={isPaidPermission}
                       onChange={(e) => setIsPaidPermission(e.target.checked)}
@@ -356,8 +611,8 @@ export default function RequestManagement() {
                   {isPaidPermission && (
                     <div className="space-y-2 pl-7">
                       <label className="text-sm font-medium">Approved Paid Minutes</label>
-                      <input 
-                        type="number" 
+                      <input
+                        type="number"
                         value={paidPermissionMinutes}
                         max={maxPaidMinutes}
                         onChange={(e) => {
@@ -380,7 +635,7 @@ export default function RequestManagement() {
                   <label className="text-sm font-bold text-foreground">Manager Justification <span className="text-destructive">*</span></label>
                   <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-100 text-amber-700 rounded uppercase">Required for Payroll Audit</span>
                 </div>
-                <textarea 
+                <textarea
                   value={managerNote}
                   onChange={(e) => {
                     setManagerNote(e.target.value);
@@ -408,8 +663,8 @@ export default function RequestManagement() {
                     <label className="text-sm font-bold text-destructive block mb-2">
                       Apply Disciplinary Penalty (Hours)
                     </label>
-                    <input 
-                      type="number" 
+                    <input
+                      type="number"
                       value={penaltyHours}
                       onChange={(e) => setPenaltyHours(Math.max(0, Number(e.target.value)))}
                       placeholder="0.0"
@@ -421,18 +676,18 @@ export default function RequestManagement() {
                     </p>
                   </div>
                 )}
-                
+
                 <div className="flex gap-3" title={isFrozen ? frozenTooltip : undefined}>
                   {!isRejecting ? (
                     <>
-                      <button 
+                      <button
                         onClick={() => setIsRejecting(true)}
                         disabled={isFrozen}
                         className="flex-1 px-4 py-3 bg-destructive/10 text-destructive font-bold rounded-xl hover:bg-destructive/20 transition-all flex items-center justify-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed"
                       >
                         <XCircle className="w-5 h-5" /> Reject
                       </button>
-                      <button 
+                      <button
                         onClick={handleApprove}
                         disabled={updateStatusMutation.isPending || !managerNote.trim() || isFrozen}
                         className="flex-1 px-4 py-3 bg-primary text-primary-foreground font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2 disabled:opacity-30 disabled:grayscale disabled:cursor-not-allowed"
@@ -442,13 +697,13 @@ export default function RequestManagement() {
                     </>
                   ) : (
                     <>
-                      <button 
+                      <button
                         onClick={() => setIsRejecting(false)}
                         className="px-4 py-3 bg-muted text-muted-foreground font-bold rounded-xl hover:bg-muted/80 transition-all"
                       >
                         Cancel
                       </button>
-                      <button 
+                      <button
                         onClick={handleReject}
                         disabled={updateStatusMutation.isPending || !managerNote.trim() || isFrozen}
                         className="flex-1 px-4 py-3 bg-destructive text-white font-bold rounded-xl hover:bg-destructive/90 shadow-lg shadow-destructive/20 transition-all flex items-center justify-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed"
