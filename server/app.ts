@@ -42,4 +42,16 @@ app.use('/api/payroll', payrollRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/audit', auditRoutes);
 
+import db from './db/index.js';
+
+// Global Missed Shift Cleanup Interval (30 minutes)
+const cleanupInterval = setInterval(() => {
+    try {
+        db.prepare("UPDATE shift_instances SET status = 'Completed' WHERE status = 'Scheduled' AND end_time <= ?").run(new Date().toISOString());
+    } catch (error) {
+        console.error("Error cleaning up expired shifts:", error);
+    }
+}, 30 * 60 * 1000);
+cleanupInterval.unref();
+
 export default app;

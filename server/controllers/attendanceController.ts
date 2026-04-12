@@ -1,3 +1,5 @@
+import { evaluateUserAttendance } from "../services/attendanceEvaluationService.js";
+
 import { Request, Response } from 'express';
 import db from '../db/index.js';
 import { getDateStringInTimezone } from '../utils/dateUtils.js';
@@ -543,6 +545,7 @@ export const syncOfflineLogs = (req: AuthRequest, res: Response): void => {
 export const getMyLogs = (req: AuthRequest, res: Response): void => {
     try {
         const userId = req.user!.id;
+        evaluateUserAttendance(userId, process.env.APP_TIMEZONE!);
         const logs = db.prepare(`
             SELECT * FROM attendance
             WHERE user_id = ?
@@ -593,6 +596,17 @@ export const getMyLogs = (req: AuthRequest, res: Response): void => {
 
 export const getAttendanceLogs = (req: Request, res: Response): void => {
     try {
+        // Find active users and evaluate them JIT
+        const activeUsers = db.prepare(`
+            SELECT DISTINCT user_id
+            FROM attendance
+            WHERE check_out IS NULL
+        `).all() as any[];
+
+        for (const u of activeUsers) {
+            evaluateUserAttendance(u.user_id, process.env.APP_TIMEZONE!);
+        }
+
         const logs = db.prepare(`
             SELECT a.*, u.name as user_name, j.title as job_title
             FROM attendance a

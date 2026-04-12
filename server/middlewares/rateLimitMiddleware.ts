@@ -23,7 +23,7 @@ const loginAttempts = new Map<string, RateLimitEntry>();
 const registerAttempts = new Map<string, RateLimitEntry>();
 
 // Cleanup interval: purge expired entries every 10 minutes to prevent memory leaks
-setInterval(() => {
+const rateLimiterInterval = setInterval(() => {
     const now = Date.now();
     for (const [key, entry] of loginAttempts.entries()) {
         if (entry.resetAt < now) loginAttempts.delete(key);
@@ -32,6 +32,7 @@ setInterval(() => {
         if (entry.resetAt < now) registerAttempts.delete(key);
     }
 }, 10 * 60 * 1000);
+rateLimiterInterval.unref();
 
 /**
  * Creates a rate limit middleware with the given configuration.
@@ -47,6 +48,10 @@ function createRateLimiter(
     message: string
 ) {
     return (req: Request, res: Response, next: NextFunction): void => {
+        if (process.env.NODE_ENV === 'test') {
+            return next();
+        }
+
         // Use X-Forwarded-For for proxy environments, fallback to direct IP
         const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
             || req.socket.remoteAddress
