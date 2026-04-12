@@ -25,8 +25,8 @@ export default function RequestManagement() {
   const [filterEmployee, setFilterEmployee] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [filterReason, setFilterReason] = useState('');
-  const [filterRequestedIn, setFilterRequestedIn] = useState('');
-  const [filterRequestedOut, setFilterRequestedOut] = useState('');
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
   const [selectedRequest, setSelectedRequest] = useState<RequestLog | null>(null);
   const [managerNote, setManagerNote] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -63,24 +63,11 @@ export default function RequestManagement() {
   });
 
 
-  const getRequestedIn = (req: RequestLog) => {
-    if (req.type === 'attendance_correction' && req.details) {
-      try {
-        const details = JSON.parse(req.details);
-        if (details.new_clock_in) return details.new_clock_in;
-      } catch (e) {}
-    }
-    return req.requested_check_in;
-  };
-
-  const getRequestedOut = (req: RequestLog) => {
-    if (req.type === 'attendance_correction' && req.details) {
-      try {
-        const details = JSON.parse(req.details);
-        if (details.new_clock_out) return details.new_clock_out;
-      } catch (e) {}
-    }
-    return req.requested_check_out;
+  const formatRequestedAt = (isoString: string | null) => {
+    if (!isoString) return '-';
+    return new Date(isoString).toLocaleString([], {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
   };
 
   const formatTime = (isoString: string | null) => {
@@ -102,14 +89,18 @@ export default function RequestManagement() {
 
     if (filterReason && !req.reason.toLowerCase().includes(filterReason.toLowerCase())) return false;
 
-    if (filterRequestedIn) {
-      const timeInStr = formatTime(getRequestedIn(req)).toLowerCase();
-      if (!timeInStr.includes(filterRequestedIn.toLowerCase())) return false;
+    const reqDate = new Date(req.created_at).getTime();
+
+    if (filterStartDate) {
+      const start = new Date(filterStartDate);
+      start.setHours(0, 0, 0, 0);
+      if (reqDate < start.getTime()) return false;
     }
 
-    if (filterRequestedOut) {
-      const timeOutStr = formatTime(getRequestedOut(req)).toLowerCase();
-      if (!timeOutStr.includes(filterRequestedOut.toLowerCase())) return false;
+    if (filterEndDate) {
+      const end = new Date(filterEndDate);
+      end.setHours(23, 59, 59, 999);
+      if (reqDate > end.getTime()) return false;
     }
 
     return true;
@@ -370,20 +361,24 @@ export default function RequestManagement() {
             onChange={(e) => setFilterReason(e.target.value)}
             className="px-3 py-2 bg-background border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
           />
-          <input
-            type="text"
-            placeholder="Filter Req. In..."
-            value={filterRequestedIn}
-            onChange={(e) => setFilterRequestedIn(e.target.value)}
-            className="px-3 py-2 bg-background border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
-          />
-          <input
-            type="text"
-            placeholder="Filter Req. Out..."
-            value={filterRequestedOut}
-            onChange={(e) => setFilterRequestedOut(e.target.value)}
-            className="px-3 py-2 bg-background border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
-          />
+          <div className="flex flex-col">
+            <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1">From Date</label>
+            <input
+              type="date"
+              value={filterStartDate}
+              onChange={(e) => setFilterStartDate(e.target.value)}
+              className="px-3 py-1.5 bg-background border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+          <div className="flex flex-col">
+            <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1">To Date</label>
+            <input
+              type="date"
+              value={filterEndDate}
+              onChange={(e) => setFilterEndDate(e.target.value)}
+              className="px-3 py-1.5 bg-background border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
@@ -433,8 +428,7 @@ export default function RequestManagement() {
                   <th className="px-6 py-3 font-medium">Employee</th>
                   <th className="px-6 py-3 font-medium">Type</th>
                   <th className="px-6 py-3 font-medium">Reason</th>
-                  <th className="px-6 py-3 font-medium">Requested In</th>
-                  <th className="px-6 py-3 font-medium">Requested Out</th>
+                  <th className="px-6 py-3 font-medium">Requested At</th>
                   <th className="px-6 py-3 font-medium">Status</th>
                   <th className="px-6 py-3 font-medium text-right">Actions</th>
                 </tr>
@@ -474,8 +468,7 @@ export default function RequestManagement() {
                       </span>
                     </td>
                     <td className="px-6 py-4 max-w-xs truncate" title={req.reason}>{req.reason}</td>
-                    <td className="px-6 py-4 font-mono text-xs">{formatTime(getRequestedIn(req))}</td>
-                    <td className="px-6 py-4 font-mono text-xs">{formatTime(getRequestedOut(req))}</td>
+                    <td className="px-6 py-4 font-mono text-xs text-muted-foreground">{formatRequestedAt(req.created_at)}</td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                         req.status === 'approved' ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' :
