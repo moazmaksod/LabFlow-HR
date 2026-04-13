@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { clockAttendance, syncOfflineLogs, getAttendanceLogs, getAttendanceStats, getMyLogs, stepAway, resumeWork } from '../controllers/attendanceController.js';
+import { clockAttendance, syncOfflineLogs, getAttendanceLogs, getAttendanceStats, getMyLogs, stepAway, resumeWork, logLocationViolation } from '../controllers/attendanceController.js';
 import { authenticate, requireRole } from '../middlewares/authMiddleware.js';
 
 const router = Router();
@@ -18,6 +18,7 @@ router.post('/sync', requireRole(['employee', 'manager']), syncOfflineLogs);
 router.get('/my-logs', requireRole(['employee', 'manager']), getMyLogs);
 router.post('/step-away', requireRole(['employee', 'manager']), stepAway);
 router.post('/resume-work', requireRole(['employee', 'manager']), resumeWork);
+router.post('/location-violation', requireRole(['employee', 'manager']), logLocationViolation);
 
 // Manager only routes
 router.get('/', requireRole(['manager']), getAttendanceLogs);

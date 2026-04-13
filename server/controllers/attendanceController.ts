@@ -485,6 +485,52 @@ export const clockAttendance = (req: AuthRequest, res: Response): void => {
     }
 };
 
+export const logLocationViolation = (req: AuthRequest, res: Response): void => {
+    try {
+        const { timestamp, lat, lng, distance } = req.body;
+        const userId = req.user!.id;
+
+        if (!timestamp) {
+            res.status(400).json({ error: 'Timestamp is required' });
+            return;
+        }
+
+        const activeAttendance = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND check_out IS NULL').get(userId) as any;
+
+        if (!activeAttendance) {
+            res.status(400).json({ error: 'No active attendance session found' });
+            return;
+        }
+
+        const logTransaction = db.transaction(() => {
+            const insertStmt = db.prepare(`
+                INSERT INTO shift_interruptions (attendance_id, start_time, type, status)
+                VALUES (?, ?, ?, ?)
+            `);
+
+            // We store it as a special interruption type or just an event
+            const result = insertStmt.run(
+                activeAttendance.id,
+                timestamp,
+                'out_of_bounds',
+                'auto_approved' // We can just use auto_approved to mean it's logged for review, or 'pending_manager'
+            );
+
+            const newInterruptionId = result.lastInsertRowid as number;
+            const newInterruption = db.prepare('SELECT * FROM shift_interruptions WHERE id = ?').get(newInterruptionId);
+
+            logAudit('shift_interruptions', newInterruptionId, 'CREATE', userId, null, newInterruption);
+        });
+
+        logTransaction();
+
+        res.status(201).json({ message: 'Location violation logged successfully' });
+    } catch (error) {
+        console.error('Error logging location violation:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const syncOfflineLogs = (req: AuthRequest, res: Response): void => {
     try {
         const userId = req.user!.id;
