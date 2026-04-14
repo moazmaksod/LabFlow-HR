@@ -13,114 +13,6 @@ import SmartAttendanceCard from '../components/SmartAttendanceCard';
 import LiveServerClock from '../components/LiveServerClock';
 import NetInfo from '@react-native-community/netinfo';
 import { useSettingsStore } from '../store/useSettingsStore';
-import * as TaskManager from 'expo-task-manager';
-import * as BackgroundFetch from 'expo-background-fetch';
-
-const BACKGROUND_LOCATION_MONITOR = 'BACKGROUND_LOCATION_MONITOR';
-
-// Utility function to calculate distance in meters between two coordinates
-function getDistanceFromLatLonInM(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371e3; // Radius of the earth in m
-  const dLat = (lat2 - lat1) * (Math.PI / 180);
-  const dLon = (lon2 - lon1) * (Math.PI / 180);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  const d = R * c;
-  return d;
-}
-
-TaskManager.defineTask(BACKGROUND_LOCATION_MONITOR, async ({ data, error }: any) => {
-  if (error) {
-    console.error('BACKGROUND_LOCATION_MONITOR error:', error);
-    return;
-  }
-  if (data) {
-    const { locations } = data;
-    const currentLocation = locations[0]; // Get the latest location update
-
-    try {
-      const settings = useSettingsStore.getState().settings;
-      const { currentStatus } = useAttendanceStore.getState();
-
-      if (currentStatus !== 'working' || !settings?.geofence_toggle) {
-         // Stop tracking if we're not working or if geofencing is disabled
-         await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_MONITOR);
-         return;
-      }
-
-      if (settings.office_lat && settings.office_lng && settings.geofence_radius) {
-        const distance = getDistanceFromLatLonInM(
-          currentLocation.coords.latitude,
-          currentLocation.coords.longitude,
-          settings.office_lat,
-          settings.office_lng
-        );
-
-        if (distance > settings.geofence_radius) {
-          // Out of bounds. Check how long they've been out.
-          // Store out-of-bounds start time in a global memory map or secure store
-          // For simplicity in the task context, we could fetch previous violation data from DB or cache.
-          // Due to task isolation, we use a lightweight global/shared state tracking:
-          const { serverTimeOffset } = useNetworkStore.getState();
-          const localNow = Date.now();
-          const trueNow = localNow + serverTimeOffset;
-
-          let violationStart = Number(global.outOfBoundsStart) || 0;
-          if (!violationStart) {
-             global.outOfBoundsStart = trueNow;
-          } else {
-             // Calculate duration
-             const durationMinutes = (trueNow - violationStart) / (1000 * 60);
-             if (durationMinutes >= 10 && !global.violationLogged) {
-                // Log violation
-                const deviceId = await getUniqueDeviceId();
-                const timestamp = new Date(trueNow).toISOString();
-
-                // Optimistically log violation in SQLite (using an appropriate type)
-                saveOfflineRequest('POST', '/attendance/location-violation', {
-                  timestamp,
-                  deviceId,
-                  lat: currentLocation.coords.latitude,
-                  lng: currentLocation.coords.longitude,
-                  distance
-                });
-
-                // We could also attempt a live API call right now
-                try {
-                  await api.post('/attendance/location-violation', {
-                    timestamp,
-                    deviceId,
-                    lat: currentLocation.coords.latitude,
-                    lng: currentLocation.coords.longitude,
-                    distance
-                  });
-                } catch(e) {
-                  // Silently fail if offline, as we've saved it offline
-                }
-
-                global.violationLogged = true; // prevent spamming
-             }
-          }
-        } else {
-          // Inside bounds. Reset tracker.
-          global.outOfBoundsStart = null;
-          global.violationLogged = false;
-        }
-      }
-    } catch (e) {
-      console.error('Error in BACKGROUND_LOCATION_MONITOR:', e);
-    }
-  }
-});
-
-// We need to declare globals for the task isolation
-declare global {
-  var outOfBoundsStart: number | null;
-  var violationLogged: boolean;
-}
 
 export default function DashboardScreen() {
   const { user, logout } = useAuthStore();
@@ -207,48 +99,13 @@ export default function DashboardScreen() {
     }, [checkUnsyncedLogs, fetchStatus, fetchProfile])
   );
 
-  useEffect(() => {
-    const registerBackgroundMonitorAsync = async () => {
-      try {
-        const { status } = await Location.requestBackgroundPermissionsAsync();
-        if (status === 'granted') {
-          if (currentStatus === 'working') {
-             await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_MONITOR, {
-               accuracy: Location.Accuracy.Balanced,
-               deferredUpdatesInterval: 60000,
-               distanceInterval: 50,
-             });
-          } else {
-             const hasStarted = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_MONITOR);
-             if (hasStarted) {
-                await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_MONITOR);
-             }
-          }
-        }
-      } catch (err) {
-        console.error("Background location registration failed:", err);
-      }
-    };
-    registerBackgroundMonitorAsync();
-  }, [currentStatus]);
-
   const executeClock = async (type: 'check_in' | 'check_out') => {
     setLoading(true);
     try {
-      // 1. Live Fetch: Bypass Zustand cache completely (Only if online and checking in)
-      let latestSettings = useSettingsStore.getState().settings;
-      if (isConnected && type === 'check_in') {
-        try {
-           const settingsResponse = await api.get('/settings');
-           latestSettings = settingsResponse.data;
-        } catch(e) {
-           // Fallback to cache if network fails
-           console.log("Settings fetch failed, using cache.");
-        }
-      }
+      const settings = useSettingsStore.getState().settings;
 
       // 2. Strict Wi-Fi Check (Only for Check-In)
-      if (type === 'check_in' && latestSettings?.wifi_validation_toggle) {
+      if (type === 'check_in' && settings?.wifi_validation_toggle) {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
           Alert.alert('Permission Denied', 'Location permission is strictly required to verify attendance network.');
@@ -269,13 +126,13 @@ export default function DashboardScreen() {
         let isAuthorizedNetwork = true;
 
         // Validate SSID
-        if (latestSettings.company_wifi_ssid && currentSsid !== latestSettings.company_wifi_ssid) {
+        if (settings.company_wifi_ssid && currentSsid !== settings.company_wifi_ssid) {
           isAuthorizedNetwork = false;
         }
 
         // Validate BSSID (Optional: only if admin entered it)
-        if (latestSettings.company_wifi_bssid && latestSettings.company_wifi_bssid.trim() !== '') {
-          if (details?.bssid !== latestSettings.company_wifi_bssid) {
+        if (settings.company_wifi_bssid && settings.company_wifi_bssid.trim() !== '') {
+          if (details?.bssid !== settings.company_wifi_bssid) {
             isAuthorizedNetwork = false;
           }
         }
@@ -289,8 +146,15 @@ export default function DashboardScreen() {
       }
 
       const deviceId = await getUniqueDeviceId();
+      // 1. Request Location Permissions
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Location permission is required to clock in/out.');
+        setLoading(false);
+        return;
+      }
 
-      // 3. Get Coordinates & Proceed
+      // 2. Get Current Location
       const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       const { latitude, longitude } = location.coords;
 
