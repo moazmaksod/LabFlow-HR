@@ -13,6 +13,8 @@ import SmartAttendanceCard from '../components/SmartAttendanceCard';
 import LiveServerClock from '../components/LiveServerClock';
 import NetInfo from '@react-native-community/netinfo';
 import { useSettingsStore } from '../store/useSettingsStore';
+import * as Linking from 'expo-linking';
+
 
 export default function DashboardScreen() {
   const { user, logout } = useAuthStore();
@@ -99,23 +101,47 @@ export default function DashboardScreen() {
     }, [checkUnsyncedLogs, fetchStatus, fetchProfile])
   );
 
-  const executeClock = async (type: 'check_in' | 'check_out') => {
+const executeClock = async (type: 'check_in' | 'check_out') => {
     setLoading(true);
     try {
-      const settings = useSettingsStore.getState().settings;
+      // ==========================================
+      // 1. Fetch live settings to bypass empty cache
+      // ==========================================
+      let latestSettings = useSettingsStore.getState().settings;
+      if (isConnected) {
+        try {
+          const settingsResponse = await api.get('/settings');
+          latestSettings = settingsResponse.data;
+          // Update cache in the background
+          useSettingsStore.getState().fetchSettings();
+        } catch (e) {
+          console.warn('[Clock] Failed to fetch live settings, using cache.');
+        }
+      }
 
+      // ==========================================
       // 2. Strict Wi-Fi Check (Only for Check-In)
-      if (type === 'check_in' && settings?.wifi_validation_toggle) {
+      // ==========================================
+      if (type === 'check_in' && latestSettings?.wifi_validation_toggle) {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
-          Alert.alert('Permission Denied', 'Location permission is strictly required to verify attendance network.');
+          Alert.alert(
+            'Permission Denied', 
+            'Location permission is strictly required to verify attendance network.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Open Settings', onPress: () => Linking.openSettings() }
+            ]
+          );
           setLoading(false);
           return;
         }
 
         const networkState = await NetInfo.fetch();
         const details = networkState.details as any;
-        const currentSsid = details?.ssid?.replace(/"/g, '');
+        
+        // Clean up quotation marks from SSID
+        const currentSsid = details?.ssid?.replace(/^"|"$/g, ''); 
 
         if (networkState.type !== 'wifi' || !currentSsid || currentSsid === '<unknown ssid>') {
           Alert.alert('Network Verification Failed', 'Cannot verify your network. Please ensure both Wi-Fi and Location/GPS are turned ON.');
@@ -125,14 +151,19 @@ export default function DashboardScreen() {
 
         let isAuthorizedNetwork = true;
 
-        // Validate SSID
-        if (settings.company_wifi_ssid && currentSsid !== settings.company_wifi_ssid) {
+        // Validate SSID using latest settings
+        if (latestSettings.company_wifi_ssid && currentSsid !== latestSettings.company_wifi_ssid) {
           isAuthorizedNetwork = false;
         }
 
         // Validate BSSID (Optional: only if admin entered it)
-        if (settings.company_wifi_bssid && settings.company_wifi_bssid.trim() !== '') {
-          if (details?.bssid !== settings.company_wifi_bssid) {
+        if (latestSettings.company_wifi_bssid && latestSettings.company_wifi_bssid.trim() !== '') {
+          // Convert both to lowercase to avoid case sensitivity issues
+          const requiredBssid = latestSettings.company_wifi_bssid.toLowerCase().trim();
+          const deviceBssid = details?.bssid?.toLowerCase().trim();
+
+          // Note: Some Android devices return 02:00:00:00:00:00 as a security measure to hide the MAC address
+          if (deviceBssid !== requiredBssid) {
             isAuthorizedNetwork = false;
           }
         }

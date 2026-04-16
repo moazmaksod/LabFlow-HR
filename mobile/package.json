@@ -19,6 +19,7 @@
     "expo": "~55.0.0",
     "expo-application": "~55.0.0",
     "expo-image-picker": "~55.0.10",
+    "expo-linking": "~55.0.13",
     "expo-local-authentication": "~55.0.8",
     "expo-location": "~55.1.2",
     "expo-secure-store": "~55.0.8",
