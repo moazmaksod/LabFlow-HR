@@ -150,6 +150,9 @@ CREATE TABLE IF NOT EXISTS settings (
     geofence_radius REAL NOT NULL DEFAULT 50,
     time_sync_interval INTEGER NOT NULL DEFAULT 300, -- seconds
     max_drift_threshold INTEGER NOT NULL DEFAULT 10, -- seconds
+    wifi_validation_toggle BOOLEAN NOT NULL DEFAULT 0,
+    company_wifi_ssid TEXT,
+    company_wifi_bssid TEXT,
     accuracy_meters INTEGER NOT NULL DEFAULT 100,
     device_binding_enforced BOOLEAN NOT NULL DEFAULT 1,
 

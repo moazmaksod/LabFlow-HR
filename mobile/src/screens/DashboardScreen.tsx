@@ -11,19 +11,23 @@ import { getUniqueDeviceId } from '../utils/device';
 import { useAttendanceStore } from '../store/useAttendanceStore';
 import SmartAttendanceCard from '../components/SmartAttendanceCard';
 import LiveServerClock from '../components/LiveServerClock';
+import NetInfo from '@react-native-community/netinfo';
+import { useSettingsStore } from '../store/useSettingsStore';
+import * as Linking from 'expo-linking';
+
 
 export default function DashboardScreen() {
   const { user, logout } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [unsyncedCount, setUnsyncedCount] = useState(0);
   const { isSyncing, syncOfflineRecords, isConnected } = useNetworkStore();
-  
-  const { 
-    currentStatus, 
-    setStatus, 
-    userProfile, 
-    setUserProfile, 
-    consumedBreakMinutes, 
+
+  const {
+    currentStatus,
+    setStatus,
+    userProfile,
+    setUserProfile,
+    consumedBreakMinutes,
     setConsumedBreakMinutes,
     setLastActionTimestamp,
     activeSession,
@@ -61,7 +65,7 @@ export default function DashboardScreen() {
       setActiveSession(session || null);
       if (session) {
         setStatus(session.current_status || 'working');
-        
+
         let consumed = 0;
         if (session.breaks && Array.isArray(session.breaks)) {
           session.breaks.forEach((b: any) => {
@@ -97,9 +101,81 @@ export default function DashboardScreen() {
     }, [checkUnsyncedLogs, fetchStatus, fetchProfile])
   );
 
-  const executeClock = async (type: 'check_in' | 'check_out') => {
+const executeClock = async (type: 'check_in' | 'check_out') => {
     setLoading(true);
     try {
+      // ==========================================
+      // 1. Fetch live settings to bypass empty cache
+      // ==========================================
+      let latestSettings = useSettingsStore.getState().settings;
+      if (isConnected) {
+        try {
+          const settingsResponse = await api.get('/settings');
+          latestSettings = settingsResponse.data;
+          // Update cache in the background
+          useSettingsStore.getState().fetchSettings();
+        } catch (e) {
+          console.warn('[Clock] Failed to fetch live settings, using cache.');
+        }
+      }
+
+      // ==========================================
+      // 2. Strict Wi-Fi Check (Only for Check-In)
+      // ==========================================
+      if (type === 'check_in' && latestSettings?.wifi_validation_toggle) {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert(
+            'Permission Denied', 
+            'Location permission is strictly required to verify attendance network.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Open Settings', onPress: () => Linking.openSettings() }
+            ]
+          );
+          setLoading(false);
+          return;
+        }
+
+        const networkState = await NetInfo.fetch();
+        const details = networkState.details as any;
+        
+        // Clean up quotation marks from SSID
+        const currentSsid = details?.ssid?.replace(/^"|"$/g, ''); 
+
+        if (networkState.type !== 'wifi' || !currentSsid || currentSsid === '<unknown ssid>') {
+          Alert.alert('Network Verification Failed', 'Cannot verify your network. Please ensure both Wi-Fi and Location/GPS are turned ON.');
+          setLoading(false);
+          return;
+        }
+
+        let isAuthorizedNetwork = true;
+
+        // Validate SSID using latest settings
+        if (latestSettings.company_wifi_ssid && currentSsid !== latestSettings.company_wifi_ssid) {
+          isAuthorizedNetwork = false;
+        }
+
+        // Validate BSSID (Optional: only if admin entered it)
+        if (latestSettings.company_wifi_bssid && latestSettings.company_wifi_bssid.trim() !== '') {
+          // Convert both to lowercase to avoid case sensitivity issues
+          const requiredBssid = latestSettings.company_wifi_bssid.toLowerCase().trim();
+          const deviceBssid = details?.bssid?.toLowerCase().trim();
+
+          // Note: Some Android devices return 02:00:00:00:00:00 as a security measure to hide the MAC address
+          if (deviceBssid !== requiredBssid) {
+            isAuthorizedNetwork = false;
+          }
+        }
+
+        // Generic Error (No Data Leakage)
+        if (!isAuthorizedNetwork) {
+          Alert.alert('Access Denied', 'You are not connected to the authorized company Wi-Fi network. Please connect to the correct workplace network to clock in.');
+          setLoading(false);
+          return;
+        }
+      }
+
       const deviceId = await getUniqueDeviceId();
       // 1. Request Location Permissions
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -235,13 +311,13 @@ export default function DashboardScreen() {
             }
 
             const response = await api.post('/attendance/step-away', { timestamp, deviceId });
-            
+
             if (!response.data.hasBreakBalance) {
               Alert.alert('Notice', 'You have no break balance. A permission request has been sent to your manager.');
             } else {
               Alert.alert('Success', 'You have stepped away.');
             }
-            
+
             setStatus('away');
             setLastActionTimestamp(timestamp);
             fetchStatus(); // Refresh to update consumed time
@@ -341,19 +417,19 @@ export default function DashboardScreen() {
     if (!hireDate) return 'Not set';
     const start = new Date(hireDate);
     const now = new Date();
-    
+
     let years = now.getFullYear() - start.getFullYear();
     let months = now.getMonth() - start.getMonth();
-    
+
     if (months < 0) {
       years--;
       months += 12;
     }
-    
+
     const parts = [];
     if (years > 0) parts.push(`${years} year${years > 1 ? 's' : ''}`);
     if (months > 0) parts.push(`${months} month${months > 1 ? 's' : ''}`);
-    
+
     return parts.length > 0 ? parts.join(', ') : 'Less than a month';
   };
 
@@ -410,8 +486,8 @@ export default function DashboardScreen() {
             Unsynced Records: {unsyncedCount}
           </Text>
         </View>
-        <TouchableOpacity 
-          style={[styles.syncButton, unsyncedCount === 0 && styles.syncButtonDisabled]} 
+        <TouchableOpacity
+          style={[styles.syncButton, unsyncedCount === 0 && styles.syncButtonDisabled]}
           onPress={handleSync}
           disabled={isSyncing || unsyncedCount === 0}
           accessibilityLabel="Sync offline logs"
@@ -439,16 +515,16 @@ const styles = StyleSheet.create({
   tenureText: { fontSize: 12, color: '#a1a1aa', fontWeight: '500' },
   subtitle: { fontSize: 16, color: '#71717a' },
   iconButton: { padding: 8, borderRadius: 12, backgroundColor: '#fff', elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
-  card: { 
-    backgroundColor: '#fff', 
-    padding: 24, 
-    borderRadius: 20, 
-    marginBottom: 16, 
-    shadowColor: '#000', 
-    shadowOffset: { width: 0, height: 2 }, 
-    shadowOpacity: 0.05, 
-    shadowRadius: 10, 
-    elevation: 2 
+  card: {
+    backgroundColor: '#fff',
+    padding: 24,
+    borderRadius: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2
   },
   detailsCard: {
     backgroundColor: '#fff',
@@ -505,10 +581,10 @@ const styles = StyleSheet.create({
     color: '#18181b',
   },
   syncCard: {
-    backgroundColor: '#fff', 
-    padding: 24, 
-    borderRadius: 20, 
-    marginBottom: 24, 
+    backgroundColor: '#fff',
+    padding: 24,
+    borderRadius: 20,
+    marginBottom: 24,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

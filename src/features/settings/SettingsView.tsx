@@ -26,6 +26,9 @@ interface Settings {
   time_sync_interval: number;
   max_drift_threshold: number;
   accuracy_meters: number;
+  wifi_validation_toggle: number;
+  company_wifi_ssid: string | null;
+  company_wifi_bssid: string | null;
   device_binding_enforced: number;
   auto_checkout: number;
   step_away_grace_period: number;
@@ -510,6 +513,50 @@ export default function SettingsView() {
                         Enforce Mobile Device Binding (One device per user)
                       </label>
                     </div>
+                  </div>
+
+                  <h3 className="text-md font-semibold text-foreground mt-8 mb-4 border-b border-border pb-2">Network Security</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="md:col-span-2 flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        id="wifi_validation_toggle"
+                        name="wifi_validation_toggle"
+                        checked={!!formData.wifi_validation_toggle}
+                        onChange={handleChange}
+                        className="w-5 h-5 rounded border-input text-primary focus:ring-primary"
+                      />
+                      <label htmlFor="wifi_validation_toggle" className="text-sm font-medium text-muted-foreground">
+                        Require Company Wi-Fi Connection
+                      </label>
+                    </div>
+
+                    {!!formData.wifi_validation_toggle && (
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium text-muted-foreground mb-2">Company Wi-Fi SSID (Name)</label>
+                          <input
+                            type="text"
+                            name="company_wifi_ssid"
+                            value={formData.company_wifi_ssid || ''}
+                            onChange={handleChange}
+                            className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
+                            placeholder="e.g. LabFlow_Corporate"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-muted-foreground mb-2">Router BSSID (MAC - Optional)</label>
+                          <input
+                            type="text"
+                            name="company_wifi_bssid"
+                            value={formData.company_wifi_bssid || ''}
+                            onChange={handleChange}
+                            className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
+                            placeholder="e.g. 00:1A:2B:3C:4D:5E"
+                          />
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   {user?.role === 'manager' && (
