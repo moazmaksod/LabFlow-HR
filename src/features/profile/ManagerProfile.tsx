@@ -1,23 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import api from '../../lib/axios';
 import { useAuthStore } from '../../store/useAuthStore';
-import { User, Image as ImageIcon } from 'lucide-react';
+import { User, Image as ImageIcon, Camera } from 'lucide-react';
+import { EmployeeProfileSchema } from '../../../shared/validations';
+
+type ProfileUpdateData = z.infer<typeof EmployeeProfileSchema>;
 
 export default function ManagerProfile() {
   const { user, login } = useAuthStore();
   const queryClient = useQueryClient();
-  
-  const [name, setName] = useState('');
-  const [profilePictureUrl, setProfilePictureUrl] = useState('');
-  const [phone, setPhone] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [previewUrl, setPreviewUrl] = useState<string>('');
 
-  interface ProfileUpdateData {
-    name: string;
-    profile_picture_url: string;
-    emergency_contact_phone: string;
-  }
+  const {
+    register,
+    handleSubmit,
+    reset,
+    watch,
+    formState: { errors, isSubmitting },
+  } = useForm<z.input<typeof EmployeeProfileSchema>>({
+    resolver: zodResolver(EmployeeProfileSchema),
+    defaultValues: {
+      legal_name: '',
+      personal_phone: '',
+      date_of_birth: undefined,
+      national_id: '',
+      bio: '',
+    },
+  });
+
+  const watchLegalName = watch('legal_name');
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ['manager-profile'],
@@ -29,21 +45,29 @@ export default function ManagerProfile() {
 
   useEffect(() => {
     if (profile) {
-      setName(profile.name || '');
-      setProfilePictureUrl(profile.profile_picture_url || '');
-      setPhone(profile.emergency_contact_phone || '');
+      reset({
+        legal_name: profile.name || '',
+        personal_phone: profile.emergency_contact_phone || '',
+        date_of_birth: profile.date_of_birth ? new Date(profile.date_of_birth) : undefined,
+        national_id: profile.national_id || '',
+        bio: profile.bio || '',
+      });
+      setPreviewUrl(profile.profile_picture_url || '');
     }
-  }, [profile]);
+  }, [profile, reset]);
 
   const updateMutation = useMutation({
-    mutationFn: async (data: ProfileUpdateData) => {
-      const res = await api.put('/users/profile', data);
+    mutationFn: async (data: FormData) => {
+      const res = await api.put('/users/profile', data, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
       return res.data;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['manager-profile'] });
       setSuccessMsg('Profile updated successfully!');
-      // Update auth store with new name
       if (user) {
         login({ ...user, name: data.name }, useAuthStore.getState().token!);
       }
@@ -51,13 +75,20 @@ export default function ManagerProfile() {
     }
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateMutation.mutate({ 
-      name, 
-      profile_picture_url: profilePictureUrl,
-      emergency_contact_phone: phone
-    });
+  const onSubmit = (data: any) => {
+    const formData = new FormData();
+    formData.append('name', data.legal_name);
+    if (data.personal_phone) formData.append('emergency_contact_phone', data.personal_phone);
+    if (data.date_of_birth) formData.append('date_of_birth', data.date_of_birth.toISOString());
+    if (data.national_id) formData.append('national_id', data.national_id);
+    if (data.bio) formData.append('bio', data.bio);
+
+    const fileInput = document.getElementById('avatar-upload') as HTMLInputElement;
+    if (fileInput && fileInput.files && fileInput.files[0]) {
+      formData.append('avatar', fileInput.files[0]);
+    }
+
+    updateMutation.mutate(formData);
   };
 
   if (isLoading) {
@@ -74,7 +105,7 @@ export default function ManagerProfile() {
       </div>
 
       <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
           {successMsg && (
             <div className="p-3 text-sm text-green-600 bg-green-500/10 border border-green-500/20 rounded-lg">
               {successMsg}
@@ -87,15 +118,43 @@ export default function ManagerProfile() {
           )}
 
           <div className="space-y-4">
+            <div className="flex justify-center mb-6">
+              <div className="relative group cursor-pointer">
+                <img
+                  src={previewUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(watchLegalName || 'User')}
+                  alt="Profile Preview"
+                  className="w-24 h-24 rounded-full object-cover border-2 border-border group-hover:opacity-50 transition-opacity"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(watchLegalName || 'User');
+                  }}
+                />
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Camera className="w-8 h-8 text-white drop-shadow-md" />
+                </div>
+                <input
+                  type="file"
+                  id="avatar-upload"
+                  accept="image/*"
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const url = URL.createObjectURL(file);
+                      setPreviewUrl(url);
+                    }
+                  }}
+                />
+              </div>
+            </div>
+
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Full Name</label>
               <input
                 type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full px-4 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
-                required
+                {...register('legal_name')}
+                className={`w-full px-4 py-2 bg-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 ${errors.legal_name ? 'border-red-500' : 'border-border'}`}
               />
+              {errors.legal_name && <p className="text-xs text-red-500">{errors.legal_name.message}</p>}
             </div>
 
             <div className="space-y-2">
@@ -123,48 +182,52 @@ export default function ManagerProfile() {
               <label className="text-sm font-medium text-foreground">Phone Number</label>
               <input
                 type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="w-full px-4 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
+                {...register('personal_phone')}
+                className={`w-full px-4 py-2 bg-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 ${errors.personal_phone ? 'border-red-500' : 'border-border'}`}
                 placeholder="+1 234 567 8900"
               />
+              {errors.personal_phone && <p className="text-xs text-red-500">{errors.personal_phone.message}</p>}
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground flex items-center gap-2">
-                <ImageIcon className="w-4 h-4" />
-                Profile Picture URL
-              </label>
+              <label className="text-sm font-medium text-foreground">Date of Birth</label>
               <input
-                type="url"
-                value={profilePictureUrl}
-                onChange={(e) => setProfilePictureUrl(e.target.value)}
-                className="w-full px-4 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
-                placeholder="https://example.com/photo.jpg"
+                type="date"
+                {...register('date_of_birth')}
+                className={`w-full px-4 py-2 bg-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 ${errors.date_of_birth ? 'border-red-500' : 'border-border'}`}
               />
-              {profilePictureUrl && (
-                <div className="mt-4">
-                  <p className="text-xs text-muted-foreground mb-2">Preview:</p>
-                  <img 
-                    src={profilePictureUrl} 
-                    alt="Profile Preview" 
-                    className="w-24 h-24 rounded-full object-cover border border-border"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(name || 'User');
-                    }}
-                  />
-                </div>
-              )}
+              {errors.date_of_birth && <p className="text-xs text-red-500">{errors.date_of_birth.message}</p>}
             </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">National ID</label>
+              <input
+                type="text"
+                {...register('national_id')}
+                className={`w-full px-4 py-2 bg-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 ${errors.national_id ? 'border-red-500' : 'border-border'}`}
+              />
+              {errors.national_id && <p className="text-xs text-red-500">{errors.national_id.message}</p>}
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Bio</label>
+              <textarea
+                {...register('bio')}
+                className={`w-full px-4 py-2 bg-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 ${errors.bio ? 'border-red-500' : 'border-border'}`}
+                rows={3}
+              />
+              {errors.bio && <p className="text-xs text-red-500">{errors.bio.message}</p>}
+            </div>
+
           </div>
 
           <div className="pt-4 border-t border-border flex justify-end">
             <button
               type="submit"
-              disabled={updateMutation.isPending}
+              disabled={isSubmitting || updateMutation.isPending}
               className="px-6 py-2 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
             >
-              {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+              {isSubmitting || updateMutation.isPending ? 'Saving...' : 'Save Changes'}
             </button>
           </div>
         </form>

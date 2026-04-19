@@ -34,7 +34,7 @@ export const pastDateSchema = dateSchema.refine((date) => {
 export const nameSchema = z
   .string()
   .min(3, 'Name must be at least 3 characters')
-  .regex(/^[a-zA-Z\s]+$/, 'Name must not contain numbers or special characters');
+  .regex(/^[\p{L}\s'-]+$/u, 'Name cannot contain numbers or special characters');
 
 // alphanumeric, 8-20 chars
 export const nationalIdSchema = z
@@ -52,21 +52,39 @@ export const textSanitizedSchema = z
 
 // For editing profile details
 export const EmployeeProfileSchema = z.object({
-  firstName: nameSchema,
-  lastName: nameSchema,
-  email: emailSchema,
-  phone: phoneSchema.optional(),
-  dateOfBirth: pastDateSchema.optional(),
-  hireDate: pastDateSchema.optional(),
-  nationalId: nationalIdSchema.optional(),
-  bio: textSanitizedSchema.optional(),
+  legal_name: nameSchema.optional().or(z.literal('')),
+  personal_phone: phoneSchema.optional().or(z.literal('')),
+  date_of_birth: pastDateSchema.optional().or(z.literal('')),
+  national_id: nationalIdSchema.optional().or(z.literal('')),
+  bio: textSanitizedSchema.optional().or(z.literal('')),
 });
 
 // For admin settings
 export const CompanySettingsSchema = z.object({
-  companyName: z.string().min(1, 'Company name is required'),
-  contactEmail: emailSchema,
-  contactPhone: phoneSchema,
-  establishedDate: pastDateSchema.optional(),
-  description: textSanitizedSchema.optional(),
+  company_name: z.string().min(2, 'Company name is required'),
+  company_wifi_ssid: z.string().optional().or(z.literal('')),
+  geofence_radius: z.coerce.number().min(10, 'Must be at least 10'),
+  late_grace_period: z.coerce.number().min(0, 'Cannot be negative'),
+  office_lat: z.coerce.number().min(-90, 'Must be >= -90').max(90, 'Must be <= 90'),
+  office_lng: z.coerce.number().min(-180, 'Must be >= -180').max(180, 'Must be <= 180'),
+});
+
+// Admin employee details
+export const HrEmployeeDetailSchema = EmployeeProfileSchema.extend({
+  job_id: z.coerce.number().optional().nullable().or(z.literal('')),
+  status: z.enum(['active', 'inactive', 'suspended']),
+  hourly_rate: z.coerce.number().min(0),
+  weekly_schedule: z.any().optional(), // Can be an object or string depending on where it's parsed
+  lunch_break_minutes: z.coerce.number().min(0),
+  bank_name: z.string().optional().or(z.literal('')),
+  bank_account_iban: z.string().regex(/^[a-zA-Z0-9]+$/, 'Must be alphanumeric').optional().or(z.literal('')),
+  emergency_contact_name: nameSchema.optional().or(z.literal('')),
+  emergency_contact_phone: phoneSchema.optional().or(z.literal('')),
+  emergency_contact_relationship: z.string().optional().or(z.literal('')),
+  annual_leave_balance: z.coerce.number().min(0),
+  sick_leave_balance: z.coerce.number().min(0),
+  allow_overtime: z.boolean(),
+  max_overtime_hours: z.coerce.number().min(0),
+  hire_date: pastDateSchema.optional().or(z.literal('')),
+  suspension_reason: z.string().optional().or(z.literal(''))
 });
