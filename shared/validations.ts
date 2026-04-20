@@ -94,6 +94,10 @@ export const EmployeeRegistrationSchema = z.object({
   name: nameSchema,
   email: emailSchema,
   password: z.string().min(6, 'Password must be at least 6 characters'),
+  confirmPassword: z.string().min(6, 'Password must be at least 6 characters'),
   date_of_birth: pastDateSchema,
   gender: z.enum(['male', 'female', 'other'])
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ["confirmPassword"], // path of error
 });

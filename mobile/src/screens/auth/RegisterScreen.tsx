@@ -25,6 +25,7 @@ export default function RegisterScreen({ navigation }: any) {
       name: '',
       email: '',
       password: '',
+      confirmPassword: '',
       date_of_birth: new Date(new Date().setFullYear(new Date().getFullYear() - 18)),
       gender: 'male',
     }
@@ -169,6 +170,25 @@ export default function RegisterScreen({ navigation }: any) {
             )}
           />
           {errors.password && <Text style={styles.errorText}>{errors.password.message as string}</Text>}
+        </View>
+
+        <View>
+          <Text style={styles.label}>Confirm Password</Text>
+          <Controller
+            control={control}
+            name="confirmPassword"
+            render={({ field: { onChange, onBlur, value } }) => (
+              <TextInput
+                style={[styles.input, errors.confirmPassword && styles.inputError]}
+                onBlur={onBlur}
+                onChangeText={onChange}
+                value={value}
+                placeholder="••••••••"
+                secureTextEntry
+              />
+            )}
+          />
+          {errors.confirmPassword && <Text style={styles.errorText}>{errors.confirmPassword.message as string}</Text>}
         </View>
 
         <TouchableOpacity style={styles.button} onPress={handleSubmit(onSubmit, onInvalid)} disabled={loading}>
