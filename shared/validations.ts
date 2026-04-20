@@ -52,17 +52,17 @@ export const textSanitizedSchema = z
 
 // For editing profile details
 export const EmployeeProfileSchema = z.object({
-  legal_name: nameSchema.optional().or(z.literal('')),
-  personal_phone: phoneSchema.optional().or(z.literal('')),
-  date_of_birth: pastDateSchema.optional().or(z.literal('')),
-  national_id: nationalIdSchema.optional().or(z.literal('')),
-  bio: textSanitizedSchema.optional().or(z.literal('')),
+  legal_name: nameSchema.optional().nullable().or(z.literal("")),
+  personal_phone: phoneSchema.optional().nullable().or(z.literal("")),
+  date_of_birth: pastDateSchema.optional().nullable().or(z.literal("")),
+  national_id: nationalIdSchema.optional().nullable().or(z.literal("")),
+  bio: textSanitizedSchema.optional().nullable().or(z.literal("")),
 });
 
 // For admin settings
 export const CompanySettingsSchema = z.object({
   company_name: z.string().min(2, 'Company name is required'),
-  company_wifi_ssid: z.string().optional().or(z.literal('')),
+  company_wifi_ssid: z.string().optional().nullable().or(z.literal("")),
   geofence_radius: z.coerce.number().min(10, 'Must be at least 10'),
   late_grace_period: z.coerce.number().min(0, 'Cannot be negative'),
   office_lat: z.coerce.number().min(-90, 'Must be >= -90').max(90, 'Must be <= 90'),
@@ -71,22 +71,22 @@ export const CompanySettingsSchema = z.object({
 
 // Admin employee details
 export const HrEmployeeDetailSchema = EmployeeProfileSchema.extend({
-  job_id: z.coerce.number().optional().nullable().or(z.literal('')),
+  job_id: z.coerce.number().optional().nullable().nullable().or(z.literal("")),
   status: z.enum(['active', 'inactive', 'suspended']),
   hourly_rate: z.coerce.number().min(0),
   weekly_schedule: z.any().optional(), // Can be an object or string depending on where it's parsed
   lunch_break_minutes: z.coerce.number().min(0),
-  bank_name: z.string().optional().or(z.literal('')),
-  bank_account_iban: z.string().regex(/^[a-zA-Z0-9]+$/, 'Must be alphanumeric').optional().or(z.literal('')),
-  emergency_contact_name: nameSchema.optional().or(z.literal('')),
-  emergency_contact_phone: phoneSchema.optional().or(z.literal('')),
-  emergency_contact_relationship: z.string().optional().or(z.literal('')),
+  bank_name: z.string().optional().nullable().or(z.literal("")),
+  bank_account_iban: z.string().regex(/^[a-zA-Z0-9]+$/, 'Must be alphanumeric').optional().nullable().or(z.literal("")),
+  emergency_contact_name: nameSchema.optional().nullable().or(z.literal("")),
+  emergency_contact_phone: phoneSchema.optional().nullable().or(z.literal("")),
+  emergency_contact_relationship: z.string().optional().nullable().or(z.literal("")),
   annual_leave_balance: z.coerce.number().min(0),
   sick_leave_balance: z.coerce.number().min(0),
   allow_overtime: z.boolean(),
   max_overtime_hours: z.coerce.number().min(0),
-  hire_date: pastDateSchema.optional().or(z.literal('')),
-  suspension_reason: z.string().optional().or(z.literal(''))
+  hire_date: pastDateSchema.optional().nullable().or(z.literal("")),
+  suspension_reason: z.string().optional().nullable().or(z.literal(""))
 });
 
 // For employee registration

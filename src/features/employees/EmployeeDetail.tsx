@@ -157,6 +157,9 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
     updateMutation.mutate(finalData, {
       onSettled: () => setIsSaving(false)
     });
+  }, (errors) => {
+    console.error('Form validation failed:', errors); alert('Validation Error: ' + Object.keys(errors).join(', '));
+    alert('Please fix the errors in the form before saving.');
   });
 
   if (isLoading || !watchedData) {
@@ -210,8 +213,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <button 
-            onClick={handleSave}
+          <button type="button" onClick={handleSave}
             disabled={isSaving || hasScheduleError}
             className="bg-primary text-primary-foreground px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 disabled:opacity-50"
           >
@@ -322,7 +324,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                     {...register("legal_name")}
 
                     placeholder="Official legal name"
-                    className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${errors.legal_name ? "border-red-500" : "border-border"}`}
+                    className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all border-border`}
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -399,7 +401,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                     <input
                       type="number"
                       {...register("annual_leave_balance")}
-                      className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${errors.legal_name ? "border-red-500" : "border-border"}`}
+                      className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all border-border`}
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -407,7 +409,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                     <input
                       type="number"
                       {...register("sick_leave_balance")}
-                      className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${errors.legal_name ? "border-red-500" : "border-border"}`}
+                      className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all border-border`}
                     />
                   </div>
                 </div>
@@ -418,7 +420,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                       type="text"
                       {...register("bank_name")}
                       placeholder="e.g. Chase"
-                      className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${errors.legal_name ? "border-red-500" : "border-border"}`}
+                      className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all border-border`}
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -427,7 +429,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                       type="text"
                       {...register("bank_account_iban")}
                       placeholder="Account Number"
-                      className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${errors.legal_name ? "border-red-500" : "border-border"}`}
+                      className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all border-border`}
                     />
                   </div>
                 </div>
@@ -449,7 +451,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                       type="number" 
                       step="0.5"
                       {...register("max_overtime_hours")}
-                      className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${errors.legal_name ? "border-red-500" : "border-border"}`}
+                      className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all border-border`}
                     />
                   </div>
                 )}
