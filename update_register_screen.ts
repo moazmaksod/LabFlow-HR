@@ -1,4 +1,8 @@
-import React, { useState, useRef } from 'react';
+import * as fs from 'fs';
+
+const file = 'mobile/src/screens/auth/RegisterScreen.tsx';
+
+const content = `import React, { useState, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView } from 'react-native';
 import api from '../../lib/axios';
 import { useForm, Controller } from 'react-hook-form';
@@ -203,3 +207,6 @@ const styles = StyleSheet.create({
   linkButton: { alignItems: 'center', marginTop: 16 },
   linkText: { color: '#71717a', fontSize: 14 },
 });
+`;
+
+fs.writeFileSync(file, content, 'utf8');

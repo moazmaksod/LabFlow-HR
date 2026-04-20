@@ -88,3 +88,12 @@ export const HrEmployeeDetailSchema = EmployeeProfileSchema.extend({
   hire_date: pastDateSchema.optional().or(z.literal('')),
   suspension_reason: z.string().optional().or(z.literal(''))
 });
+
+// For employee registration
+export const EmployeeRegistrationSchema = z.object({
+  name: nameSchema,
+  email: emailSchema,
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+  date_of_birth: pastDateSchema,
+  gender: z.enum(['male', 'female', 'other'])
+});
