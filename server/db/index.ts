@@ -51,7 +51,7 @@ export function initDb() {
     // Add new settings columns if they don't exist
     if (!settingsColumns.some(c => c.name === 'company_favicon_url')) {
       db.exec("ALTER TABLE settings ADD COLUMN company_favicon_url TEXT;");
-
+    }
     // Wi-Fi Validation migrations
     if (!settingsColumns.some(c => c.name === 'wifi_validation_toggle')) {
       db.exec("ALTER TABLE settings ADD COLUMN wifi_validation_toggle BOOLEAN NOT NULL DEFAULT 0;");
