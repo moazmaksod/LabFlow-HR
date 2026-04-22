@@ -38,6 +38,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
     formState: { errors }, watch, setValue
   } = useForm<z.infer<typeof HrEmployeeDetailSchema>>({
     resolver: zodResolver(HrEmployeeDetailSchema),
+    mode: 'onChange',
     defaultValues: {
       legal_name: '',
       personal_phone: '',
@@ -255,12 +256,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Date of Birth</label>
-                    <input
-                      type="date"
-                      {...register("date_of_birth")}
-                      className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${errors.date_of_birth ? "border-red-500" : "border-border"}`}
-                    />
-                    {errors.date_of_birth && <p className="text-xs text-red-500 mt-1">{errors.date_of_birth.message as string}</p>}
+                    <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">{watchedData.date_of_birth || "-"}</div>
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Gender</label>
@@ -390,11 +386,12 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                 <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Hourly Rate ($)</label>
-                    <input 
-                      type="number" 
+                    <input
+                      type="number"
                       {...register("hourly_rate")}
                       className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${errors.hourly_rate ? "border-red-500" : "border-border"}`}
                     />
+                    {errors.hourly_rate && <p className="text-xs text-red-500 mt-1">{errors.hourly_rate.message as string}</p>}
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Annual Leave</label>

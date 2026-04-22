@@ -108,6 +108,12 @@ export function initDb() {
     if (!profileColumns.some(c => c.name === 'bank_account_iban')) {
       db.exec("ALTER TABLE profiles ADD COLUMN bank_account_iban TEXT;");
     }
+    if (!profileColumns.some(c => c.name === 'bank_account_number')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN bank_account_number TEXT;");
+    }
+    if (!profileColumns.some(c => c.name === 'bank_iban')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN bank_iban TEXT;");
+    }
     if (!profileColumns.some(c => c.name === 'date_of_birth')) {
       db.exec("ALTER TABLE profiles ADD COLUMN date_of_birth DATE;");
     }

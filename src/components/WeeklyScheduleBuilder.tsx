@@ -16,7 +16,7 @@ interface WeeklyScheduleBuilderProps {
   onError?: (hasError: boolean) => void;
 }
 
-const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const DAYS = ['saturday', 'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
 
 const timeToMinutes = (time: string) => {
   if (!time) return 0;
@@ -49,7 +49,34 @@ const checkOverlap = (shifts: Shift[]) => {
   return Array.from(overlapIndices);
 };
 
+
+const calculateDuration = (start: string, end: string) => {
+  const startMins = timeToMinutes(start);
+  const endMins = timeToMinutes(end);
+  if (endMins < startMins) {
+    return (1440 - startMins) + endMins; // Crosses midnight
+  }
+  return endMins - startMins;
+};
+
+const formatDuration = (totalMins: number) => {
+  const hours = Math.floor(totalMins / 60);
+  const mins = totalMins % 60;
+  if (hours === 0) return `${mins} M`;
+  return `${hours} H - ${mins} M`;
+};
+
 export const WeeklyScheduleBuilder: React.FC<WeeklyScheduleBuilderProps> = ({ schedule, onChange, onError }) => {
+
+  const totalWeeklyMinutes = React.useMemo(() => {
+    let total = 0;
+    DAYS.forEach(day => {
+      (schedule[day] || []).forEach(shift => {
+        total += calculateDuration(shift.start, shift.end);
+      });
+    });
+    return total;
+  }, [schedule]);
   
   // Validate all days and notify parent
   React.useEffect(() => {
@@ -94,10 +121,15 @@ export const WeeklyScheduleBuilder: React.FC<WeeklyScheduleBuilderProps> = ({ sc
   return (
     <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
       <div className="p-4 space-y-4">
+        <div className="flex justify-between items-center bg-primary/10 border border-primary/20 px-4 py-3 rounded-xl mb-2">
+          <span className="text-xs font-black uppercase tracking-widest text-primary">Total Weekly Working Hours</span>
+          <span className="text-sm font-black text-primary">{formatDuration(totalWeeklyMinutes)}</span>
+        </div>
         {DAYS.map((day) => {
           const shifts = schedule[day] || [];
           const isActive = shifts.length > 0;
           const overlapIndices = checkOverlap(shifts);
+          const dailyMinutes = shifts.reduce((acc, shift) => acc + calculateDuration(shift.start, shift.end), 0);
 
           return (
             <div 
@@ -116,6 +148,11 @@ export const WeeklyScheduleBuilder: React.FC<WeeklyScheduleBuilderProps> = ({ sc
                   <span className={`text-xs font-black uppercase tracking-widest transition-colors ${isActive ? 'text-foreground' : 'text-muted-foreground'}`}>
                     {day}
                   </span>
+                  {isActive && (
+                    <span className="text-[10px] font-bold text-muted-foreground ml-2">
+                      ({formatDuration(dailyMinutes)})
+                    </span>
+                  )}
                 </div>
                 
                 <div className="flex items-center gap-2">

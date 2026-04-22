@@ -70,22 +70,29 @@ export const CompanySettingsSchema = z.object({
 });
 
 // Admin employee details
-export const HrEmployeeDetailSchema = EmployeeProfileSchema.extend({
-  job_id: z.coerce.number().optional().nullable().nullable().or(z.literal("")),
+export const HrEmployeeDetailSchema = z.object({
+  legal_name: nameSchema.optional().nullable().or(z.literal("")),
+  personal_phone: phoneSchema.optional().nullable().or(z.literal("")),
+  date_of_birth: pastDateSchema.optional().nullable().or(z.literal("")),
+  national_id: nationalIdSchema.optional().nullable().or(z.literal("")),
+  bio: textSanitizedSchema.optional().nullable().or(z.literal("")),
+  job_id: z.coerce.number().optional().nullable().or(z.literal("")),
   status: z.enum(['active', 'inactive', 'suspended']),
   hourly_rate: z.coerce.number().min(0),
   weekly_schedule: z.any().optional(), // Can be an object or string depending on where it's parsed
   lunch_break_minutes: z.coerce.number().min(0),
-  bank_name: z.string().optional().nullable().or(z.literal("")),
-  bank_account_iban: z.string().regex(/^[a-zA-Z0-9]+$/, 'Must be alphanumeric').optional().nullable().or(z.literal("")),
-  emergency_contact_name: nameSchema.optional().nullable().or(z.literal("")),
-  emergency_contact_phone: phoneSchema.optional().nullable().or(z.literal("")),
+  bank_name: z.string().min(2, 'Bank name must be at least 2 characters').optional().nullable().or(z.literal("")),
+  bank_account_number: z.string().regex(/^[a-zA-Z0-9]+$/, 'Must be alphanumeric').optional().nullable().or(z.literal("")),
+  bank_iban: z.string().regex(/^[a-zA-Z0-9]+$/, 'Must be alphanumeric').optional().nullable().or(z.literal("")),
+  bank_account_iban: z.string().optional().nullable().or(z.literal("")), // Legacy fallback for EmployeeDetail
+  emergency_contact_name: z.string().optional().nullable().or(z.literal("")),
+  emergency_contact_phone: z.string().optional().nullable().or(z.literal("")),
   emergency_contact_relationship: z.string().optional().nullable().or(z.literal("")),
-  annual_leave_balance: z.coerce.number().min(0),
-  sick_leave_balance: z.coerce.number().min(0),
+  annual_leave_balance: z.coerce.number().min(0).max(365, 'Max 365 days'),
+  sick_leave_balance: z.coerce.number().min(0).max(365, 'Max 365 days'),
   allow_overtime: z.boolean(),
-  max_overtime_hours: z.coerce.number().min(0),
-  hire_date: pastDateSchema.optional().nullable().or(z.literal("")),
+  max_overtime_hours: z.coerce.number().min(1, 'Min 1 hour').max(168, 'Max 168 hours').optional().nullable().or(z.literal("").transform(() => 0)),
+  hire_date: z.any().optional().nullable(),
   suspension_reason: z.string().optional().nullable().or(z.literal(""))
 });
 
