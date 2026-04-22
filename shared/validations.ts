@@ -90,10 +90,21 @@ export const HrEmployeeDetailSchema = z.object({
   emergency_contact_relationship: z.string().optional().nullable().or(z.literal("")),
   annual_leave_balance: z.coerce.number().min(0).max(365, 'Max 365 days'),
   sick_leave_balance: z.coerce.number().min(0).max(365, 'Max 365 days'),
-  allow_overtime: z.boolean(),
-  max_overtime_hours: z.coerce.number().min(1, 'Min 1 hour').max(168, 'Max 168 hours').optional().nullable().or(z.literal("").transform(() => 0)),
+  allow_overtime: z.preprocess((val) => {
+    if (val === 'false' || val === '0' || val === 0 || val === false || val === undefined || val === null) return false;
+    return true;
+  }, z.boolean()),
+  max_overtime_hours: z.coerce.number().min(0, 'Min 0 hour').max(168, 'Max 168 hours').optional().nullable().or(z.literal("").transform(() => 0)),
   hire_date: z.any().optional().nullable(),
   suspension_reason: z.string().optional().nullable().or(z.literal(""))
+}).refine(data => {
+  if (data.allow_overtime) {
+    return (data.max_overtime_hours || 0) >= 1;
+  }
+  return true;
+}, {
+  message: "Max OT Hours must be at least 1 when overtime is allowed",
+  path: ["max_overtime_hours"]
 });
 
 // For employee registration
