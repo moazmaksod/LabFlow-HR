@@ -1,36 +1,56 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from '@react-navigation/native';
-import { User, Camera, Save, LogOut, Mail, UserCircle, Lock, Info, DollarSign, Calendar, Clock, Shield, LayoutDashboard, MapPin, Landmark, HeartHandshake } from 'lucide-react-native';
+import { User, Camera, Save, LogOut, Mail, UserCircle, Lock, Info, DollarSign, Calendar, Clock, Shield, LayoutDashboard, MapPin, Landmark, HeartHandshake, Phone, FileText } from 'lucide-react-native';
 import api from '../lib/axios';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { useAttendanceStore } from '../store/useAttendanceStore';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { EmployeeProfileSchema } from '../../../shared/validations';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 // Base URL for images derived from API URL
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://ais-dev-dt5wflxz22iihcij747x5r-137896224739.europe-west1.run.app/api';
 const BASE_URL = API_URL.replace('/api', '');
 
+
 export default function ProfileScreen() {
   const { user, logout, login } = useAuthStore();
   const { userProfile, setUserProfile } = useAttendanceStore();
-  const [name, setName] = useState(user?.name || '');
-  const [bio, setBio] = useState('');
-  const [personalPhone, setPersonalPhone] = useState('');
-  const [emergencyContactName, setEmergencyContactName] = useState('');
-  const [emergencyContactPhone, setEmergencyContactPhone] = useState('');
-  const [dateOfBirth, setDateOfBirth] = useState('');
-  const [gender, setGender] = useState('');
-  const [fullAddress, setFullAddress] = useState('');
-  const [emergencyContactRelationship, setEmergencyContactRelationship] = useState('');
-  const [bankName, setBankName] = useState('');
-  const [bankAccountIban, setBankAccountIban] = useState('');
   const [avatar, setAvatar] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const scrollViewRef = useRef<ScrollView>(null);
 
   const { isConnected } = useNetworkStore();
+
+  // Extend the schema with extra HR fields visible on mobile for now since it renders them all
+  const {
+    control,
+    handleSubmit,
+    reset,
+    watch,
+    setValue,
+    formState: { errors }
+  } = useForm({
+    resolver: zodResolver(EmployeeProfileSchema),
+    mode: 'onSubmit',
+    reValidateMode: 'onChange',
+    defaultValues: {
+      legal_name: user?.name || '',
+      personal_phone: '',
+      date_of_birth: undefined,
+      national_id: '',
+      bio: '',
+    }
+  });
+
+  const watchDateOfBirth = watch('date_of_birth');
+
 
   const fetchProfile = useCallback(async () => {
     if (!isConnected) {
@@ -41,17 +61,6 @@ export default function ProfileScreen() {
       const response = await api.get('/users/profile');
       const data = response.data;
       setUserProfile(data);
-      setName(data.name);
-      setBio(data.bio || '');
-      setPersonalPhone(data.personal_phone || '');
-      setEmergencyContactName(data.emergency_contact_name || '');
-      setEmergencyContactPhone(data.emergency_contact_phone || '');
-      setDateOfBirth(data.date_of_birth || '');
-      setGender(data.gender || '');
-      setFullAddress(data.full_address || '');
-      setEmergencyContactRelationship(data.emergency_contact_relationship || '');
-      setBankName(data.bank_name || '');
-      setBankAccountIban(data.bank_account_iban || '');
       setAvatar(data.profile_picture_url || null);
     } catch (error: any) {
       if (!error.isNetworkError) {
@@ -71,20 +80,16 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     if (userProfile) {
-      setName(userProfile.name || user?.name || '');
-      setBio(userProfile.bio || '');
-      setPersonalPhone(userProfile.personal_phone || '');
-      setEmergencyContactName(userProfile.emergency_contact_name || '');
-      setEmergencyContactPhone(userProfile.emergency_contact_phone || '');
-      setDateOfBirth(userProfile.date_of_birth || '');
-      setGender(userProfile.gender || '');
-      setFullAddress(userProfile.full_address || '');
-      setEmergencyContactRelationship(userProfile.emergency_contact_relationship || '');
-      setBankName(userProfile.bank_name || '');
-      setBankAccountIban(userProfile.bank_account_iban || '');
+      reset({
+        legal_name: userProfile.legal_name || userProfile.name || user?.name || '',
+        personal_phone: userProfile.personal_phone || '',
+        date_of_birth: userProfile.date_of_birth ? new Date(userProfile.date_of_birth) : undefined,
+        national_id: userProfile.national_id || '',
+        bio: userProfile.bio || '',
+      });
       setAvatar(userProfile.profile_picture_url || null);
     }
-  }, [userProfile, user]);
+  }, [userProfile, user, reset]);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -145,49 +150,45 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleUpdateProfile = async () => {
+
+  const onInvalid = (errors: any) => {
+    scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+  };
+
+  const handleUpdateProfile = handleSubmit(async (data: any) => {
     if (!isConnected) {
       Alert.alert('Offline', 'Cannot update profile while offline');
-      return;
-    }
-    if (!name.trim()) {
-      Alert.alert('Error', 'Name cannot be empty');
       return;
     }
 
     setLoading(true);
     try {
-      const response = await api.put('/users/profile', {
-        name,
-        bio,
-        personal_phone: personalPhone,
-        emergency_contact_name: emergencyContactName,
-        emergency_contact_phone: emergencyContactPhone,
-        date_of_birth: dateOfBirth || null,
-        gender: gender || null,
-        full_address: fullAddress || null,
-        emergency_contact_relationship: emergencyContactRelationship || null,
-        bank_name: bankName || null,
-        bank_account_iban: bankAccountIban || null,
-      });
+      const finalData = {
+        name: data.legal_name,
+        bio: data.bio,
+        personal_phone: data.personal_phone,
+        date_of_birth: data.date_of_birth ? data.date_of_birth.toISOString().split('T')[0] : null,
+        national_id: data.national_id,
+      };
+
+      const response = await api.put('/users/profile', finalData);
 
       setUserProfile(response.data);
-      // Update local user state if name changed
       if (user) {
         login({ ...user, name: response.data.name }, useAuthStore.getState().token!);
       }
 
       Alert.alert('Success', 'Profile updated successfully');
     } catch (error: any) {
-      // Graceful error catching to avoid redbox
-      const message = error.isNetworkError 
-        ? 'Network unavailable. Please try again when online.' 
+      const message = error.isNetworkError
+        ? 'Network unavailable. Please try again when online.'
         : (error.response?.data?.error || 'Failed to update profile');
-      Alert.alert('Profile Update', message);
+      Alert.alert('Update Failed', message);
     } finally {
       setLoading(false);
     }
-  };
+  }, onInvalid);
+
 
   const calculateTenure = (hireDate: string | null) => {
     if (!hireDate) return 'Not set';
@@ -290,7 +291,7 @@ export default function ProfileScreen() {
             <Camera size={16} color="#fff" />
           </View>
         </TouchableOpacity>
-        <Text style={styles.userName}>{name}</Text>
+        <Text style={styles.userName}>{watch("legal_name")}</Text>
         <Text style={styles.userRole}>{userProfile?.job_title || user?.role.toUpperCase()}</Text>
         <View style={styles.tenureHeader}>
           <Calendar size={12} color="#71717a" style={{ marginRight: 4 }} />
@@ -299,159 +300,127 @@ export default function ProfileScreen() {
       </View>
 
       <View style={styles.form}>
+
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Personal Information</Text>
-          
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Full Name</Text>
-            <View style={styles.inputWrapper}>
-              <User size={18} color="#71717a" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                value={name}
-                onChangeText={setName}
-                placeholder="John Doe"
-              />
-            </View>
-          </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Bio</Text>
-            <View style={[styles.inputWrapper, { alignItems: 'flex-start' }]}>
-              <TextInput
-                style={[styles.input, { minHeight: 80, textAlignVertical: 'top' }]}
-                value={bio}
-                onChangeText={setBio}
-                placeholder="Tell us about yourself..."
-                multiline
+            <Text style={styles.label}>Full Name</Text>
+            <View style={[styles.inputWrapper, errors.legal_name && styles.inputError]}>
+              <UserCircle size={18} color="#71717a" style={styles.inputIcon} />
+              <Controller
+                control={control}
+                name="legal_name"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <TextInput
+                    style={styles.input}
+                    onBlur={onBlur}
+                    onChangeText={onChange}
+                    value={value}
+                    placeholder="Full Name"
+                  />
+                )}
               />
             </View>
+            {errors.legal_name && <Text style={styles.errorText}>{String(errors.legal_name.message)}</Text>}
           </View>
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Personal Phone</Text>
-            <View style={styles.inputWrapper}>
-              <TextInput
-                style={styles.input}
-                value={personalPhone}
-                onChangeText={setPersonalPhone}
-                placeholder="+1 234 567 890"
-                keyboardType="phone-pad"
+            <View style={[styles.inputWrapper, errors.personal_phone && styles.inputError]}>
+              <Phone size={18} color="#71717a" style={styles.inputIcon} />
+              <Controller
+                control={control}
+                name="personal_phone"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <TextInput
+                    style={styles.input}
+                    onBlur={onBlur}
+                    onChangeText={onChange}
+                    value={value}
+                    placeholder="+1 234 567 890"
+                    keyboardType="phone-pad"
+                  />
+                )}
               />
             </View>
+            {errors.personal_phone && <Text style={styles.errorText}>{String(errors.personal_phone.message)}</Text>}
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Email Address</Text>
-            <View style={[styles.inputWrapper, styles.disabledInput]}>
-              <Mail size={18} color="#a1a1aa" style={styles.inputIcon} />
-              <TextInput
-                style={[styles.input, { color: '#a1a1aa' }]}
-                value={user?.email}
-                editable={false}
+            <Text style={styles.label}>Date of Birth</Text>
+            <TouchableOpacity
+              style={[styles.inputWrapper, errors.date_of_birth && styles.inputError]}
+              onPress={() => setShowDatePicker(true)}
+            >
+              <Calendar size={18} color="#71717a" style={styles.inputIcon} />
+              <Text style={[styles.input, { paddingTop: 14 }]}>
+                {watchDateOfBirth ? (watchDateOfBirth as Date).toISOString().split('T')[0] : 'YYYY-MM-DD'}
+              </Text>
+            </TouchableOpacity>
+            {showDatePicker && (
+              <DateTimePicker
+                value={watchDateOfBirth || new Date(new Date().setFullYear(new Date().getFullYear() - 18))}
+                mode="date"
+                display="default"
+                maximumDate={new Date()}
+                onChange={(event, selectedDate) => {
+                  setShowDatePicker(false);
+                  if (selectedDate) {
+                    setValue('date_of_birth', selectedDate, { shouldValidate: true });
+                  }
+                }}
               />
-            </View>
-          </View>
-
-          <View style={styles.row}>
-            <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-              <Text style={styles.label}>Date of Birth</Text>
-              <TextInput
-                style={styles.input}
-                value={dateOfBirth}
-                onChangeText={setDateOfBirth}
-                placeholder="YYYY-MM-DD"
-              />
-            </View>
-            <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
-              <Text style={styles.label}>Gender</Text>
-              <TextInput
-                style={styles.input}
-                value={gender}
-                onChangeText={setGender}
-                placeholder="e.g. Male"
-              />
-            </View>
+            )}
+            {errors.date_of_birth && <Text style={styles.errorText}>{String(errors.date_of_birth.message)}</Text>}
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Emergency Contact Name</Text>
-            <View style={styles.inputWrapper}>
-              <TextInput
-                style={styles.input}
-                value={emergencyContactName}
-                onChangeText={setEmergencyContactName}
-                placeholder="Full Name"
+            <Text style={styles.label}>National ID</Text>
+            <View style={[styles.inputWrapper, errors.national_id && styles.inputError]}>
+              <Shield size={18} color="#71717a" style={styles.inputIcon} />
+              <Controller
+                control={control}
+                name="national_id"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <TextInput
+                    style={styles.input}
+                    onBlur={onBlur}
+                    onChangeText={onChange}
+                    value={value}
+                    placeholder="National Identification Number"
+                  />
+                )}
               />
             </View>
+            {errors.national_id && <Text style={styles.errorText}>{String(errors.national_id.message)}</Text>}
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Emergency Contact Phone</Text>
-            <View style={styles.inputWrapper}>
-              <TextInput
-                style={styles.input}
-                value={emergencyContactPhone}
-                onChangeText={setEmergencyContactPhone}
-                placeholder="+1 234 567 890"
-                keyboardType="phone-pad"
+            <Text style={styles.label}>Bio</Text>
+            <View style={[styles.inputWrapper, errors.bio && styles.inputError]}>
+              <FileText size={18} color="#71717a" style={styles.inputIcon} />
+              <Controller
+                control={control}
+                name="bio"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <TextInput
+                    style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
+                    onBlur={onBlur}
+                    onChangeText={onChange}
+                    value={value}
+                    placeholder="Tell us about yourself..."
+                    multiline
+                    numberOfLines={4}
+                  />
+                )}
               />
             </View>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Emergency Contact Relationship</Text>
-            <View style={styles.inputWrapper}>
-              <HeartHandshake size={18} color="#71717a" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                value={emergencyContactRelationship}
-                onChangeText={setEmergencyContactRelationship}
-                placeholder="e.g. Spouse"
-              />
-            </View>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Full Address</Text>
-            <View style={styles.inputWrapper}>
-              <MapPin size={18} color="#71717a" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                value={fullAddress}
-                onChangeText={setFullAddress}
-                placeholder="123 Main St, City"
-              />
-            </View>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Bank Name</Text>
-            <View style={styles.inputWrapper}>
-              <Landmark size={18} color="#71717a" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                value={bankName}
-                onChangeText={setBankName}
-                placeholder="e.g. Chase"
-              />
-            </View>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Bank Account / IBAN</Text>
-            <View style={styles.inputWrapper}>
-              <TextInput
-                style={styles.input}
-                value={bankAccountIban}
-                onChangeText={setBankAccountIban}
-                placeholder="Account Number"
-              />
-            </View>
+            {errors.bio && <Text style={styles.errorText}>{String(errors.bio.message)}</Text>}
           </View>
         </View>
 
-        <View style={styles.section}>
+<View style={styles.section}>
           <Text style={styles.sectionTitle}>Job Details</Text>
           
           <View style={styles.detailsCard}>
@@ -556,6 +525,8 @@ const styles = StyleSheet.create({
   form: { gap: 24 },
   inputGroup: { gap: 8 },
   label: { fontSize: 14, fontWeight: '600', color: '#18181b' },
+  inputError: { borderColor: "red", borderWidth: 1 },
+  errorText: { color: "red", fontSize: 12, marginTop: 4, marginLeft: 4 },
   inputWrapper: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#e4e4e7', borderRadius: 8, backgroundColor: '#fafafa' },
   inputIcon: { marginLeft: 12 },
   input: { flex: 1, padding: 12, fontSize: 16, color: '#18181b' },
