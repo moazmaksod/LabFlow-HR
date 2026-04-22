@@ -44,14 +44,25 @@ app.use('/api/audit', auditRoutes);
 
 import db from './db/index.js';
 
-// Global Missed Shift Cleanup Interval (30 minutes)
-const cleanupInterval = setInterval(() => {
+import { evaluateUserAttendance } from './services/attendanceEvaluationService.js';
+
+// Global Missed Shift Cleanup Interval (30 minutes) -> Replaced with real-time 1-minute Active Attendance Evaluator
+const evaluationInterval = setInterval(() => {
     try {
-        db.prepare("UPDATE shift_instances SET status = 'Completed' WHERE status = 'Scheduled' AND end_time <= ?").run(new Date().toISOString());
+        // Find all users who are currently checked in (active attendance)
+        const activeUsers = db.prepare(`
+            SELECT DISTINCT user_id
+            FROM attendance
+            WHERE check_out IS NULL
+        `).all() as any[];
+
+        for (const user of activeUsers) {
+            evaluateUserAttendance(user.user_id, process.env.APP_TIMEZONE!);
+        }
     } catch (error) {
-        console.error("Error cleaning up expired shifts:", error);
+        console.error("Error evaluating real-time attendance:", error);
     }
-}, 30 * 60 * 1000);
-cleanupInterval.unref();
+}, 60 * 1000); // Every 1 minute
+evaluationInterval.unref();
 
 export default app;
