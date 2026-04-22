@@ -14,6 +14,7 @@ interface WeeklyScheduleBuilderProps {
   schedule: WeeklySchedule;
   onChange: (schedule: WeeklySchedule) => void;
   onError?: (hasError: boolean) => void;
+  requiredWeeklyHours?: number;
 }
 
 const DAYS = ['saturday', 'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
@@ -62,11 +63,10 @@ const calculateDuration = (start: string, end: string) => {
 const formatDuration = (totalMins: number) => {
   const hours = Math.floor(totalMins / 60);
   const mins = totalMins % 60;
-  if (hours === 0) return `${mins} M`;
-  return `${hours} H - ${mins} M`;
+  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
 };
 
-export const WeeklyScheduleBuilder: React.FC<WeeklyScheduleBuilderProps> = ({ schedule, onChange, onError }) => {
+export const WeeklyScheduleBuilder: React.FC<WeeklyScheduleBuilderProps> = ({ schedule, onChange, onError, requiredWeeklyHours }) => {
 
   const totalWeeklyMinutes = React.useMemo(() => {
     let total = 0;
@@ -123,7 +123,10 @@ export const WeeklyScheduleBuilder: React.FC<WeeklyScheduleBuilderProps> = ({ sc
       <div className="p-4 space-y-4">
         <div className="flex justify-between items-center bg-primary/10 border border-primary/20 px-4 py-3 rounded-xl mb-2">
           <span className="text-xs font-black uppercase tracking-widest text-primary">Total Weekly Working Hours</span>
-          <span className="text-sm font-black text-primary">{formatDuration(totalWeeklyMinutes)}</span>
+          <span className="text-sm font-black text-primary">
+            {formatDuration(totalWeeklyMinutes)}
+            {requiredWeeklyHours ? ` / ${requiredWeeklyHours.toString().padStart(2, '0')}:00` : ''}
+          </span>
         </div>
         {DAYS.map((day) => {
           const shifts = schedule[day] || [];

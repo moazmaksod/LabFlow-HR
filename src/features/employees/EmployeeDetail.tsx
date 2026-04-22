@@ -35,7 +35,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
     register,
     handleSubmit,
     reset,
-    formState: { errors }, watch, setValue
+    formState: { errors }, watch, setValue, setError, clearErrors
   } = useForm<z.infer<typeof HrEmployeeDetailSchema>>({
     resolver: zodResolver(HrEmployeeDetailSchema),
     mode: 'onChange',
@@ -50,6 +50,29 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
 
 
   const watchedData = watch() as any;
+
+
+  useEffect(() => {
+    const clamp = (val: any, min: number, max: number, field: any, message: string) => {
+      const num = Number(val);
+      if (!isNaN(num)) {
+        if (num > max) {
+          setValue(field, max, { shouldValidate: true });
+          setError(field, { type: 'manual', message });
+        } else if (num < min && val !== '') {
+          setValue(field, min, { shouldValidate: true });
+          setError(field, { type: 'manual', message });
+        }
+      }
+    };
+
+    clamp(watchedData.annual_leave_balance, 0, 365, 'annual_leave_balance', 'Max 365 days');
+    clamp(watchedData.sick_leave_balance, 0, 365, 'sick_leave_balance', 'Max 365 days');
+    if (watchedData.allow_overtime) {
+      clamp(watchedData.max_overtime_hours, 1, 168, 'max_overtime_hours', 'Between 1 and 168 hours');
+    }
+  }, [watchedData.annual_leave_balance, watchedData.sick_leave_balance, watchedData.max_overtime_hours, watchedData.allow_overtime, setValue, setError]);
+
 
   const { data: employee, isLoading } = useQuery({
     queryKey: ['user', userId],
@@ -256,7 +279,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Date of Birth</label>
-                    <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">{watchedData.date_of_birth || "-"}</div>
+                    <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">{watchedData.date_of_birth ? (watchedData.date_of_birth instanceof Date ? watchedData.date_of_birth.toISOString().split('T')[0] : String(watchedData.date_of_birth).split('T')[0]) : "-"}</div>
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Gender</label>
@@ -320,7 +343,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                     {...register("legal_name")}
 
                     placeholder="Official legal name"
-                    className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all border-border`}
+                    className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${errors.legal_name ? "border-red-500" : "border-border"}`}
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -398,7 +421,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                     <input
                       type="number"
                       {...register("annual_leave_balance")}
-                      className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all border-border`}
+                      className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${errors.annual_leave_balance ? "border-red-500" : "border-border"}`}
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -406,7 +429,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                     <input
                       type="number"
                       {...register("sick_leave_balance")}
-                      className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all border-border`}
+                      className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${errors.sick_leave_balance ? "border-red-500" : "border-border"}`}
                     />
                   </div>
                 </div>
@@ -448,7 +471,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                       type="number" 
                       step="0.5"
                       {...register("max_overtime_hours")}
-                      className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all border-border`}
+                      className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${errors.max_overtime_hours ? "border-red-500" : "border-border"}`}
                     />
                   </div>
                 )}
