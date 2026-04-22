@@ -343,7 +343,14 @@ export const AuditLogs: React.FC = () => {
         }
     });
 
-    const logs = useMemo(() => rawLogs || [], [rawLogs]);
+    const logs = useMemo(() => {
+        if (!rawLogs) return [];
+        return rawLogs.filter(log => {
+            const changes = getChangedKeys(log);
+            const hasNoChanges = changes.length === 0 && !['LOGIN', 'LOGOUT', 'DELETE'].includes(log.action);
+            return !hasNoChanges;
+        });
+    }, [rawLogs]);
 
     if (isLoading) return (
         <div className="flex flex-col items-center justify-center p-12 space-y-4">
