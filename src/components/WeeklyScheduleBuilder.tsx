@@ -105,14 +105,14 @@ export const WeeklyScheduleBuilder: React.FC<WeeklyScheduleBuilderProps> = ({ sc
     onChange(newSchedule);
   };
 
-  const copyMondayToAll = () => {
-    const mondayShifts = schedule['monday'] || [];
-    if (mondayShifts.length === 0) return;
+  const copySaturdayToAll = () => {
+    const saturdayShifts = schedule['saturday'] || [];
+    if (saturdayShifts.length === 0) return;
 
     const newSchedule = { ...schedule };
     DAYS.forEach(day => {
-      if (day !== 'monday') {
-        newSchedule[day] = mondayShifts.map(s => ({ ...s }));
+      if (day !== 'saturday') {
+        newSchedule[day] = saturdayShifts.map(s => ({ ...s }));
       }
     });
     onChange(newSchedule);
@@ -156,9 +156,9 @@ export const WeeklyScheduleBuilder: React.FC<WeeklyScheduleBuilderProps> = ({ sc
                 </div>
                 
                 <div className="flex items-center gap-2">
-                  {day === 'monday' && isActive && (
+                  {day === 'saturday' && isActive && (
                     <button 
-                      onClick={copyMondayToAll}
+                      onClick={copySaturdayToAll}
                       className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest hover:bg-primary/20 transition-all"
                     >
                       <Copy className="w-3.5 h-3.5" /> Copy All
