@@ -1,10 +1,11 @@
 import db from '../db/index.js';
+import logger from '../utils/logger.js';
 
 export function generateShiftInstances(userId: number, weeklyScheduleRaw: any, timezone: string): void {
-    console.log(`[DEBUG] generateShiftInstances triggered for user ${userId}`);
+    logger.debug(`generateShiftInstances triggered for user ${userId}`);
 
     if (!weeklyScheduleRaw) {
-        console.log(`[DEBUG] Aborting: No weeklyScheduleRaw provided for user ${userId}`);
+        logger.debug(`Aborting: No weeklyScheduleRaw provided for user ${userId}`);
         return;
     }
 
@@ -13,12 +14,12 @@ export function generateShiftInstances(userId: number, weeklyScheduleRaw: any, t
         // STRICT FIX: Safely handle both String and Object payloads coming from the controller
         schedule = typeof weeklyScheduleRaw === 'string' ? JSON.parse(weeklyScheduleRaw) : weeklyScheduleRaw;
     } catch (e) {
-        console.error(`[ERROR] CRITICAL: Failed to parse schedule for user ${userId}:`, e);
+        logger.error(`CRITICAL: Failed to parse schedule for user ${userId}:`, e);
         return;
     }
 
     if (!schedule || Object.keys(schedule).length === 0) {
-        console.log(`[DEBUG] Aborting: Parsed schedule is empty for user ${userId}`);
+        logger.debug(`Aborting: Parsed schedule is empty for user ${userId}`);
         return;
     }
 
@@ -101,11 +102,11 @@ export function generateShiftInstances(userId: number, weeklyScheduleRaw: any, t
                     });
                 }
             }
-            console.log(`[SUCCESS] Generated ${insertedCount} shift instances for user ${userId} in the database.`);
+            logger.info(`Generated ${insertedCount} shift instances for user ${userId} in the database.`);
         });
 
         generateTransaction();
     } catch (err) {
-        console.error(`[ERROR] CRITICAL: DB Transaction completely failed for user ${userId}:`, err);
+        logger.error(`CRITICAL: DB Transaction completely failed for user ${userId}:`, err);
     }
 }
