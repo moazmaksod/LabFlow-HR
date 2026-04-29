@@ -14,7 +14,7 @@ const isTestEnv = process.env.NODE_ENV === 'test';
 const isBenchmarkOrTest = isTestEnv || dbPath.includes('temp') || dbPath === ':memory:';
 
 const db = new Database(dbPath, {
-    verbose: isBenchmarkOrTest ? undefined : console.log
+    verbose: isBenchmarkOrTest ? undefined : logger.debug
 });
 
 // Strictly enforce Foreign Keys

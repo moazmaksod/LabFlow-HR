@@ -3,6 +3,8 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import { initDb } from './server/db/index.js';
 import { seedDb } from './server/db/seed.js';
+import logger from "./server/utils/logger.js";
+
 import app from './server/app.js';
 
 async function startServer() {
@@ -22,11 +24,11 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    logger.info(`Server running on http://localhost:${PORT}`);
   });
 }
 
 startServer().catch((err) => {
-  console.error('Error starting server:', err);
+  logger.error('Error starting server:', err);
   process.exit(1);
 });
