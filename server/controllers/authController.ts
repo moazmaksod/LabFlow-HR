@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import db from '../db/index.js';
 import { logAudit } from '../services/auditService.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
+import logger from '../utils/logger.js';
 
 // 🛡️ Sentinel: Enforce secure JWT Secret from environment variables.
 // Do not use hardcoded fallbacks that could be exploited if env vars are missing.
@@ -78,7 +79,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
             user: { id: userId, name, email: normalizedEmail, role: 'pending' }
         });
     } catch (error) {
-        console.error('Registration error:', error);
+        logger.error('Registration error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -163,7 +164,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
             company_timezone: process.env.APP_TIMEZONE!
         });
     } catch (error) {
-        console.error('Login error:', error);
+        logger.error('Login error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -177,7 +178,7 @@ export const logout = async (req: AuthRequest, res: Response): Promise<void> => 
 
         res.json({ message: 'Logout successful' });
     } catch (error) {
-        console.error('Logout error:', error);
+        logger.error('Logout error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -202,7 +203,7 @@ export const resetAdminDeviceID = async (req: AuthRequest, res: Response): Promi
 
         res.json({ message: 'Mobile device binding reset successfully. You can now pair a new device from your phone.' });
     } catch (error) {
-        console.error('Reset device error:', error);
+        logger.error('Reset device error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

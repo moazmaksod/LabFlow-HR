@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import db from '../db/index.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
 import { logAudit } from '../services/auditService.js';
+import logger from '../utils/logger.js';
 
 const calculateUserPayroll = (user: any, start_date: string, end_date: string, prefetchedLogs?: any[], prefetchedBreaksMap?: Map<number, any[]>) => {
     const hourlyRate = user.hourly_rate || 0;
@@ -166,7 +167,7 @@ export const getPayrollSummary = (req: Request, res: Response): void => {
         });
 
     } catch (error) {
-        console.error('Error in getPayrollSummary:', error);
+        logger.error('Error in getPayrollSummary:', error);
         res.status(500).json({ error: 'Failed to fetch payroll summary' });
     }
 };
@@ -250,7 +251,7 @@ export const getAllPayroll = (req: Request, res: Response): void => {
         res.json(results);
 
     } catch (error) {
-        console.error('Error calculating all payroll:', error);
+        logger.error('Error calculating all payroll:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -462,7 +463,7 @@ export const generateDraftPayroll = (req: AuthRequest, res: Response) => {
 
         res.json({ message: 'Draft payrolls generated successfully', payrolls: generatedPayrolls });
     } catch (error) {
-        console.error('Error generating draft payroll:', error);
+        logger.error('Error generating draft payroll:', error);
         res.status(500).json({ error: 'Failed to generate draft payroll' });
     }
 };
@@ -493,7 +494,7 @@ export const getPayrolls = (req: Request, res: Response) => {
         const payrolls = db.prepare(query).all(...params);
         res.json(payrolls);
     } catch (error) {
-        console.error('Error in getPayrolls:', error);
+        logger.error('Error in getPayrolls:', error);
         res.status(500).json({ error: 'Failed to fetch payroll records' });
     }
 };
@@ -506,7 +507,7 @@ export const getPayrollTransactions = (req: Request, res: Response) => {
         `).all(payroll_id);
         res.json(transactions);
     } catch (error) {
-        console.error('Error fetching payroll transactions:', error);
+        logger.error('Error fetching payroll transactions:', error);
         res.status(500).json({ error: 'Failed to fetch payroll transactions' });
     }
 };
@@ -536,7 +537,7 @@ export const getMyPayrolls = (req: AuthRequest, res: Response) => {
         const payrolls = db.prepare(query).all(...params);
         res.json(payrolls);
     } catch (error) {
-        console.error('Error in getMyPayrolls:', error);
+        logger.error('Error in getMyPayrolls:', error);
         res.status(500).json({ error: 'Failed to fetch your payroll records' });
     }
 };
@@ -557,7 +558,7 @@ export const getMyPayrollTransactions = (req: AuthRequest, res: Response) => {
         `).all(payroll_id);
         res.json(transactions);
     } catch (error) {
-        console.error('Error in getMyPayrollTransactions:', error);
+        logger.error('Error in getMyPayrollTransactions:', error);
         res.status(500).json({ error: 'Failed to fetch your payroll transactions' });
     }
 };
@@ -596,7 +597,7 @@ export const updatePayrollStatus = (req: AuthRequest, res: Response): void => {
 
         res.json(result);
     } catch (error) {
-        console.error('Error updating payroll status:', error);
+        logger.error('Error updating payroll status:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

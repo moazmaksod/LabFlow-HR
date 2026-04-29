@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import * as path from 'path';
 import { schema } from './schema.js';
+import logger from '../utils/logger.js';
 
 // Connect to SQLite DB (file-based for persistence)
 const dbPath = process.env.DB_PATH === ':memory:'
@@ -24,7 +25,7 @@ db.pragma('journal_mode = WAL');
 export function initDb() {
   try {
     if (!isTestEnv) {
-      console.log('Initializing database schema...');
+      logger.info('Initializing database schema...');
     }
     db.exec(schema);
 
@@ -155,7 +156,7 @@ export function initDb() {
     const attendanceSql = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='attendance'").get() as any;
     if (attendanceSql && attendanceSql.sql.includes("'present'")) {
       if (!isTestEnv) {
-        console.log('Migrating attendance table to new status constraints...');
+        logger.info('Migrating attendance table to new status constraints...');
       }
       db.exec(`
         PRAGMA foreign_keys=off;
@@ -197,7 +198,7 @@ export function initDb() {
         PRAGMA foreign_keys=on;
       `);
       if (!isTestEnv) {
-        console.log('Attendance table migrated successfully.');
+        logger.info('Attendance table migrated successfully.');
       }
     }
 
@@ -257,10 +258,10 @@ export function initDb() {
     }
 
     if (!isTestEnv) {
-      console.log('Database schema initialized successfully.');
+      logger.info('Database schema initialized successfully.');
     }
   } catch (error) {
-    console.error('Failed to initialize database schema:', error);
+    logger.error('Failed to initialize database schema:', error);
     throw error;
   }
 }

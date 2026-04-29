@@ -7,17 +7,18 @@ import requestRoutes from './routes/requestRoutes.js';
 import payrollRoutes from './routes/payrollRoutes.js';
 import settingsRoutes from './routes/settingsRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
+import logger from './utils/logger.js';
 
 // Configuration Fail-Fast Validation
 const tz = process.env.APP_TIMEZONE;
 if (!tz) {
-    console.error('FATAL ERROR: APP_TIMEZONE environment variable is missing.');
+    logger.error('FATAL ERROR: APP_TIMEZONE environment variable is missing.');
     process.exit(1);
 }
 try {
     Intl.DateTimeFormat(undefined, { timeZone: tz });
 } catch (e) {
-    console.error(`FATAL ERROR: Invalid APP_TIMEZONE '${tz}'. Must be a valid IANA timezone.`);
+    logger.error(`FATAL ERROR: Invalid APP_TIMEZONE '${tz}'. Must be a valid IANA timezone.`);
     process.exit(1);
 }
 
@@ -60,9 +61,15 @@ const evaluationInterval = setInterval(() => {
             evaluateUserAttendance(user.user_id, process.env.APP_TIMEZONE!);
         }
     } catch (error) {
-        console.error("Error evaluating real-time attendance:", error);
+        logger.error("Error evaluating real-time attendance:", error);
     }
 }, 60 * 1000); // Every 1 minute
 evaluationInterval.unref();
+
+// Global Error Middleware
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    logger.error('Unhandled Server Error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+});
 
 export default app;

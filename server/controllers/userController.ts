@@ -1,4 +1,5 @@
 import { evaluateUserAttendance } from "../services/attendanceEvaluationService.js";
+import logger from '../utils/logger.js';
 
 import { Request, Response } from 'express';
 import db from '../db/index.js';
@@ -59,7 +60,7 @@ export const getUsers = (req: Request, res: Response): void => {
 
         res.json(users);
     } catch (error) {
-        console.error('Error fetching users:', error);
+        logger.error('Error fetching users:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -140,7 +141,7 @@ export const updateUserRole = (req: Request, res: Response): void => {
 
         res.json(updatedUser);
     } catch (error) {
-        console.error('Error updating user:', error);
+        logger.error('Error updating user:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -208,7 +209,7 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
 
         res.json(user);
     } catch (error) {
-        console.error('Error fetching profile:', error);
+        logger.error('Error fetching profile:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -317,7 +318,7 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
 
         res.json(updatedUser);
     } catch (error) {
-        console.error('Error updating profile:', error);
+        logger.error('Error updating profile:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -353,7 +354,7 @@ export const getUserById = (req: Request, res: Response): void => {
 
         res.json(user);
     } catch (error) {
-        console.error('Error fetching user by id:', error);
+        logger.error('Error fetching user by id:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -475,7 +476,7 @@ export const updateUserProfile = (req: Request, res: Response): void => {
                 // Generate new future shifts based on the updated schedule
                 generateShiftInstances(Number(id), body.weekly_schedule, process.env.APP_TIMEZONE!);
             } catch (err) {
-                console.error(`Failed to regenerate shifts for user ${id} after profile update:`, err);
+                logger.error(`Failed to regenerate shifts for user ${id} after profile update:`, err);
             }
         }
         
@@ -499,7 +500,7 @@ export const updateUserProfile = (req: Request, res: Response): void => {
 
         res.json(updatedUser);
     } catch (error) {
-        console.error('Error updating user profile:', error);
+        logger.error('Error updating user profile:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -516,7 +517,7 @@ export const resetDevice = (req: Request, res: Response): void => {
 
         res.json({ message: 'Device binding reset successfully' });
     } catch (error) {
-        console.error('Error resetting device binding:', error);
+        logger.error('Error resetting device binding:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -545,7 +546,7 @@ export const uploadAvatar = (req: Request, res: Response): void => {
                         }
                     }
                 } catch (unlinkError) {
-                    console.error('Error deleting old avatar file:', unlinkError);
+                    logger.error('Error deleting old avatar file:', unlinkError);
                 }
             }
         }
@@ -553,7 +554,7 @@ export const uploadAvatar = (req: Request, res: Response): void => {
         const imageUrl = `/uploads/${req.file.filename}`;
         res.json({ url: imageUrl });
     } catch (error) {
-        console.error('Error uploading avatar:', error);
+        logger.error('Error uploading avatar:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

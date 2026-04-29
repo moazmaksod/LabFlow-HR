@@ -1,4 +1,5 @@
 import { evaluateUserAttendance } from "../services/attendanceEvaluationService.js";
+import logger from '../utils/logger.js';
 
 import { Request, Response } from 'express';
 import db from '../db/index.js';
@@ -79,7 +80,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             // 2. The old session was unscheduled AND a new official shift is ready.
             // 3. The old official shift has completely expired (prevents resuming a finished day as 'overtime').
             if (isSwitchingToNewShift || (existingAttendance.status === 'unscheduled' && shiftInstance) || isOldShiftExpired) {
-                console.log(`Guard triggered for user ${userId}: Skipping Auto-Resume (Expired or Switching). Starting a new check-in.`);
+                logger.info(`Guard triggered for user ${userId}: Skipping Auto-Resume (Expired or Switching). Starting a new check-in.`);
                 // Do nothing. Let it fall through to create a NEW check-in record.
             } else {
                 // Auto-Resume existing session (Normal behavior for breaks within the active shift duration)
@@ -447,7 +448,7 @@ function handleClockAction(userId: number, type: string, lat: number, lng: numbe
         try {
             schedule = JSON.parse(userProfile.weekly_schedule);
         } catch (e) {
-            console.error('Error parsing weekly schedule:', e);
+            logger.error('Error parsing weekly schedule:', e);
         }
     }
 
@@ -482,7 +483,7 @@ export const clockAttendance = (req: AuthRequest, res: Response): void => {
         // Now TypeScript knows 'result' must contain 'data'
         res.status(result.status).json(result.data);
     } catch (error) {
-        console.error('Error clocking attendance:', error);
+        logger.error('Error clocking attendance:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -537,7 +538,7 @@ export const syncOfflineLogs = (req: AuthRequest, res: Response): void => {
         const syncResults = syncTransaction(logs);
         res.json({ message: 'Sync completed', results: syncResults });
     } catch (error) {
-        console.error('Error syncing offline logs:', error);
+        logger.error('Error syncing offline logs:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -589,7 +590,7 @@ export const getMyLogs = (req: AuthRequest, res: Response): void => {
 
         res.json(logs);
     } catch (error) {
-        console.error('Error fetching my attendance logs:', error);
+        logger.error('Error fetching my attendance logs:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -653,7 +654,7 @@ export const getAttendanceLogs = (req: Request, res: Response): void => {
 
         res.json(logs);
     } catch (error) {
-        console.error('Error fetching attendance logs:', error);
+        logger.error('Error fetching attendance logs:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -693,7 +694,7 @@ export const getAttendanceStats = (req: Request, res: Response): void => {
             }
         });
     } catch (error) {
-        console.error('Error fetching attendance stats:', error);
+        logger.error('Error fetching attendance stats:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -775,7 +776,7 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
             hasBreakBalance
         });
     } catch (error) {
-        console.error('Error stepping away:', error);
+        logger.error('Error stepping away:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -842,7 +843,7 @@ export const resumeWork = (req: AuthRequest, res: Response): void => {
 
         res.json({ message: 'Resumed work successfully' });
     } catch (error) {
-        console.error('Error resuming work:', error);
+        logger.error('Error resuming work:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

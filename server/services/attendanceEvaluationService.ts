@@ -1,4 +1,5 @@
 import db from '../db/index.js';
+import logger from '../utils/logger.js';
 
 export const evaluateUserAttendance = (userId: number, timezone: string): void => {
     try {
@@ -77,6 +78,6 @@ export const evaluateUserAttendance = (userId: number, timezone: string): void =
 
         evaluate(userId);
     } catch (error) {
-        console.error(`Error evaluating attendance for user ${userId}:`, error);
+        logger.error(`Error evaluating attendance for user ${userId}:`, error);
     }
 };

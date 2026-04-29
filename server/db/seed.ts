@@ -1,12 +1,13 @@
 import bcrypt from 'bcryptjs';
 import db from './index.js';
+import logger from '../utils/logger.js';
 
 export const seedDb = async (): Promise<void> => {
   try {
     const row = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
 
     if (row.count === 0) {
-      console.log('Users table is empty. Seeding default manager account from ENV...');
+      logger.info('Users table is empty. Seeding default manager account from ENV...');
 
       const adminName = process.env.ADMIN_NAME || 'Super Admin';
       const adminEmail = process.env.ADMIN_EMAIL || 'admin@labflow.com';
@@ -29,13 +30,13 @@ export const seedDb = async (): Promise<void> => {
         VALUES (?, 'active')
       `).run(userId);
 
-      console.log(`Default manager account created: ${adminEmail} / [HIDDEN]`);
+      logger.info(`Default manager account created: ${adminEmail} / [HIDDEN]`);
     } else {
-      console.log('Database already seeded. Skipping seed process.');
+      logger.info('Database already seeded. Skipping seed process.');
     }
 
     // Settings seeding is primarily handled in index.ts migrations now, but we can ensure it's fully populated here if needed.
   } catch (error) {
-    console.error('Error seeding database:', error);
+    logger.error('Error seeding database:', error);
   }
 };

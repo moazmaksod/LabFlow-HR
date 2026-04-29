@@ -4,6 +4,7 @@ import { AuthRequest } from '../middlewares/authMiddleware.js';
 import { getDateStringInTimezone } from '../utils/dateUtils.js';
 import { getOrCreateDraftPayroll } from './payrollController.js';
 import { logAudit } from '../services/auditService.js';
+import logger from '../utils/logger.js';
 
 export const createRequest = (req: AuthRequest, res: Response): void => {
     try {
@@ -41,7 +42,7 @@ export const createRequest = (req: AuthRequest, res: Response): void => {
 
         res.status(201).json(newReq);
     } catch (error) {
-        console.error('Error creating request:', error);
+        logger.error('Error creating request:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -74,7 +75,7 @@ export const getRequests = (req: AuthRequest, res: Response): void => {
 
         res.json(requests);
     } catch (error) {
-        console.error('Error fetching requests:', error);
+        logger.error('Error fetching requests:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -148,7 +149,7 @@ export const createAttendanceCorrection = (req: AuthRequest, res: Response): voi
                     }
                 }
             } catch (e) {
-                console.error('Error calculating missing minutes for correction:', e);
+                logger.error('Error calculating missing minutes for correction:', e);
             }
         }
 
@@ -164,7 +165,7 @@ export const createAttendanceCorrection = (req: AuthRequest, res: Response): voi
 
         res.status(201).json(newReq);
     } catch (error) {
-        console.error('Error creating attendance correction request:', error);
+        logger.error('Error creating attendance correction request:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -545,7 +546,7 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
 
         res.json(updatedRequest);
     } catch (error) {
-        console.error('Error updating request status:', error);
+        logger.error('Error updating request status:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

@@ -5,6 +5,7 @@ import { logAudit } from '../services/auditService.js';
 import fs from 'fs';
 import path from 'path';
 import { getSettingsCache, setSettingsCache, clearSettingsCache } from '../utils/cache.js';
+import logger from '../utils/logger.js';
 
 export const getSettings = (req: Request, res: Response): void => {
     try {
@@ -25,7 +26,7 @@ export const getSettings = (req: Request, res: Response): void => {
 
         res.json(settings);
     } catch (error) {
-        console.error('Error fetching settings:', error);
+        logger.error('Error fetching settings:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -52,7 +53,7 @@ export const uploadFavicon = (req: AuthRequest, res: Response): void => {
                     try {
                         fs.unlinkSync(oldPath);
                     } catch (e) {
-                        console.error('Failed to delete old favicon:', e);
+                        logger.error('Failed to delete old favicon:', e);
                     }
                 }
             }
@@ -79,7 +80,7 @@ export const uploadFavicon = (req: AuthRequest, res: Response): void => {
         setSettingsCache(updatedSettings);
         res.json({ message: 'Favicon uploaded successfully', settings: updatedSettings });
     } catch (error) {
-        console.error('Error uploading favicon:', error);
+        logger.error('Error uploading favicon:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -134,7 +135,7 @@ export const updateSettings = (req: AuthRequest, res: Response): void => {
         setSettingsCache(updatedSettings);
         res.json(updatedSettings);
     } catch (error) {
-        console.error('Error updating settings:', error);
+        logger.error('Error updating settings:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -163,7 +164,7 @@ export const uploadLogo = (req: AuthRequest, res: Response): void => {
                     try {
                         fs.unlinkSync(oldPath);
                     } catch (e) {
-                        console.error('Failed to delete old logo:', e);
+                        logger.error('Failed to delete old logo:', e);
                     }
                 }
             }
@@ -190,7 +191,7 @@ export const uploadLogo = (req: AuthRequest, res: Response): void => {
         setSettingsCache(updatedSettings);
         res.json({ message: 'Logo uploaded successfully', settings: updatedSettings });
     } catch (error) {
-        console.error('Error uploading logo:', error);
+        logger.error('Error uploading logo:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

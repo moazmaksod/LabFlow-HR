@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import db from '../db/index.js';
+import logger from '../utils/logger.js';
 
 export const getAuditLogs = (req: Request, res: Response): void => {
     try {
@@ -49,7 +50,7 @@ export const getAuditLogs = (req: Request, res: Response): void => {
 
         res.json(logs);
     } catch (error) {
-        console.error('Error fetching audit logs:', error);
+        logger.error('Error fetching audit logs:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

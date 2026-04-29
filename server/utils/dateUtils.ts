@@ -1,3 +1,5 @@
+import logger from "./logger.js";
+
 export const getDateStringInTimezone = (timestamp: string | Date | number, timezone: string): string => {
     try {
         const date = new Date(timestamp);
@@ -12,7 +14,7 @@ export const getDateStringInTimezone = (timestamp: string | Date | number, timez
         // The output of en-CA is YYYY-MM-DD
         return formatter.format(date);
     } catch (error) {
-        console.error(`Error formatting date for timezone ${timezone}:`, error);
+        logger.error(`Error formatting date for timezone ${timezone}:`, error);
         // Fallback to UTC if timezone is invalid
         const d = new Date(timestamp);
         return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;

@@ -1,4 +1,5 @@
 import db from '../db/index.js';
+import logger from '../utils/logger.js';
 
 export const logAudit = (
     entityName: string,
@@ -21,6 +22,6 @@ export const logAudit = (
             newValues ? JSON.stringify(newValues) : null
         );
     } catch (error) {
-        console.error('Failed to write audit log:', error);
+        logger.error('Failed to write audit log:', error);
     }
 };
