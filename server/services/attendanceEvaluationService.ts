@@ -28,7 +28,7 @@ export const evaluateUserAttendance = (userId: number, timezone: string): void =
                 if (activeScheduled.current_status === 'away' && isFinalShift) {
                     // Auto-Terminate Stepaway and Clock-out
                     db.prepare(`
-                        UPDATE attendance SET check_out = ?, current_status = 'none' WHERE id = ?
+                        UPDATE attendance SET check_out = ? WHERE id = ?
                     `).run(activeScheduled.scheduled_end_time, activeScheduled.id);
 
                     // End the active step_away interruption
