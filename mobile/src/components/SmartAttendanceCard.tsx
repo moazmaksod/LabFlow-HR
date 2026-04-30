@@ -366,6 +366,14 @@ export default function SmartAttendanceCard({
           </>
         )}
 
+        {currentStatus === 'away' && currentShift && (
+          <View style={styles.breakInfoContainer}>
+            <Text style={styles.breakWarningText}>
+              Your break will end automatically at {formatTime(currentShift.end_time || currentShift.end)}.
+            </Text>
+          </View>
+        )}
+
         <Text style={styles.radiusWarning}>
           Make sure you are within the workplace radius before clocking in or out.
         </Text>

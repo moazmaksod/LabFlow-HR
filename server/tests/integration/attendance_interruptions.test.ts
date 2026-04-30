@@ -130,6 +130,22 @@ describe('Attendance Interruptions API', () => {
         // Update profile to have break balance
         db.prepare('UPDATE profiles SET lunch_break_minutes = 30 WHERE user_id = ?').run(employeeId);
 
+        // The 10% logic requires shift_instances to calculate totalDailyMinutes
+        const testDate = new Date().toISOString().split('T')[0];
+        const past = new Date(); past.setHours(8,0,0,0);
+        const future = new Date(); future.setHours(16,0,0,0);
+        // Get active attendance to set correct logical date and shift ID
+        const activeAtt = db.prepare('SELECT * FROM attendance WHERE user_id = ?').get(employeeId) as any;
+        db.prepare(`
+            INSERT INTO shift_instances (user_id, start_time, end_time, logical_date, status)
+            VALUES (?, ?, ?, ?, 'Completed')
+        `).run(employeeId, past.toISOString(), future.toISOString(), activeAtt.date);
+
+        const shiftInstanceId = db.prepare('SELECT last_insert_rowid()').get() as any;
+
+        db.prepare('UPDATE attendance SET shift_id = ? WHERE id = ?').run(shiftInstanceId['last_insert_rowid()'], activeAtt.id);
+
+
         // Clear previous interruption for clean test
         db.prepare('DELETE FROM shift_interruptions').run();
         db.prepare('UPDATE attendance SET current_status = ? WHERE user_id = ?').run('working', employeeId);

@@ -275,11 +275,28 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
 
   const handleStepAway = async () => {
     const allowedBreak = userProfile?.lunch_break_minutes || 0;
-    const remainingBreak = Math.max(0, allowedBreak - consumedBreakMinutes);
+    // Calculate total daily shift minutes to apply 10% cap
+    let totalDailyMinutes = 0;
+    if (userProfile?.today_shifts) {
+      userProfile.today_shifts.forEach((shift: any) => {
+        const start = new Date(shift.start_time).getTime();
+        const end = new Date(shift.end_time).getTime();
+        totalDailyMinutes += (end - start) / 60000;
+      });
+    } else if (userProfile?.current_shift) {
+      // Fallback if we only have current_shift, though it might be incomplete
+      const start = new Date(userProfile.current_shift.start_time || userProfile.current_shift.start).getTime();
+      const end = new Date(userProfile.current_shift.end_time || userProfile.current_shift.end).getTime();
+      totalDailyMinutes += (end - start) / 60000;
+    }
+
+    const maxAllowed = Math.floor(totalDailyMinutes * 0.1);
+    const finalAllowedBreak = Math.min(allowedBreak, maxAllowed);
+    const remainingBreak = Math.max(0, finalAllowedBreak - consumedBreakMinutes);
 
     Alert.alert(
       'Confirm Step Away',
-      `Are you sure you want to step away?\n\nRemaining Break Time: ${remainingBreak} minutes`,
+      `Are you sure you want to step away?\n\nRemaining Break Time: ${remainingBreak} minutes\n(Capped at 10% of daily shifts)`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Yes, Step Away', onPress: async () => {

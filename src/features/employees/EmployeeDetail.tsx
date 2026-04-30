@@ -433,26 +433,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Bank Name</label>
-                    <input
-                      type="text"
-                      {...register("bank_name")}
-                      placeholder="e.g. Chase"
-                      className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all border-border`}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Account / IBAN</label>
-                    <input
-                      type="text"
-                      {...register("bank_account_iban")}
-                      placeholder="Account Number"
-                      className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all border-border`}
-                    />
-                  </div>
-                </div>
+                {/* Banking info removed as per requirements */}
                 <div className="flex items-center justify-between p-4 bg-muted/30 border border-border rounded-xl">
                   <div className="space-y-0.5">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Overtime Policy</span>
@@ -557,10 +538,13 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                     Reset All
                   </button>
                   <div className="flex items-center gap-4 bg-muted/50 p-2 rounded-2xl border border-border">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-2">Lunch Break</span>
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-2">Lunch Break</span>
+                      <span className="text-[8px] text-muted-foreground ml-2 max-w-[200px]">Set 0-60 mins. Automatically capped at 10% of total daily shifts. Stepaway auto-terminates at shift end.</span>
+                    </div>
                     <div className="flex items-center gap-2">
-                      <input 
-                        type="number" 
+                      <input
+                        type="number"
                         {...register("lunch_break_minutes")}
                         className="w-16 px-3 py-1.5 bg-background border border-border rounded-xl text-xs font-bold focus:ring-2 focus:ring-primary/20 outline-none"
                       />

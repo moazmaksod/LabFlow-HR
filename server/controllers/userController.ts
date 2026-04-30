@@ -1,5 +1,6 @@
 import { evaluateUserAttendance } from "../services/attendanceEvaluationService.js";
 import logger from '../utils/logger.js';
+import { getDateStringInTimezone } from '../utils/dateUtils.js';
 
 import { Request, Response } from 'express';
 import db from '../db/index.js';
@@ -184,6 +185,13 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
             LIMIT 1
         `).get(userId, currentServerTime) as any;
 
+        // Fetch all today shifts to calculate TotalDailyMinutes for break limits
+        const logicalDateToday = getDateStringInTimezone(currentServerTime, timezone);
+        const todayShifts = db.prepare(`
+            SELECT start_time, end_time FROM shift_instances
+            WHERE user_id = ? AND logical_date = ? AND status != 'Cancelled'
+        `).all(userId, logicalDateToday) as any[];
+
         let current_shift = null;
         if (currentShiftRecord) {
             // Need to calculate local start/end times based on the timezone for the response payload
@@ -205,6 +213,7 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
         }
 
         user.current_shift = current_shift;
+        user.today_shifts = todayShifts;
         user.next_shift = null; // We don't need next_shift anymore, current_shift handles the nearest shift
 
         res.json(user);

@@ -17,23 +17,41 @@ export const evaluateUserAttendance = (userId: number, timezone: string): void =
             `).get(uid, now) as any;
 
             if (activeScheduled) {
-                // End scheduled attendance
-                db.prepare(`
-                    UPDATE attendance SET check_out = ? WHERE id = ?
-                `).run(activeScheduled.scheduled_end_time, activeScheduled.id);
+                if (activeScheduled.current_status === 'away') {
+                    // Auto-Terminate Stepaway and Clock-out
+                    db.prepare(`
+                        UPDATE attendance SET check_out = ?, current_status = 'none' WHERE id = ?
+                    `).run(activeScheduled.scheduled_end_time, activeScheduled.id);
 
-                const unscheduledShiftId = `unscheduled_${activeScheduled.date.replace(/-/g, '')}_${Date.now()}`;
+                    // End the active step_away interruption
+                    db.prepare(`
+                        UPDATE shift_interruptions
+                        SET end_time = ?
+                        WHERE attendance_id = ? AND type = 'step_away' AND end_time IS NULL
+                    `).run(activeScheduled.scheduled_end_time, activeScheduled.id);
 
-                // Insert new active unscheduled attendance
-                db.prepare(`
-                    INSERT INTO attendance (user_id, check_in, check_out, date, status, current_status, shift_id)
-                    VALUES (?, ?, NULL, ?, 'unscheduled', 'working', ?)
-                `).run(uid, activeScheduled.scheduled_end_time, activeScheduled.date, unscheduledShiftId);
+                    db.prepare(`
+                        UPDATE shift_instances SET status = 'Completed' WHERE id = ?
+                    `).run(activeScheduled.shift_instance_id);
+                } else {
+                    // End scheduled attendance
+                    db.prepare(`
+                        UPDATE attendance SET check_out = ? WHERE id = ?
+                    `).run(activeScheduled.scheduled_end_time, activeScheduled.id);
 
-                // Update shift instance status
-                db.prepare(`
-                    UPDATE shift_instances SET status = 'Completed' WHERE id = ?
-                `).run(activeScheduled.shift_instance_id);
+                    const unscheduledShiftId = `unscheduled_${activeScheduled.date.replace(/-/g, '')}_${Date.now()}`;
+
+                    // Insert new active unscheduled attendance
+                    db.prepare(`
+                        INSERT INTO attendance (user_id, check_in, check_out, date, status, current_status, shift_id)
+                        VALUES (?, ?, NULL, ?, 'unscheduled', 'working', ?)
+                    `).run(uid, activeScheduled.scheduled_end_time, activeScheduled.date, unscheduledShiftId);
+
+                    // Update shift instance status
+                    db.prepare(`
+                        UPDATE shift_instances SET status = 'Completed' WHERE id = ?
+                    `).run(activeScheduled.shift_instance_id);
+                }
             }
 
             // Scenario A: Unscheduled Early Check-in flowing into a Scheduled Shift

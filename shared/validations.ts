@@ -80,7 +80,7 @@ export const HrEmployeeDetailSchema = z.object({
   status: z.enum(['active', 'inactive', 'suspended']),
   hourly_rate: z.coerce.number().min(0),
   weekly_schedule: z.any().optional(), // Can be an object or string depending on where it's parsed
-  lunch_break_minutes: z.coerce.number().min(0),
+  lunch_break_minutes: z.coerce.number().min(0).max(60),
   bank_name: z.string().min(2, 'Bank name must be at least 2 characters').optional().nullable().or(z.literal("")),
   bank_account_number: z.string().regex(/^[a-zA-Z0-9]+$/, 'Must be alphanumeric').optional().nullable().or(z.literal("")),
   bank_iban: z.string().regex(/^[a-zA-Z0-9]+$/, 'Must be alphanumeric').optional().nullable().or(z.literal("")),

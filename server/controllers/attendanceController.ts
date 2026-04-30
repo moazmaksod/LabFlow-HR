@@ -729,9 +729,55 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
             return;
         }
 
-        const breakProfile = db.prepare('SELECT lunch_break_minutes FROM profiles WHERE user_id = ?').get(userId) as any;
-        const hasBreakBalance = breakProfile && breakProfile.lunch_break_minutes > 0;
+        // Clock-out Safety Logic: Prevent Late Requests
+        let activeShift: any = null;
+        if (activeAttendance.shift_id && !activeAttendance.shift_id.startsWith('unscheduled_')) {
+            activeShift = db.prepare('SELECT * FROM shift_instances WHERE id = ?').get(activeAttendance.shift_id) as any;
+        }
 
+        if (activeShift) {
+            const shiftEndMs = new Date(activeShift.end_time).getTime();
+            const nowMs = Date.now(); // Strictly use server execution time for safety check
+            // Block if request is after or within 1 minute of shift end
+            if (nowMs >= shiftEndMs - 60000) {
+                res.status(400).json({ error: 'Shift has ended. Please clock out instead.' });
+                return;
+            }
+        }
+
+        // Lunch Break & 10% Cap Logic
+        const breakProfile = db.prepare('SELECT lunch_break_minutes FROM profiles WHERE user_id = ?').get(userId) as any;
+        const adminSetValue = breakProfile ? (breakProfile.lunch_break_minutes || 0) : 0;
+
+        let totalDailyMinutes = 0;
+        if (activeShift && activeShift.logical_date) {
+            const todayShifts = db.prepare('SELECT start_time, end_time FROM shift_instances WHERE user_id = ? AND logical_date = ? AND status != \'Cancelled\'').all(userId, activeShift.logical_date) as any[];
+            todayShifts.forEach(shift => {
+                const start = new Date(shift.start_time).getTime();
+                const end = new Date(shift.end_time).getTime();
+                totalDailyMinutes += (end - start) / 60000;
+            });
+        }
+
+        const maxAllowed = Math.floor(totalDailyMinutes * 0.1);
+        const autoApprovedLimit = Math.min(adminSetValue, maxAllowed);
+
+        // Calculate consumed break minutes for today
+        let consumedBreakMinutes = 0;
+        const todayInterruptions = db.prepare(`
+            SELECT start_time, end_time FROM shift_interruptions
+            WHERE attendance_id IN (
+                SELECT id FROM attendance WHERE user_id = ? AND date = ?
+            ) AND type = 'step_away' AND status = 'auto_approved'
+        `).all(userId, activeAttendance.date) as any[];
+
+        todayInterruptions.forEach(intr => {
+            const start = new Date(intr.start_time).getTime();
+            const end = intr.end_time ? new Date(intr.end_time).getTime() : new Date(timestamp).getTime();
+            consumedBreakMinutes += (end - start) / 60000;
+        });
+
+        const hasBreakBalance = (autoApprovedLimit - consumedBreakMinutes) > 0;
         const status = hasBreakBalance ? 'auto_approved' : 'pending_manager';
 
         const stepAwayTransaction = db.transaction(() => {
