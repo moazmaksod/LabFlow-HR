@@ -133,7 +133,7 @@ describe('Attendance Interruptions API', () => {
         // The 10% logic requires shift_instances to calculate totalDailyMinutes
         const testDate = new Date().toISOString().split('T')[0];
         const past = new Date(); past.setHours(8,0,0,0);
-        const future = new Date(); future.setHours(16,0,0,0);
+        const future = new Date(); future.setHours(23,0,0,0); future.setDate(future.getDate() + 1); // Set far in the future so we don't trigger the late block limit
         // Get active attendance to set correct logical date and shift ID
         const activeAtt = db.prepare('SELECT * FROM attendance WHERE user_id = ?').get(employeeId) as any;
         db.prepare(`

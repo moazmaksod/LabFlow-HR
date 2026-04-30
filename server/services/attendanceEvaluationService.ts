@@ -8,7 +8,7 @@ export const evaluateUserAttendance = (userId: number, timezone: string): void =
 
             // Scenario B: Scheduled Shift extending into Overtime
             const activeScheduled = db.prepare(`
-                SELECT a.*, s.end_time as scheduled_end_time, s.id as shift_instance_id
+                SELECT a.*, s.end_time as scheduled_end_time, s.id as shift_instance_id, s.logical_date
                 FROM attendance a
                 JOIN shift_instances s ON a.shift_id = s.id
                 WHERE a.user_id = ? AND a.check_out IS NULL AND s.status = 'Scheduled'
@@ -17,7 +17,15 @@ export const evaluateUserAttendance = (userId: number, timezone: string): void =
             `).get(uid, now) as any;
 
             if (activeScheduled) {
-                if (activeScheduled.current_status === 'away') {
+                // Check if this is the final shift of the day
+                const futureShiftsToday = db.prepare(`
+                    SELECT id FROM shift_instances
+                    WHERE user_id = ? AND logical_date = ? AND start_time >= ? AND status = 'Scheduled'
+                    LIMIT 1
+                `).get(uid, activeScheduled.logical_date, activeScheduled.scheduled_end_time) as any;
+                const isFinalShift = !futureShiftsToday;
+
+                if (activeScheduled.current_status === 'away' && isFinalShift) {
                     // Auto-Terminate Stepaway and Clock-out
                     db.prepare(`
                         UPDATE attendance SET check_out = ?, current_status = 'none' WHERE id = ?

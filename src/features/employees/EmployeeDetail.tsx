@@ -68,10 +68,11 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
 
     clamp(watchedData.annual_leave_balance, 0, 365, 'annual_leave_balance', 'Max 365 days');
     clamp(watchedData.sick_leave_balance, 0, 365, 'sick_leave_balance', 'Max 365 days');
+    clamp(watchedData.lunch_break_minutes, 0, 60, 'lunch_break_minutes', 'Max 60 mins');
     if (watchedData.allow_overtime) {
       clamp(watchedData.max_overtime_hours, 1, 168, 'max_overtime_hours', 'Between 1 and 168 hours');
     }
-  }, [watchedData.annual_leave_balance, watchedData.sick_leave_balance, watchedData.max_overtime_hours, watchedData.allow_overtime, setValue, setError]);
+  }, [watchedData.annual_leave_balance, watchedData.sick_leave_balance, watchedData.max_overtime_hours, watchedData.allow_overtime, watchedData.lunch_break_minutes, setValue, setError]);
 
 
   const { data: employee, isLoading } = useQuery({

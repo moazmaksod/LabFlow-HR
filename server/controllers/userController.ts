@@ -185,12 +185,17 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
             LIMIT 1
         `).get(userId, currentServerTime) as any;
 
-        // Fetch all today shifts to calculate TotalDailyMinutes for break limits
-        const logicalDateToday = getDateStringInTimezone(currentServerTime, timezone);
+        // Fetch all today shifts to calculate TotalDailyMinutes for break limits.
+        // For night shifts, if they are currently in a shift, use that shift's logical date
+        let logicalDateToUse = getDateStringInTimezone(currentServerTime, timezone);
+        if (currentShiftRecord) {
+            logicalDateToUse = currentShiftRecord.logical_date;
+        }
+
         const todayShifts = db.prepare(`
             SELECT start_time, end_time FROM shift_instances
             WHERE user_id = ? AND logical_date = ? AND status != 'Cancelled'
-        `).all(userId, logicalDateToday) as any[];
+        `).all(userId, logicalDateToUse) as any[];
 
         let current_shift = null;
         if (currentShiftRecord) {
