@@ -274,7 +274,9 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
   };
 
   const handleStepAway = async () => {
+    console.debug('[DashboardScreen.handleStepAway] Entry');
     const allowedBreak = userProfile?.lunch_break_minutes || 0;
+    console.debug('[DashboardScreen.handleStepAway] allowedBreak=', allowedBreak);
     // Calculate total daily shift minutes to apply 10% cap
     let totalDailyMinutes = 0;
     if (userProfile?.today_shifts) {
@@ -291,8 +293,10 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
     }
 
     const maxAllowed = Math.floor(totalDailyMinutes * 0.1);
+    console.debug('[DashboardScreen.handleStepAway] totalDailyMinutes=', totalDailyMinutes, 'maxAllowed=', maxAllowed);
     const finalAllowedBreak = Math.min(allowedBreak, maxAllowed);
     const remainingBreak = Math.max(0, finalAllowedBreak - consumedBreakMinutes);
+    console.debug('[DashboardScreen.handleStepAway] finalAllowedBreak=', finalAllowedBreak, 'consumedBreakMinutes=', consumedBreakMinutes, 'remainingBreak=', remainingBreak);
 
     Alert.alert(
       'Confirm Step Away',
@@ -306,18 +310,22 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
 
       // 3. Calculate True Time using server offset
       const localNow = Date.now();
+      console.debug('[DashboardScreen.handleStepAway] localNow=', localNow);
       const { serverTimeOffset, lastLocalSyncTime } = useNetworkStore.getState();
 
       if (localNow < lastLocalSyncTime) {
+      console.debug('[DashboardScreen.handleStepAway] Tampering Check: localNow=', localNow, 'lastLocalSyncTime=', lastLocalSyncTime);
         Alert.alert('Security Alert', 'Device clock tampering detected. Time appears to have moved backwards.');
         setLoading(false);
         return;
       }
 
       const timestamp = new Date(localNow + serverTimeOffset).toISOString();
+      console.debug('[DashboardScreen.handleStepAway] timestamp=', timestamp, 'serverTimeOffset=', serverTimeOffset);
 
             // Optimistic Update if offline
             if (!isConnected) {
+            console.debug('[DashboardScreen.handleStepAway] isConnected=', isConnected);
               saveOfflineRequest('POST', '/attendance/step-away', { timestamp, deviceId });
               setStatus('away');
               setLastActionTimestamp(timestamp);
@@ -328,8 +336,10 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
             }
 
             const response = await api.post('/attendance/step-away', { timestamp, deviceId });
+            console.debug('[DashboardScreen.handleStepAway] Call API /attendance/step-away');
 
             if (!response.data.hasBreakBalance) {
+            console.debug('[DashboardScreen.handleStepAway] API response data=', response.data);
               Alert.alert('Notice', 'You have no break balance. A permission request has been sent to your manager.');
             } else {
               Alert.alert('Success', 'You have stepped away.');
@@ -339,20 +349,24 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
             setLastActionTimestamp(timestamp);
             fetchStatus(); // Refresh to update consumed time
           } catch (error: any) {
+            console.error('[DashboardScreen.handleStepAway] Catch error=', error);
             if (!error.response) {
               const deviceId = await getUniqueDeviceId();
 
       // 3. Calculate True Time using server offset
       const localNow = Date.now();
+      console.debug('[DashboardScreen.handleStepAway] localNow=', localNow);
       const { serverTimeOffset, lastLocalSyncTime } = useNetworkStore.getState();
 
       if (localNow < lastLocalSyncTime) {
+      console.debug('[DashboardScreen.handleStepAway] Tampering Check: localNow=', localNow, 'lastLocalSyncTime=', lastLocalSyncTime);
         Alert.alert('Security Alert', 'Device clock tampering detected. Time appears to have moved backwards.');
         setLoading(false);
         return;
       }
 
       const timestamp = new Date(localNow + serverTimeOffset).toISOString();
+      console.debug('[DashboardScreen.handleStepAway] timestamp=', timestamp, 'serverTimeOffset=', serverTimeOffset);
               saveOfflineRequest('POST', '/attendance/step-away', { timestamp, deviceId });
               Alert.alert('Offline Mode', 'Network error. Your request was saved locally and will be synced later.');
               setStatus('away');

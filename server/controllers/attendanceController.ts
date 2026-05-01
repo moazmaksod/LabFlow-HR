@@ -700,31 +700,38 @@ export const getAttendanceStats = (req: Request, res: Response): void => {
 };
 
 export const stepAway = (req: AuthRequest, res: Response): void => {
+    logger.debug('[stepAway] Entry: userId=', req.user?.id, 'deviceId=', req.body.deviceId);
     try {
         const userId = req.user!.id;
         const { deviceId } = req.body;
         const timestamp = new Date().toISOString(); // Server is the single source of truth
 
         if (!deviceId) {
+            logger.debug('[stepAway] Missing deviceId');
             res.status(400).json({ error: 'Missing deviceId' });
             return;
         }
 
         // Device Binding Security Check
         const profile = db.prepare('SELECT device_id FROM profiles WHERE user_id = ?').get(userId) as any;
+        logger.debug('[stepAway] profile=', profile);
         if (!profile.device_id || profile.device_id !== deviceId) {
+            logger.debug('[stepAway] Security Alert: Unauthorized device.');
             res.status(403).json({ error: 'Security Alert: Unauthorized device.' });
             return;
         }
 
         const activeAttendance = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND check_out IS NULL ORDER BY check_in DESC LIMIT 1').get(userId) as any;
+        logger.debug('[stepAway] activeAttendance=', activeAttendance);
 
         if (!activeAttendance) {
+            logger.debug('[stepAway] No active attendance found for today');
             res.status(400).json({ error: 'No active attendance found for today' });
             return;
         }
 
         if (activeAttendance.current_status === 'away') {
+            logger.debug('[stepAway] Already stepped away');
             res.status(400).json({ error: 'Already stepped away' });
             return;
         }
@@ -736,10 +743,12 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
         }
 
         if (activeShift) {
+            logger.debug('[stepAway] activeShift Branch Entry: shiftEndMs=', new Date(activeShift.end_time).getTime(), 'nowMs=', Date.now());
             const shiftEndMs = new Date(activeShift.end_time).getTime();
             const nowMs = Date.now(); // Strictly use server execution time for safety check
             // Block if request is after or within 1 minute of shift end
             if (nowMs >= shiftEndMs - 60000) {
+                logger.debug('[stepAway] Shift has ended. Please clock out instead.');
                 res.status(400).json({ error: 'Shift has ended. Please clock out instead.' });
                 return;
             }
@@ -760,7 +769,9 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
         }
 
         const maxAllowed = Math.floor(totalDailyMinutes * 0.1);
+        logger.debug('[stepAway] totalDailyMinutes=', totalDailyMinutes, 'maxAllowed=', maxAllowed);
         const autoApprovedLimit = Math.min(adminSetValue, maxAllowed);
+        logger.debug('[stepAway] adminSetValue=', adminSetValue, 'autoApprovedLimit=', autoApprovedLimit);
 
         // Calculate consumed break minutes for today
         let consumedBreakMinutes = 0;
@@ -778,9 +789,12 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
         });
 
         const hasBreakBalance = (autoApprovedLimit - consumedBreakMinutes) > 0;
+        logger.debug('[stepAway] consumedBreakMinutes=', consumedBreakMinutes, 'hasBreakBalance=', hasBreakBalance);
         const status = hasBreakBalance ? 'auto_approved' : 'pending_manager';
+        logger.debug('[stepAway] status=', status);
 
         const stepAwayTransaction = db.transaction(() => {
+            logger.debug('[stepAway] Transaction Entry');
             const oldAttendance = { ...activeAttendance };
 
             // Update attendance status
@@ -796,6 +810,7 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
 
             // If no break balance, create a request
             if (!hasBreakBalance) {
+                logger.debug('[stepAway] !hasBreakBalance Branch Entry. Creating request.');
                 const reqInsert = db.prepare(`
                     INSERT INTO requests (user_id, attendance_id, type, reference_id, reason, status)
                     VALUES (?, ?, 'permission_to_leave', ?, 'Step away with 0 break balance', 'pending')
@@ -816,6 +831,7 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
         const result = stepAwayTransaction();
 
         res.status(201).json({
+        logger.debug('[stepAway] Exit. Success.');
             message: 'Stepped away successfully',
             status: result.status,
             interruptionId: result.interruptionId,

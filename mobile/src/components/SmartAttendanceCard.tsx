@@ -33,6 +33,7 @@ const formatTime = (timeStr: string) => {
 };
 
 export default function SmartAttendanceCard({
+  console.debug('[SmartAttendanceCard] Entry props:', {currentStatus, consumedBreakMinutes, lunchBreakMinutes});
   currentShift,
   currentStatus,
   consumedBreakMinutes,

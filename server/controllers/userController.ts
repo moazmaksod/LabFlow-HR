@@ -148,6 +148,7 @@ export const updateUserRole = (req: Request, res: Response): void => {
 };
 
 export const getProfile = (req: AuthRequest, res: Response): void => {
+    logger.debug('[getProfile] Entry: userId=', req.user?.id);
     try {
         const userId = req.user!.id;
         evaluateUserAttendance(userId, process.env.APP_TIMEZONE!);
@@ -168,8 +169,10 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
             LEFT JOIN jobs j ON p.job_id = j.id
             WHERE u.id = ?
         `).get(userId) as any;
+        logger.debug('[getProfile] user=', user);
 
         if (!user) {
+            logger.debug('[getProfile] User not found');
             res.status(404).json({ error: 'User not found' });
             return;
         }
@@ -184,11 +187,13 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
             ORDER BY start_time ASC
             LIMIT 1
         `).get(userId, currentServerTime) as any;
+        logger.debug('[getProfile] currentShiftRecord=', currentShiftRecord);
 
         // Fetch all today shifts to calculate TotalDailyMinutes for break limits.
         // For night shifts, if they are currently in a shift, use that shift's logical date
         let logicalDateToUse = getDateStringInTimezone(currentServerTime, timezone);
         if (currentShiftRecord) {
+            logger.debug('[getProfile] currentShiftRecord Branch Entry');
             logicalDateToUse = currentShiftRecord.logical_date;
         }
 
@@ -196,9 +201,11 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
             SELECT start_time, end_time FROM shift_instances
             WHERE user_id = ? AND logical_date = ? AND status != 'Cancelled'
         `).all(userId, logicalDateToUse) as any[];
+        logger.debug('[getProfile] todayShifts=', todayShifts);
 
         let current_shift = null;
         if (currentShiftRecord) {
+            logger.debug('[getProfile] currentShiftRecord Branch Entry');
             // Need to calculate local start/end times based on the timezone for the response payload
             const formatter = new Intl.DateTimeFormat('en-US', {
                 timeZone: timezone,
@@ -362,6 +369,7 @@ export const getUserById = (req: Request, res: Response): void => {
         `).get(id);
 
         if (!user) {
+            logger.debug('[getProfile] User not found');
             res.status(404).json({ error: 'User not found' });
             return;
         }

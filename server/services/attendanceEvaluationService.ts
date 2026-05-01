@@ -2,9 +2,12 @@ import db from '../db/index.js';
 import logger from '../utils/logger.js';
 
 export const evaluateUserAttendance = (userId: number, timezone: string): void => {
+    logger.debug('[evaluateUserAttendance] Entry: userId=', userId, 'timezone=', timezone);
     try {
         const evaluate = db.transaction((uid: number) => {
+            logger.debug('[evaluateUserAttendance] Transaction Entry: uid=', uid);
             const now = new Date().toISOString();
+            logger.debug('[evaluateUserAttendance] now=', now);
 
             // Scenario B: Scheduled Shift extending into Overtime
             const activeScheduled = db.prepare(`
@@ -17,6 +20,7 @@ export const evaluateUserAttendance = (userId: number, timezone: string): void =
             `).get(uid, now) as any;
 
             if (activeScheduled) {
+                logger.debug('[evaluateUserAttendance] activeScheduled Branch Entry');
                 // Check if this is the final shift of the day
                 const futureShiftsToday = db.prepare(`
                     SELECT id FROM shift_instances
@@ -26,6 +30,7 @@ export const evaluateUserAttendance = (userId: number, timezone: string): void =
                 const isFinalShift = !futureShiftsToday;
 
                 if (activeScheduled.current_status === 'away' && isFinalShift) {
+                    logger.debug('[evaluateUserAttendance] activeScheduled is final shift and away. Auto-terminating break.');
                     // Auto-Terminate Stepaway and Clock-out
                     db.prepare(`
                         UPDATE attendance SET check_out = ? WHERE id = ?
@@ -42,6 +47,7 @@ export const evaluateUserAttendance = (userId: number, timezone: string): void =
                         UPDATE shift_instances SET status = 'Completed' WHERE id = ?
                     `).run(activeScheduled.shift_instance_id);
                 } else {
+                    logger.debug('[evaluateUserAttendance] activeScheduled is NOT final shift and away. Ending scheduled and creating unscheduled.');
                     // End scheduled attendance
                     db.prepare(`
                         UPDATE attendance SET check_out = ? WHERE id = ?
@@ -72,6 +78,7 @@ export const evaluateUserAttendance = (userId: number, timezone: string): void =
             `).get(uid) as any;
 
             if (activeUnscheduled) {
+                logger.debug('[evaluateUserAttendance] activeUnscheduled Branch Entry');
                 // Find next scheduled shift that is active right now
                 const activeShift = db.prepare(`
                     SELECT * FROM shift_instances
@@ -81,6 +88,7 @@ export const evaluateUserAttendance = (userId: number, timezone: string): void =
                 `).get(uid, now, now) as any;
 
                 if (activeShift) {
+                    logger.debug('[evaluateUserAttendance] activeShift Branch Entry. Flowing unscheduled to scheduled.');
                     // Update unscheduled to end at shift start time
                     db.prepare(`
                         UPDATE attendance SET check_out = ? WHERE id = ?
@@ -103,6 +111,7 @@ export const evaluateUserAttendance = (userId: number, timezone: string): void =
         });
 
         evaluate(userId);
+        logger.debug('[evaluateUserAttendance] Transaction Exit');
     } catch (error) {
         logger.error(`Error evaluating attendance for user ${userId}:`, error);
     }
