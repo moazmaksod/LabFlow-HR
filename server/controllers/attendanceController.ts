@@ -830,8 +830,8 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
 
         const result = stepAwayTransaction();
 
-        res.status(201).json({
         logger.debug('[stepAway] Exit. Success.');
+        res.status(201).json({
             message: 'Stepped away successfully',
             status: result.status,
             interruptionId: result.interruptionId,
