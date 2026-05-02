@@ -33,7 +33,6 @@ const formatTime = (timeStr: string) => {
 };
 
 export default function SmartAttendanceCard({
-  console.debug('[SmartAttendanceCard] Entry props:', {currentStatus, consumedBreakMinutes, lunchBreakMinutes});
   currentShift,
   currentStatus,
   consumedBreakMinutes,
@@ -43,6 +42,7 @@ export default function SmartAttendanceCard({
   handleResumeWork,
   lunchBreakMinutes
 }: SmartAttendanceCardProps) {
+  console.debug('[SmartAttendanceCard] Entry props:', {currentStatus, consumedBreakMinutes, lunchBreakMinutes});
   const activeSession = useAttendanceStore((state) => state.activeSession);
   const serverTimeOffset = useNetworkStore((state) => state.serverTimeOffset);
   const lastLocalSyncTime = useNetworkStore((state) => state.lastLocalSyncTime);
