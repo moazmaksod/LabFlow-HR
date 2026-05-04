@@ -89,6 +89,18 @@ export const evaluateUserAttendance = (userId: number, timezone: string): void =
 
                 if (activeShift) {
                     logger.debug('[evaluateUserAttendance] activeShift Branch Entry. Flowing unscheduled to scheduled.');
+
+                    const checkInMs = new Date(activeUnscheduled.check_in).getTime();
+                    const shiftStartMs = new Date(activeShift.start_time).getTime();
+                    const otMinutes = Math.floor((shiftStartMs - checkInMs) / 60000);
+
+                    if (otMinutes > 0) {
+                        db.prepare(`
+                            INSERT INTO requests (user_id, attendance_id, type, reference_id, reason, details, status)
+                            VALUES (?, ?, 'overtime_approval', ?, 'Early Clock-in (Auto-Slice)', ?, 'pending')
+                        `).run(uid, activeUnscheduled.id, activeUnscheduled.id, JSON.stringify({ raw_overtime_minutes: otMinutes, requested_overtime_minutes: otMinutes }));
+                    }
+
                     // Update unscheduled to end at shift start time
                     db.prepare(`
                         UPDATE attendance SET check_out = ? WHERE id = ?

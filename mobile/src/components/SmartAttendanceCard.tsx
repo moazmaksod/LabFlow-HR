@@ -74,6 +74,7 @@ export default function SmartAttendanceCard({
 
   const todayShift = currentShift;
   const isClockedIn = currentStatus === 'working' || currentStatus === 'away';
+  const isUnscheduledSession = activeSession?.status === 'unscheduled';
 
   if (!todayShift) {
     let headerTitle = isClockedIn ? 'Active Shift' : 'No Shift';
@@ -108,7 +109,7 @@ export default function SmartAttendanceCard({
             </TouchableOpacity>
           ) : (
             <>
-              {currentStatus === 'working' ? (
+              {currentStatus === 'working' && !isUnscheduledSession && (
                 <TouchableOpacity
                   style={[styles.clockButton, styles.stepAwayButton, loading && styles.disabledButton]}
                   onPress={handleStepAway}
@@ -117,7 +118,8 @@ export default function SmartAttendanceCard({
                   <Pause color="#fff" size={20} style={{ marginRight: 8 }} />
                   {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Step Away</Text>}
                 </TouchableOpacity>
-              ) : (
+              )}
+              {currentStatus === 'away' && !isUnscheduledSession && (
                 <TouchableOpacity
                   style={[styles.clockButton, styles.resumeButton, loading && styles.disabledButton]}
                   onPress={handleResumeWork}
@@ -244,8 +246,6 @@ export default function SmartAttendanceCard({
   }
 
   let nowPct = Math.min(100, Math.max(0, ((currentNowMs - timelineStartMs) / (timelineEndMs - timelineStartMs)) * 100));
-
-  const isUnscheduledSession = activeSession?.status === 'unscheduled';
 
   const startMarkerPct = ((shiftStartMs - timelineStartMs) / (timelineEndMs - timelineStartMs)) * 100;
   const endMarkerPct = ((shiftEndMs - timelineStartMs) / (timelineEndMs - timelineStartMs)) * 100;
@@ -398,7 +398,7 @@ export default function SmartAttendanceCard({
             </TouchableOpacity>
           ) : (
             <>
-              {currentStatus === 'working' ? (
+              {currentStatus === 'working' && !isUnscheduledSession && (
                 <TouchableOpacity 
                   style={[styles.clockButton, styles.stepAwayButton, loading && styles.disabledButton]}
                   onPress={handleStepAway}
@@ -407,7 +407,8 @@ export default function SmartAttendanceCard({
                   <Pause color="#fff" size={20} style={{ marginRight: 8 }} />
                   {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Step Away</Text>}
                 </TouchableOpacity>
-              ) : (
+              )}
+              {currentStatus === 'away' && !isUnscheduledSession && (
                 <TouchableOpacity 
                   style={[styles.clockButton, styles.resumeButton, loading && styles.disabledButton]}
                   onPress={handleResumeWork}
