@@ -11,7 +11,11 @@ export const seedDb = async (): Promise<void> => {
 
       const adminName = process.env.ADMIN_NAME || 'Super Admin';
       const adminEmail = process.env.ADMIN_EMAIL || 'admin@labflow.com';
-      const adminPassword = process.env.ADMIN_PASSWORD || 'securepassword123';
+      const adminPassword = process.env.ADMIN_PASSWORD;
+
+      if (!adminPassword) {
+        throw new Error('ADMIN_PASSWORD environment variable is required for secure admin bootstrapping.');
+      }
 
       const salt = await bcrypt.genSalt(10);
       const passwordHash = await bcrypt.hash(adminPassword, salt);
