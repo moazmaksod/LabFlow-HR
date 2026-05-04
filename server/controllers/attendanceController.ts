@@ -77,7 +77,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
 
             // We must NOT resume if:
             // 1. Moving to a different official shift.
-            // 2. The old session was unscheduled AND a new official shift is ready.
+            // 2. The old session was unscheduled (always start a new record for unscheduled check-ins).
             // 3. The old official shift has completely expired (prevents resuming a finished day as 'overtime').
             if (isSwitchingToNewShift || existingAttendance.status === 'unscheduled' || isOldShiftExpired) {
                 logger.info(`Guard triggered for user ${userId}: Skipping Auto-Resume (Expired or Switching). Starting a new check-in.`);
