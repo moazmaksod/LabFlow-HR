@@ -52,10 +52,9 @@ function createRateLimiter(
             return next();
         }
 
-        // Use X-Forwarded-For for proxy environments, fallback to direct IP
-        const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
-            || req.socket.remoteAddress
-            || 'unknown';
+        // Use req.ip which is populated securely by Express when trust proxy is set,
+        // or fallback to 'unknown'
+        const ip = req.ip || 'unknown';
 
         const now = Date.now();
         const entry = store.get(ip);

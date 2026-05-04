@@ -24,6 +24,9 @@ try {
 
 const app = express();
 
+// Trust reverse proxies (e.g., Nginx, AWS ELB) to securely populate req.ip from X-Forwarded-For
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
