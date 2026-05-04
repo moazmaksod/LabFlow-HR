@@ -79,7 +79,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             // 1. Moving to a different official shift.
             // 2. The old session was unscheduled AND a new official shift is ready.
             // 3. The old official shift has completely expired (prevents resuming a finished day as 'overtime').
-            if (isSwitchingToNewShift || (existingAttendance.status === 'unscheduled' && shiftInstance) || isOldShiftExpired) {
+            if (isSwitchingToNewShift || existingAttendance.status === 'unscheduled' || isOldShiftExpired) {
                 logger.info(`Guard triggered for user ${userId}: Skipping Auto-Resume (Expired or Switching). Starting a new check-in.`);
                 // Do nothing. Let it fall through to create a NEW check-in record.
             } else {
@@ -733,6 +733,12 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
         if (activeAttendance.current_status === 'away') {
             logger.debug('[stepAway] Already stepped away');
             res.status(400).json({ error: 'Already stepped away' });
+            return;
+        }
+
+        if (activeAttendance.status === 'unscheduled') {
+            logger.debug('[stepAway] Cannot step away during an unscheduled shift');
+            res.status(400).json({ error: 'Cannot step away during an unscheduled shift' });
             return;
         }
 

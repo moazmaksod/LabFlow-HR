@@ -72,6 +72,16 @@ describe('Attendance Interruptions API', () => {
     it('should create a pending_manager request when stepping away with 0 break balance', async () => {
         const timestamp = new Date().toISOString();
 
+        // Ensure there is an official shift instance so it's not unscheduled
+        const testDate = new Date().toISOString().split('T')[0];
+        const past = new Date(); past.setHours(0,0,0,0);
+        const future = new Date(); future.setHours(23,59,59,999);
+        db.prepare(`
+            INSERT INTO shift_instances (user_id, start_time, end_time, logical_date, status)
+            VALUES (?, ?, ?, ?, 'Scheduled')
+        `).run(employeeId, past.toISOString(), future.toISOString(), testDate);
+
+
         // 1. Check in first
         await request(app)
             .post('/attendance/clock')
