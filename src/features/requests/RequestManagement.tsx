@@ -131,7 +131,7 @@ export default function RequestManagement() {
       } catch (e) {
         setApprovedMinutes(0);
       }
-    } else if (req.type === 'permission_to_leave' || req.type === 'shift_interruption') {
+    } else if (req.type === 'permission_to_leave' || req.type === 'shift_interruption_review') {
       if (req.interruption_start_time && req.interruption_end_time) {
         const start = new Date(req.interruption_start_time).getTime();
         const end = new Date(req.interruption_end_time).getTime();
@@ -174,7 +174,7 @@ export default function RequestManagement() {
             isFrozen = true;
             frozenTooltip = "Wait for employee to Clock Out.";
         }
-    } else if (selectedRequest.type === 'permission_to_leave' || selectedRequest.type === 'shift_interruption') {
+    } else if (selectedRequest.type === 'permission_to_leave' || selectedRequest.type === 'shift_interruption_review') {
         if (!selectedRequest.interruption_end_time) {
             let isShiftEnded = false;
             if (selectedRequest.shift_end_time) {
@@ -210,7 +210,7 @@ export default function RequestManagement() {
 
     if (selectedRequest.type === 'overtime_approval') {
       finalApprovedMinutes = approvedMinutes;
-    } else if (selectedRequest.type === 'permission_to_leave' || selectedRequest.type === 'shift_interruption' || selectedRequest.type === 'early_leave_approval' || selectedRequest.type === 'attendance_correction') {
+    } else if (selectedRequest.type === 'permission_to_leave' || selectedRequest.type === 'shift_interruption_review' || selectedRequest.type === 'early_leave_approval' || selectedRequest.type === 'attendance_correction') {
       finalApprovedMinutes = adjustedDurationMinutes;
       if (adjustedDurationMinutes > 0) {
         isPaid = true;
@@ -224,7 +224,8 @@ export default function RequestManagement() {
       manager_note: managerNote,
       approved_minutes: finalApprovedMinutes,
       is_paid_permission: isPaid,
-      paid_permission_minutes: paidMins
+      paid_permission_minutes: paidMins,
+      penalty_hours: penaltyHours
     });
   };
 
@@ -249,7 +250,7 @@ export default function RequestManagement() {
         if (!hasClockedOut) {
             return true;
         }
-    } else if (req.type === 'permission_to_leave' || req.type === 'shift_interruption') {
+    } else if (req.type === 'permission_to_leave' || req.type === 'shift_interruption_review') {
         if (!req.interruption_end_time) {
             let isShiftEnded = false;
             if (req.shift_end_time) {
@@ -524,15 +525,23 @@ export default function RequestManagement() {
                           {req.type?.replace(/_/g, ' ') || 'Manual Clock'}
                         </span>
                         {checkIsFrozen(req) && (
-                          <Lock
-                            className="w-3.5 h-3.5 text-muted-foreground cursor-help"
+                          <div
+                            className="flex items-center"
                             title={
-                              req.type === 'permission_to_leave' || req.type === 'shift_interruption' ? 'Action locked until employee resumes work or shift ends.' :
+                              req.type === 'permission_to_leave' || req.type === 'shift_interruption_review' ? 'Action locked until employee resumes work or shift ends.' :
                               req.type === 'overtime_approval' ? 'Action locked until employee clocks out.' :
                               req.type === 'early_leave_approval' ? 'Action locked until official shift end time.' :
                               'Action locked.'
                             }
-                          />
+                          >
+                            <Lock className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+                          </div>
+                        )}
+                        {req.status === 'approved' && (
+                          <CheckCircle className="w-3.5 h-3.5 text-green-500" title="Approved" />
+                        )}
+                        {req.status === 'rejected' && (
+                          <XCircle className="w-3.5 h-3.5 text-red-500" title="Rejected" />
                         )}
                       </div>
                     </td>
@@ -608,14 +617,18 @@ export default function RequestManagement() {
                       <span className="text-xs text-muted-foreground block mb-1">Shift ID:</span>
                       <p className="font-mono text-sm break-all">{selectedRequest.shift_id}</p>
                     </div>
-                    <div>
-                      <span className="text-xs text-muted-foreground block mb-1">Scheduled Start:</span>
-                      <p className="font-mono text-sm">{formatTime(selectedRequest.shift_start_time || null)}</p>
-                    </div>
-                    <div>
-                      <span className="text-xs text-muted-foreground block mb-1">Scheduled End:</span>
-                      <p className="font-mono text-sm">{formatTime(selectedRequest.shift_end_time || null)}</p>
-                    </div>
+                    {!selectedRequest.shift_id.startsWith('unscheduled_') && (
+                      <>
+                        <div>
+                          <span className="text-xs text-muted-foreground block mb-1">Scheduled Start:</span>
+                          <p className="font-mono text-sm">{formatTime(selectedRequest.shift_start_time || null)}</p>
+                        </div>
+                        <div>
+                          <span className="text-xs text-muted-foreground block mb-1">Scheduled End:</span>
+                          <p className="font-mono text-sm">{formatTime(selectedRequest.shift_end_time || null)}</p>
+                        </div>
+                      </>
+                    )}
                     {selectedRequest.shift_logical_date && (
                       <div className="col-span-2 pt-2 border-t border-border mt-2">
                         <span className="text-xs text-muted-foreground block mb-1">Shift Logical Date:</span>
@@ -660,7 +673,7 @@ export default function RequestManagement() {
                 </div>
               )}
 
-              {selectedRequest.type === 'shift_interruption' && (
+              {selectedRequest.type === 'shift_interruption_review' && (
                 <div className="space-y-4 pt-2 border-t border-border">
                   <h4 className="font-semibold text-sm text-primary">Shift Interruption Review</h4>
                   <div className="grid grid-cols-2 gap-4 bg-muted/30 p-3 rounded-lg border border-border">
@@ -838,6 +851,17 @@ export default function RequestManagement() {
                 </div>
               )}
 
+              {selectedRequest.status !== 'pending' && (selectedRequest.type === 'permission_to_leave' || selectedRequest.type === 'shift_interruption_review' || selectedRequest.type === 'early_leave_approval') && (
+                <div className="space-y-3 pt-4 border-t border-border">
+                  <div className="flex justify-between items-center bg-muted/30 p-3 rounded-lg border border-border">
+                    <span className="text-sm font-semibold">Disciplinary Action taken:</span>
+                    <span className={`text-sm ${selectedRequest.manager_note?.includes('[Disciplinary Penalty Applied: Yes]') ? 'text-destructive font-bold' : 'text-muted-foreground font-medium'}`}>
+                      {selectedRequest.manager_note?.includes('[Disciplinary Penalty Applied: Yes]') ? 'Yes - Applied' : 'No'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-3 pt-4 border-t border-border">
                 <div className="flex justify-between items-center">
                   <label className="text-sm font-bold text-foreground">Manager Justification <span className="text-destructive">*</span></label>
@@ -866,7 +890,7 @@ export default function RequestManagement() {
 
             {selectedRequest.status === 'pending' && (
               <div className="p-6 border-t border-border bg-muted/30 space-y-4">
-                {isRejecting && (selectedRequest.type === 'permission_to_leave' || selectedRequest.type === 'shift_interruption' || selectedRequest.type === 'early_leave_approval') && (
+                {(selectedRequest.type === 'permission_to_leave' || selectedRequest.type === 'shift_interruption_review' || selectedRequest.type === 'early_leave_approval') && (
                   <div className="bg-destructive/5 p-4 rounded-xl border border-destructive/20 animate-in fade-in slide-in-from-top-2">
                     <label className="text-sm font-bold text-destructive block mb-2">
                       Apply Disciplinary Penalty (Hours)

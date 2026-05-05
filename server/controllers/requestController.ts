@@ -59,7 +59,7 @@ export const getRequests = (req: AuthRequest, res: Response): void => {
                 JOIN users u ON r.user_id = u.id
                 LEFT JOIN attendance a ON r.attendance_id = a.id
             LEFT JOIN shift_instances si_shift ON a.shift_id = CAST(si_shift.id AS TEXT)
-            LEFT JOIN shift_interruptions si ON r.reference_id = si.id AND r.type IN ('permission_to_leave', 'shift_interruption')
+            LEFT JOIN shift_interruptions si ON r.reference_id = si.id AND r.type IN ('permission_to_leave', 'shift_interruption_review', 'shift_interruption')
                 ORDER BY r.created_at DESC
             `).all();
         } else {
@@ -69,7 +69,7 @@ export const getRequests = (req: AuthRequest, res: Response): void => {
                 JOIN users u ON r.user_id = u.id
                 LEFT JOIN attendance a ON r.attendance_id = a.id
                 LEFT JOIN shift_instances si_shift ON a.shift_id = CAST(si_shift.id AS TEXT)
-                LEFT JOIN shift_interruptions si ON r.reference_id = si.id AND r.type IN ('permission_to_leave', 'shift_interruption')
+                LEFT JOIN shift_interruptions si ON r.reference_id = si.id AND r.type IN ('permission_to_leave', 'shift_interruption_review', 'shift_interruption')
                 WHERE r.user_id = ?
                 ORDER BY r.created_at DESC
             `).all(user.id);
@@ -210,10 +210,15 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
         }
 
         const transaction = db.transaction(() => {
+            let finalNote = manager_note || null;
+            if (penalty_hours && penalty_hours > 0) {
+                finalNote = (finalNote || '') + "\n[Disciplinary Penalty Applied: Yes]";
+            }
+
             // Update the request status, manager note and is_paid_permission
             db.prepare('UPDATE requests SET status = ?, manager_note = ?, is_paid_permission = ?, paid_permission_minutes = ? WHERE id = ?').run(
                 status,
-                manager_note || null,
+                finalNote,
                 is_paid_permission ? 1 : 0,
                 paid_permission_minutes || 0,
                 id
@@ -512,7 +517,7 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
             }
 
             // Disciplinary Penalty Logic
-            if (status === 'rejected' && penalty_hours && penalty_hours > 0) {
+            if (penalty_hours && penalty_hours > 0) {
                 const penaltyAmount = penalty_hours * hourlyRate;
                 db.prepare(`
                     INSERT INTO payroll_transactions (payroll_id, reference_id, type, hours, amount, status, manager_notes)
