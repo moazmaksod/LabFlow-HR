@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/axios';
-import { CheckCircle, XCircle, Clock, FileText, X, AlertCircle } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, FileText, X, AlertCircle, Lock } from 'lucide-react';
 import { formatDuration } from '../../lib/utils';
 
 interface RequestLog {
@@ -36,10 +36,7 @@ export default function RequestManagement() {
   const [managerNote, setManagerNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [approvedMinutes, setApprovedMinutes] = useState<number>(0);
-  const [isPaidPermission, setIsPaidPermission] = useState(false);
-  const [paidPermissionMinutes, setPaidPermissionMinutes] = useState<number>(0);
   const [adjustedDurationMinutes, setAdjustedDurationMinutes] = useState<number>(0);
-  const [maxPaidMinutes, setMaxPaidMinutes] = useState<number>(0);
   const [penaltyHours, setPenaltyHours] = useState<number>(0);
   const [isRejecting, setIsRejecting] = useState(false);
   const [selectedRequestIds, setSelectedRequestIds] = useState<Set<number>>(new Set());
@@ -123,9 +120,6 @@ export default function RequestManagement() {
   const openModal = (req: RequestLog) => {
     setSelectedRequest(req);
     setManagerNote(req.manager_note || '');
-    setIsPaidPermission(false);
-    setPaidPermissionMinutes(0);
-    setMaxPaidMinutes(0);
     setPenaltyHours(0);
     setIsRejecting(false);
     setError(null);
@@ -150,15 +144,10 @@ export default function RequestManagement() {
       try {
         const details = JSON.parse(req.details || '{}');
         const missing = details.missing_minutes || details.early_leave_minutes || 0;
-        setMaxPaidMinutes(missing);
-        setPaidPermissionMinutes(missing);
         if (req.type === 'early_leave_approval') {
           setAdjustedDurationMinutes(missing);
         }
-        setIsPaidPermission(missing > 0);
       } catch (e) {
-        setMaxPaidMinutes(0);
-        setPaidPermissionMinutes(0);
         if (req.type === 'early_leave_approval') {
           setAdjustedDurationMinutes(0);
         }
@@ -216,10 +205,17 @@ export default function RequestManagement() {
     }
 
     let finalApprovedMinutes = undefined;
+    let isPaid = false;
+    let paidMins = 0;
+
     if (selectedRequest.type === 'overtime_approval') {
       finalApprovedMinutes = approvedMinutes;
-    } else if (selectedRequest.type === 'permission_to_leave' || selectedRequest.type === 'shift_interruption' || selectedRequest.type === 'early_leave_approval') {
+    } else if (selectedRequest.type === 'permission_to_leave' || selectedRequest.type === 'shift_interruption' || selectedRequest.type === 'early_leave_approval' || selectedRequest.type === 'attendance_correction') {
       finalApprovedMinutes = adjustedDurationMinutes;
+      if (adjustedDurationMinutes > 0) {
+        isPaid = true;
+        paidMins = adjustedDurationMinutes;
+      }
     }
 
     updateStatusMutation.mutate({
@@ -227,8 +223,8 @@ export default function RequestManagement() {
       status: 'approved',
       manager_note: managerNote,
       approved_minutes: finalApprovedMinutes,
-      is_paid_permission: isPaidPermission,
-      paid_permission_minutes: isPaidPermission ? paidPermissionMinutes : 0
+      is_paid_permission: isPaid,
+      paid_permission_minutes: paidMins
     });
   };
 
@@ -518,14 +514,27 @@ export default function RequestManagement() {
                     </td>
                     <td className="px-6 py-4 font-medium">{req.user_name}</td>
                     <td className="px-6 py-4">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                        req.type === 'permission_to_leave' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
-                        req.type === 'overtime_approval' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' :
-                        req.type === 'early_leave_approval' ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400' :
-                        'bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-400'
-                      }`}>
-                        {req.type?.replace(/_/g, ' ') || 'Manual Clock'}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                          req.type === 'permission_to_leave' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
+                          req.type === 'overtime_approval' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' :
+                          req.type === 'early_leave_approval' ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400' :
+                          'bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-400'
+                        }`}>
+                          {req.type?.replace(/_/g, ' ') || 'Manual Clock'}
+                        </span>
+                        {checkIsFrozen(req) && (
+                          <Lock
+                            className="w-3.5 h-3.5 text-muted-foreground cursor-help"
+                            title={
+                              req.type === 'permission_to_leave' || req.type === 'shift_interruption' ? 'Action locked until employee resumes work or shift ends.' :
+                              req.type === 'overtime_approval' ? 'Action locked until employee clocks out.' :
+                              req.type === 'early_leave_approval' ? 'Action locked until official shift end time.' :
+                              'Action locked.'
+                            }
+                          />
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 max-w-xs truncate" title={req.reason}>{req.reason}</td>
                     <td className="px-6 py-4 font-mono text-xs text-muted-foreground">{formatRequestedAt(req.created_at)}</td>
@@ -594,10 +603,10 @@ export default function RequestManagement() {
               {selectedRequest.shift_id && (
                 <div className="space-y-4 pt-2 border-t border-border">
                   <h4 className="font-semibold text-sm text-primary">Related Shift</h4>
-                  <div className="grid grid-cols-3 gap-4 bg-muted/30 p-3 rounded-lg border border-border">
-                    <div>
+                  <div className="grid grid-cols-2 gap-4 bg-muted/30 p-3 rounded-lg border border-border">
+                    <div className="col-span-2">
                       <span className="text-xs text-muted-foreground block mb-1">Shift ID:</span>
-                      <p className="font-mono text-sm">{selectedRequest.shift_id}</p>
+                      <p className="font-mono text-sm break-all">{selectedRequest.shift_id}</p>
                     </div>
                     <div>
                       <span className="text-xs text-muted-foreground block mb-1">Scheduled Start:</span>
@@ -608,7 +617,7 @@ export default function RequestManagement() {
                       <p className="font-mono text-sm">{formatTime(selectedRequest.shift_end_time || null)}</p>
                     </div>
                     {selectedRequest.shift_logical_date && (
-                      <div className="col-span-3 pt-2 border-t border-border mt-2">
+                      <div className="col-span-2 pt-2 border-t border-border mt-2">
                         <span className="text-xs text-muted-foreground block mb-1">Shift Logical Date:</span>
                         <p className="font-mono text-sm">{selectedRequest.shift_logical_date}</p>
                       </div>
@@ -829,45 +838,6 @@ export default function RequestManagement() {
                 </div>
               )}
 
-              {(selectedRequest.type === 'early_leave_approval' || selectedRequest.type === 'attendance_correction') && (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3 p-3 bg-primary/5 rounded-lg border border-primary/10">
-                    <input
-                      type="checkbox"
-                      id="paid-permission"
-                      checked={isPaidPermission}
-                      onChange={(e) => setIsPaidPermission(e.target.checked)}
-                      disabled={selectedRequest.status !== 'pending'}
-                      className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
-                    />
-                    <div>
-                      <label htmlFor="paid-permission" className="text-sm font-semibold block">Mark as Paid Permission</label>
-                      <p className="text-xs text-muted-foreground">If enabled, you can specify how many minutes are paid.</p>
-                    </div>
-                  </div>
-
-                  {isPaidPermission && (
-                    <div className="space-y-2 pl-7">
-                      <label className="text-sm font-medium">Approved Paid Minutes</label>
-                      <input
-                        type="number"
-                        value={paidPermissionMinutes}
-                        max={maxPaidMinutes}
-                        onChange={(e) => {
-                          const val = Math.min(maxPaidMinutes, Math.max(0, Number(e.target.value)));
-                          setPaidPermissionMinutes(val);
-                        }}
-                        disabled={selectedRequest.status !== 'pending'}
-                        className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none disabled:opacity-50"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Max allowed: {maxPaidMinutes} minutes.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-
               <div className="space-y-3 pt-4 border-t border-border">
                 <div className="flex justify-between items-center">
                   <label className="text-sm font-bold text-foreground">Manager Justification <span className="text-destructive">*</span></label>
@@ -896,7 +866,7 @@ export default function RequestManagement() {
 
             {selectedRequest.status === 'pending' && (
               <div className="p-6 border-t border-border bg-muted/30 space-y-4">
-                {isRejecting && selectedRequest.type !== 'overtime_approval' && selectedRequest.type !== 'attendance_correction' && (
+                {isRejecting && (selectedRequest.type === 'permission_to_leave' || selectedRequest.type === 'shift_interruption' || selectedRequest.type === 'early_leave_approval') && (
                   <div className="bg-destructive/5 p-4 rounded-xl border border-destructive/20 animate-in fade-in slide-in-from-top-2">
                     <label className="text-sm font-bold text-destructive block mb-2">
                       Apply Disciplinary Penalty (Hours)
