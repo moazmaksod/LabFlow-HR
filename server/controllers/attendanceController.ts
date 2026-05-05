@@ -103,7 +103,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                         db.prepare(`
                             UPDATE requests
                             SET status = 'rejected',
-                                manager_note = COALESCE(manager_note, '') || '\nSYSTEM: Auto-canceled because the employee returned. Replaced by a shift interruption request.'
+                                manager_note = COALESCE(manager_note, '') || '\nSYSTEM: Auto-canceled; employee returned. Replaced by a shift interruption request.'
                             WHERE id = ?
                         `).run(oldRequest.id);
 

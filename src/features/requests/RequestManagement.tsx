@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/axios';
 import { CheckCircle, XCircle, Clock, FileText, X, AlertCircle } from 'lucide-react';
+import { formatDuration } from '../../lib/utils';
 
 interface RequestLog {
   id: number;
@@ -17,6 +18,11 @@ interface RequestLog {
   created_at: string;
   details?: string;
   manager_note?: string;
+  shift_id?: string | null;
+  shift_start_time?: string | null;
+  shift_end_time?: string | null;
+  shift_logical_date?: string | null;
+  interruption_start_time?: string | null;
 }
 
 export default function RequestManagement() {
@@ -32,6 +38,7 @@ export default function RequestManagement() {
   const [approvedMinutes, setApprovedMinutes] = useState<number>(0);
   const [isPaidPermission, setIsPaidPermission] = useState(false);
   const [paidPermissionMinutes, setPaidPermissionMinutes] = useState<number>(0);
+  const [adjustedDurationMinutes, setAdjustedDurationMinutes] = useState<number>(0);
   const [maxPaidMinutes, setMaxPaidMinutes] = useState<number>(0);
   const [penaltyHours, setPenaltyHours] = useState<number>(0);
   const [isRejecting, setIsRejecting] = useState(false);
@@ -44,6 +51,14 @@ export default function RequestManagement() {
     queryKey: ['requests'],
     queryFn: async () => {
       const res = await api.get('/requests');
+      return res.data;
+    }
+  });
+
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: async () => {
+      const res = await api.get('/settings');
       return res.data;
     }
   });
@@ -64,16 +79,18 @@ export default function RequestManagement() {
 
   const formatRequestedAt = (isoString: string | null) => {
     if (!isoString) return '-';
-    return new Date(isoString).toLocaleString([], {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: settings?.company_timezone,
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-    });
+    }).format(new Date(isoString));
   };
 
   const formatTime = (isoString: string | null) => {
     if (!isoString) return '-';
-    return new Date(isoString).toLocaleString([], {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: settings?.company_timezone,
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-    });
+    }).format(new Date(isoString));
   };
 
   const filteredRequests = requests?.filter(req => {
@@ -120,16 +137,31 @@ export default function RequestManagement() {
       } catch (e) {
         setApprovedMinutes(0);
       }
+    } else if (req.type === 'permission_to_leave' || req.type === 'shift_interruption') {
+      if (req.interruption_start_time && req.interruption_end_time) {
+        const start = new Date(req.interruption_start_time).getTime();
+        const end = new Date(req.interruption_end_time).getTime();
+        const diffMins = Math.floor((end - start) / 60000);
+        setAdjustedDurationMinutes(Math.max(0, diffMins));
+      } else {
+        setAdjustedDurationMinutes(0);
+      }
     } else if (req.type === 'early_leave_approval' || req.type === 'attendance_correction') {
       try {
         const details = JSON.parse(req.details || '{}');
         const missing = details.missing_minutes || details.early_leave_minutes || 0;
         setMaxPaidMinutes(missing);
         setPaidPermissionMinutes(missing);
+        if (req.type === 'early_leave_approval') {
+          setAdjustedDurationMinutes(missing);
+        }
         setIsPaidPermission(missing > 0);
       } catch (e) {
         setMaxPaidMinutes(0);
         setPaidPermissionMinutes(0);
+        if (req.type === 'early_leave_approval') {
+          setAdjustedDurationMinutes(0);
+        }
       }
     } else {
       setApprovedMinutes(0);
@@ -149,18 +181,29 @@ export default function RequestManagement() {
   if (selectedRequest && selectedRequest.status === 'pending') {
     if (selectedRequest.type === 'overtime_approval') {
         const hasClockedOut = !!selectedRequest.original_check_out || !!selectedRequest.requested_check_out;
-        let hoursPassed = 0;
-        if (selectedRequest.original_check_in) {
-            hoursPassed = (Date.now() - new Date(selectedRequest.original_check_in).getTime()) / (1000 * 60 * 60);
-        }
-        if (!hasClockedOut || hoursPassed < 3) {
+        if (!hasClockedOut) {
             isFrozen = true;
-            frozenTooltip = "Wait for 3 hours and Clock-out to finalize.";
+            frozenTooltip = "Wait for employee to Clock Out.";
         }
-    } else if (selectedRequest.type === 'permission_to_leave') {
+    } else if (selectedRequest.type === 'permission_to_leave' || selectedRequest.type === 'shift_interruption') {
         if (!selectedRequest.interruption_end_time) {
-            isFrozen = true;
-            frozenTooltip = "Wait for the employee to Resume work.";
+            let isShiftEnded = false;
+            if (selectedRequest.shift_end_time) {
+                const shiftEnd = new Date(selectedRequest.shift_end_time).getTime();
+                if (Date.now() >= shiftEnd) isShiftEnded = true;
+            }
+            if (!isShiftEnded) {
+                isFrozen = true;
+                frozenTooltip = "Wait for the employee to Resume work or Shift ends.";
+            }
+        }
+    } else if (selectedRequest.type === 'early_leave_approval') {
+        if (selectedRequest.shift_end_time) {
+            const shiftEnd = new Date(selectedRequest.shift_end_time).getTime();
+            if (Date.now() < shiftEnd) {
+                isFrozen = true;
+                frozenTooltip = "Wait until the scheduled shift end time has passed.";
+            }
         }
     }
   }
@@ -171,11 +214,19 @@ export default function RequestManagement() {
       setError("A manager note is mandatory to approve or reject this request.");
       return;
     }
+
+    let finalApprovedMinutes = undefined;
+    if (selectedRequest.type === 'overtime_approval') {
+      finalApprovedMinutes = approvedMinutes;
+    } else if (selectedRequest.type === 'permission_to_leave' || selectedRequest.type === 'shift_interruption' || selectedRequest.type === 'early_leave_approval') {
+      finalApprovedMinutes = adjustedDurationMinutes;
+    }
+
     updateStatusMutation.mutate({
       id: selectedRequest.id,
       status: 'approved',
       manager_note: managerNote,
-      approved_minutes: selectedRequest.type === 'overtime_approval' ? approvedMinutes : undefined,
+      approved_minutes: finalApprovedMinutes,
       is_paid_permission: isPaidPermission,
       paid_permission_minutes: isPaidPermission ? paidPermissionMinutes : 0
     });
@@ -199,16 +250,26 @@ export default function RequestManagement() {
     if (req.status !== 'pending') return true;
     if (req.type === 'overtime_approval') {
         const hasClockedOut = !!req.original_check_out || !!req.requested_check_out;
-        let hoursPassed = 0;
-        if (req.original_check_in) {
-            hoursPassed = (Date.now() - new Date(req.original_check_in).getTime()) / (1000 * 60 * 60);
-        }
-        if (!hasClockedOut || hoursPassed < 3) {
+        if (!hasClockedOut) {
             return true;
         }
-    } else if (req.type === 'permission_to_leave') {
+    } else if (req.type === 'permission_to_leave' || req.type === 'shift_interruption') {
         if (!req.interruption_end_time) {
-            return true;
+            let isShiftEnded = false;
+            if (req.shift_end_time) {
+                const shiftEnd = new Date(req.shift_end_time).getTime();
+                if (Date.now() >= shiftEnd) isShiftEnded = true;
+            }
+            if (!isShiftEnded) {
+                return true;
+            }
+        }
+    } else if (req.type === 'early_leave_approval') {
+        if (req.shift_end_time) {
+            const shiftEnd = new Date(req.shift_end_time).getTime();
+            if (Date.now() < shiftEnd) {
+                return true;
+            }
         }
     }
     return false;
@@ -530,6 +591,137 @@ export default function RequestManagement() {
                 <p className="text-sm mt-1 bg-muted/50 p-3 rounded-lg border border-border">{selectedRequest.reason}</p>
               </div>
 
+              {selectedRequest.shift_id && (
+                <div className="space-y-4 pt-2 border-t border-border">
+                  <h4 className="font-semibold text-sm text-primary">Related Shift</h4>
+                  <div className="grid grid-cols-3 gap-4 bg-muted/30 p-3 rounded-lg border border-border">
+                    <div>
+                      <span className="text-xs text-muted-foreground block mb-1">Shift ID:</span>
+                      <p className="font-mono text-sm">{selectedRequest.shift_id}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground block mb-1">Scheduled Start:</span>
+                      <p className="font-mono text-sm">{formatTime(selectedRequest.shift_start_time || null)}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground block mb-1">Scheduled End:</span>
+                      <p className="font-mono text-sm">{formatTime(selectedRequest.shift_end_time || null)}</p>
+                    </div>
+                    {selectedRequest.shift_logical_date && (
+                      <div className="col-span-3 pt-2 border-t border-border mt-2">
+                        <span className="text-xs text-muted-foreground block mb-1">Shift Logical Date:</span>
+                        <p className="font-mono text-sm">{selectedRequest.shift_logical_date}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {selectedRequest.type === 'permission_to_leave' && (
+                <div className="space-y-4 pt-2 border-t border-border">
+                  <h4 className="font-semibold text-sm text-primary">Permission to Leave Details</h4>
+                  <div className="grid grid-cols-2 gap-4 bg-muted/30 p-3 rounded-lg border border-border">
+                    <div>
+                      <span className="text-xs text-muted-foreground block mb-1">Away Time:</span>
+                      <p className="font-mono text-sm">{formatTime(selectedRequest.interruption_start_time || null)}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground block mb-1">Resume Time:</span>
+                      <p className="font-mono text-sm">{selectedRequest.interruption_end_time ? formatTime(selectedRequest.interruption_end_time) : 'Pending...'}</p>
+                    </div>
+                    {selectedRequest.interruption_start_time && selectedRequest.interruption_end_time && (
+                      <div className="col-span-2 pt-2 border-t border-border mt-1">
+                        <span className="text-xs text-muted-foreground block mb-1">Duration:</span>
+                        <p className="font-mono text-sm font-bold text-primary">
+                          {formatDuration(Math.floor((new Date(selectedRequest.interruption_end_time).getTime() - new Date(selectedRequest.interruption_start_time).getTime()) / 60000))}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Approved Duration (Minutes)</label>
+                    <input
+                      type="number"
+                      value={adjustedDurationMinutes}
+                      onChange={(e) => setAdjustedDurationMinutes(Math.max(0, Number(e.target.value)))}
+                      disabled={selectedRequest.status !== 'pending'}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none disabled:opacity-50"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {selectedRequest.type === 'shift_interruption' && (
+                <div className="space-y-4 pt-2 border-t border-border">
+                  <h4 className="font-semibold text-sm text-primary">Shift Interruption Review</h4>
+                  <div className="grid grid-cols-2 gap-4 bg-muted/30 p-3 rounded-lg border border-border">
+                    <div>
+                      <span className="text-xs text-muted-foreground block mb-1">Start Gap Time:</span>
+                      <p className="font-mono text-sm">{formatTime(selectedRequest.interruption_start_time || null)}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground block mb-1">End Gap Time:</span>
+                      <p className="font-mono text-sm">{selectedRequest.interruption_end_time ? formatTime(selectedRequest.interruption_end_time) : 'Pending...'}</p>
+                    </div>
+                    {selectedRequest.interruption_start_time && selectedRequest.interruption_end_time && (
+                      <div className="col-span-2 pt-2 border-t border-border mt-1">
+                        <span className="text-xs text-muted-foreground block mb-1">Gap Duration:</span>
+                        <p className="font-mono text-sm font-bold text-primary">
+                          {formatDuration(Math.floor((new Date(selectedRequest.interruption_end_time).getTime() - new Date(selectedRequest.interruption_start_time).getTime()) / 60000))}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Accepted Duration (Minutes)</label>
+                    <input
+                      type="number"
+                      value={adjustedDurationMinutes}
+                      onChange={(e) => setAdjustedDurationMinutes(Math.max(0, Number(e.target.value)))}
+                      disabled={selectedRequest.status !== 'pending'}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none disabled:opacity-50"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {selectedRequest.type === 'early_leave_approval' && (
+                <div className="space-y-4 pt-2 border-t border-border">
+                  <h4 className="font-semibold text-sm text-primary">Early Leave Details</h4>
+                  <div className="bg-muted/30 p-3 rounded-lg border border-border space-y-3">
+                    <div>
+                      <span className="text-xs text-muted-foreground block mb-1">Early Leave Time:</span>
+                      <p className="font-mono text-sm">{formatTime(selectedRequest.original_check_out || selectedRequest.requested_check_out || null)}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground block mb-1">Total Missing Duration:</span>
+                      <p className="font-mono text-sm font-bold text-destructive">
+                        {(() => {
+                          try {
+                            const details = JSON.parse(selectedRequest.details || '{}');
+                            const missing = details.missing_minutes || details.early_leave_minutes || 0;
+                            return formatDuration(missing);
+                          } catch(e) { return '0m'; }
+                        })()}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Accepted Duration (Minutes)</label>
+                    <input
+                      type="number"
+                      value={adjustedDurationMinutes}
+                      onChange={(e) => setAdjustedDurationMinutes(Math.max(0, Number(e.target.value)))}
+                      disabled={selectedRequest.status !== 'pending'}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none disabled:opacity-50"
+                    />
+                  </div>
+                  <p className="text-[11px] text-muted-foreground italic bg-primary/5 p-2 rounded border border-primary/10">
+                    Note: If the employee returns, this request will be Auto-canceled and Replaced by a shift interruption request.
+                  </p>
+                </div>
+              )}
+
               {selectedRequest.type === 'attendance_correction' && (
                 <div className="space-y-4 pt-2 border-t border-border">
                   <h4 className="font-semibold text-sm text-primary">Attendance Correction Details</h4>
@@ -545,6 +737,14 @@ export default function RequestManagement() {
                           <span className="text-xs text-muted-foreground">Clock Out:</span>
                           <p className="font-mono text-sm">{formatTime(selectedRequest.original_check_out || null)}</p>
                         </div>
+                        {selectedRequest.original_check_in && selectedRequest.original_check_out && (
+                          <div className="pt-2 border-t border-border mt-1">
+                            <span className="text-xs text-muted-foreground block mb-1">Duration:</span>
+                            <p className="font-mono text-xs font-medium">
+                              {formatDuration(Math.floor((new Date(selectedRequest.original_check_out).getTime() - new Date(selectedRequest.original_check_in).getTime()) / 60000))}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="bg-primary/5 p-3 rounded-lg border border-primary/20">
@@ -572,6 +772,22 @@ export default function RequestManagement() {
                             })()}
                           </p>
                         </div>
+                        {(() => {
+                          try {
+                            const details = JSON.parse(selectedRequest.details || '{}');
+                            if (details.new_clock_in && details.new_clock_out) {
+                                return (
+                                  <div className="pt-2 border-t border-primary/10 mt-1">
+                                    <span className="text-xs text-primary/70 block mb-1">Duration:</span>
+                                    <p className="font-mono text-xs font-bold text-primary">
+                                      {formatDuration(Math.floor((new Date(details.new_clock_out).getTime() - new Date(details.new_clock_in).getTime()) / 60000))}
+                                    </p>
+                                  </div>
+                                );
+                            }
+                          } catch (e) {}
+                          return null;
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -579,16 +795,37 @@ export default function RequestManagement() {
               )}
 
               {selectedRequest.type === 'overtime_approval' && (
-                <div className="space-y-2 pt-2">
-                  <label className="text-sm font-medium">Approved Overtime (Minutes)</label>
-                  <input
-                    type="number"
-                    value={approvedMinutes}
-                    onChange={(e) => setApprovedMinutes(Number(e.target.value))}
-                    disabled={selectedRequest.status !== 'pending'}
-                    className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none disabled:opacity-50"
-                  />
-                  <p className="text-xs text-muted-foreground">Adjust the minutes if necessary before approving.</p>
+                <div className="space-y-4 pt-2 border-t border-border">
+                  <h4 className="font-semibold text-sm text-primary">Overtime Details</h4>
+                  <div className="grid grid-cols-2 gap-4 bg-muted/30 p-3 rounded-lg border border-border">
+                    <div>
+                      <span className="text-xs text-muted-foreground block mb-1">Clock In:</span>
+                      <p className="font-mono text-sm">{formatTime(selectedRequest.original_check_in || selectedRequest.requested_check_in || null)}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground block mb-1">Clock Out:</span>
+                      <p className="font-mono text-sm">{formatTime(selectedRequest.original_check_out || selectedRequest.requested_check_out || null)}</p>
+                    </div>
+                    {(selectedRequest.original_check_in || selectedRequest.requested_check_in) && (selectedRequest.original_check_out || selectedRequest.requested_check_out) && (
+                      <div className="col-span-2 pt-2 border-t border-border mt-1">
+                        <span className="text-xs text-muted-foreground block mb-1">Duration:</span>
+                        <p className="font-mono text-sm font-bold text-primary">
+                          {formatDuration(Math.floor((new Date((selectedRequest.original_check_out || selectedRequest.requested_check_out) as string).getTime() - new Date((selectedRequest.original_check_in || selectedRequest.requested_check_in) as string).getTime()) / 60000))}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Approved Overtime (Minutes)</label>
+                    <input
+                      type="number"
+                      value={approvedMinutes}
+                      onChange={(e) => setApprovedMinutes(Number(e.target.value))}
+                      disabled={selectedRequest.status !== 'pending'}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none disabled:opacity-50"
+                    />
+                    <p className="text-xs text-muted-foreground">Adjust the minutes if necessary before approving.</p>
+                  </div>
                 </div>
               )}
 
@@ -659,7 +896,7 @@ export default function RequestManagement() {
 
             {selectedRequest.status === 'pending' && (
               <div className="p-6 border-t border-border bg-muted/30 space-y-4">
-                {isRejecting && (
+                {isRejecting && selectedRequest.type !== 'overtime_approval' && selectedRequest.type !== 'attendance_correction' && (
                   <div className="bg-destructive/5 p-4 rounded-xl border border-destructive/20 animate-in fade-in slide-in-from-top-2">
                     <label className="text-sm font-bold text-destructive block mb-2">
                       Apply Disciplinary Penalty (Hours)
