@@ -176,7 +176,7 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
     try {
         const actorId = (req as AuthRequest).user!.id;
         const { id } = req.params;
-        const { status, manager_note, approved_minutes, is_paid_permission, paid_permission_minutes, penalty_hours } = req.body;
+        const { status, manager_note, approved_minutes, is_paid_permission, paid_permission_minutes, penalty_minutes } = req.body;
 
         if (!['approved', 'rejected'].includes(status)) {
             res.status(400).json({ error: 'Invalid status' });
@@ -211,8 +211,8 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
 
         const transaction = db.transaction(() => {
             let finalNote = manager_note || null;
-            if (penalty_hours && penalty_hours > 0) {
-                finalNote = (finalNote || '') + "\n[Disciplinary Penalty Applied: Yes]";
+            if (penalty_minutes && penalty_minutes > 0) {
+                finalNote = (finalNote || '') + `\n[Disciplinary Penalty Applied: ${penalty_minutes} minutes]`;
             }
 
             // Update the request status, manager note and is_paid_permission
@@ -517,12 +517,13 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
             }
 
             // Disciplinary Penalty Logic
-            if (penalty_hours && penalty_hours > 0) {
-                const penaltyAmount = penalty_hours * hourlyRate;
+            if (penalty_minutes && penalty_minutes > 0) {
+                const penaltyHours = penalty_minutes / 60;
+                const penaltyAmount = penaltyHours * hourlyRate;
                 db.prepare(`
                     INSERT INTO payroll_transactions (payroll_id, reference_id, type, hours, amount, status, manager_notes)
                     VALUES (?, ?, 'disciplinary_penalty', ?, ?, 'applied', ?)
-                `).run(payrollId, id, penalty_hours, penaltyAmount, manager_note);
+                `).run(payrollId, id, penaltyHours, penaltyAmount, manager_note);
             }
         });
 

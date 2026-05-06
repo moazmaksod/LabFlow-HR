@@ -255,10 +255,12 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
 
                 const otMins = Math.floor((checkOutTime.getTime() - checkInTime.getTime()) / (1000 * 60));
                 if (otMins > 0) {
-                    db.prepare(`
-                        INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
-                        VALUES (?, 'overtime_approval', ?, ?, 'Unscheduled Check-in', ?, 'pending')
-                    `).run(userId, activeSession.id, activeSession.id, JSON.stringify({ raw_overtime_minutes: otMins }));
+                    const existingOt = db.prepare("SELECT * FROM requests WHERE attendance_id = ? AND type = 'overtime_approval'").get(activeSession.id);
+                    if (existingOt) {
+                        const parsedDetails = existingOt.details ? JSON.parse(existingOt.details) : {};
+                        parsedDetails.raw_overtime_minutes = otMins;
+                        db.prepare("UPDATE requests SET details = ? WHERE id = ?").run(JSON.stringify(parsedDetails), existingOt.id);
+                    }
                 }
                 return;
             }
@@ -281,10 +283,12 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
 
                 const otMins = Math.floor((checkOutTime.getTime() - checkInTime.getTime()) / (1000 * 60));
                 if (otMins > 0) {
-                    db.prepare(`
-                        INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
-                        VALUES (?, 'overtime_approval', ?, ?, 'Unscheduled Session', ?, 'pending')
-                    `).run(userId, activeSession.id, activeSession.id, JSON.stringify({ raw_overtime_minutes: otMins }));
+                    const existingOt = db.prepare("SELECT * FROM requests WHERE attendance_id = ? AND type = 'overtime_approval'").get(activeSession.id);
+                    if (existingOt) {
+                        const parsedDetails = existingOt.details ? JSON.parse(existingOt.details) : {};
+                        parsedDetails.raw_overtime_minutes = otMins;
+                        db.prepare("UPDATE requests SET details = ? WHERE id = ?").run(JSON.stringify(parsedDetails), existingOt.id);
+                    }
                 }
                 return;
             }
@@ -350,10 +354,13 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                     `);
                     const info = insertEarly.run(userId, earlySegmentStart.toISOString(), earlySegmentEnd.toISOString(), activeSession.date, lat, lng, 'unscheduled', earlyShiftId);
 
-                    db.prepare(`
-                        INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
-                        VALUES (?, 'overtime_approval', ?, ?, 'Early Clock-in (Unscheduled)', ?, 'pending')
-                    `).run(userId, info.lastInsertRowid, info.lastInsertRowid, JSON.stringify({ raw_overtime_minutes: earlyMins, requested_overtime_minutes: earlyMins }));
+                    const existingOt = db.prepare("SELECT * FROM requests WHERE attendance_id = ? AND type = 'overtime_approval'").get(activeSession.id);
+                    if (existingOt) {
+                        const parsedDetails = existingOt.details ? JSON.parse(existingOt.details) : {};
+                        parsedDetails.raw_overtime_minutes = earlyMins;
+                        parsedDetails.requested_overtime_minutes = earlyMins;
+                        db.prepare("UPDATE requests SET attendance_id = ?, reference_id = ?, details = ? WHERE id = ?").run(info.lastInsertRowid, info.lastInsertRowid, JSON.stringify(parsedDetails), existingOt.id);
+                    }
                 }
             }
 
@@ -368,10 +375,20 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                     `);
                     const info = insertLate.run(userId, lateSegmentStart.toISOString(), lateSegmentEnd.toISOString(), activeSession.date, lat, lng, 'unscheduled', lateShiftId);
 
-                    db.prepare(`
-                        INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
-                        VALUES (?, 'overtime_approval', ?, ?, 'Late Clock-out (Unscheduled)', ?, 'pending')
-                    `).run(userId, info.lastInsertRowid, info.lastInsertRowid, JSON.stringify({ raw_overtime_minutes: lateMins, requested_overtime_minutes: lateMins }));
+                    const existingOt = db.prepare("SELECT * FROM requests WHERE attendance_id = ? AND type = 'overtime_approval'").get(activeSession.id);
+                    if (existingOt && !earlySegmentStart) {
+                        // We only update if we didn't already consume the existingOt for the early segment.
+                        // If they had BOTH early and late, the early one consumed it. We must create a new one for late.
+                        const parsedDetails = existingOt.details ? JSON.parse(existingOt.details) : {};
+                        parsedDetails.raw_overtime_minutes = lateMins;
+                        parsedDetails.requested_overtime_minutes = lateMins;
+                        db.prepare("UPDATE requests SET attendance_id = ?, reference_id = ?, details = ? WHERE id = ?").run(info.lastInsertRowid, info.lastInsertRowid, JSON.stringify(parsedDetails), existingOt.id);
+                    } else {
+                        db.prepare(`
+                            INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
+                            VALUES (?, 'overtime_approval', ?, ?, 'Late Clock-out (Unscheduled)', ?, 'pending')
+                        `).run(userId, info.lastInsertRowid, info.lastInsertRowid, JSON.stringify({ raw_overtime_minutes: lateMins, requested_overtime_minutes: lateMins }));
+                    }
                 }
             }
         });

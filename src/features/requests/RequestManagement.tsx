@@ -37,7 +37,7 @@ export default function RequestManagement() {
   const [error, setError] = useState<string | null>(null);
   const [approvedMinutes, setApprovedMinutes] = useState<number>(0);
   const [adjustedDurationMinutes, setAdjustedDurationMinutes] = useState<number>(0);
-  const [penaltyHours, setPenaltyHours] = useState<number>(0);
+  const [penaltyMinutes, setPenaltyMinutes] = useState<number>(0);
   const [isRejecting, setIsRejecting] = useState(false);
   const [selectedRequestIds, setSelectedRequestIds] = useState<Set<number>>(new Set());
   const [bulkManagerNote, setBulkManagerNote] = useState('');
@@ -61,8 +61,8 @@ export default function RequestManagement() {
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, status, manager_note, approved_minutes, is_paid_permission, paid_permission_minutes, penalty_hours }: { id: number, status: string, manager_note?: string, approved_minutes?: number, is_paid_permission?: boolean, paid_permission_minutes?: number, penalty_hours?: number }) => {
-      const res = await api.put(`/requests/${id}/status`, { status, manager_note, approved_minutes, is_paid_permission, paid_permission_minutes, penalty_hours });
+    mutationFn: async ({ id, status, manager_note, approved_minutes, is_paid_permission, paid_permission_minutes, penalty_minutes }: { id: number, status: string, manager_note?: string, approved_minutes?: number, is_paid_permission?: boolean, paid_permission_minutes?: number, penalty_minutes?: number }) => {
+      const res = await api.put(`/requests/${id}/status`, { status, manager_note, approved_minutes, is_paid_permission, paid_permission_minutes, penalty_minutes });
       return res.data;
     },
     onSuccess: () => {
@@ -120,7 +120,7 @@ export default function RequestManagement() {
   const openModal = (req: RequestLog) => {
     setSelectedRequest(req);
     setManagerNote(req.manager_note || '');
-    setPenaltyHours(0);
+    setPenaltyMinutes(0);
     setIsRejecting(false);
     setError(null);
 
@@ -225,7 +225,7 @@ export default function RequestManagement() {
       approved_minutes: finalApprovedMinutes,
       is_paid_permission: isPaid,
       paid_permission_minutes: paidMins,
-      penalty_hours: penaltyHours
+      penalty_minutes: penaltyMinutes
     });
   };
 
@@ -239,7 +239,7 @@ export default function RequestManagement() {
       id: selectedRequest.id,
       status: 'rejected',
       manager_note: managerNote,
-      penalty_hours: penaltyHours
+      penalty_minutes: penaltyMinutes
     });
   };
 
@@ -524,7 +524,7 @@ export default function RequestManagement() {
                         }`}>
                           {req.type?.replace(/_/g, ' ') || 'Manual Clock'}
                         </span>
-                        {checkIsFrozen(req) && (
+                        {req.status === 'pending' && checkIsFrozen(req) && (
                           <div
                             className="flex items-center"
                             title={
@@ -536,12 +536,6 @@ export default function RequestManagement() {
                           >
                             <Lock className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
                           </div>
-                        )}
-                        {req.status === 'approved' && (
-                          <CheckCircle className="w-3.5 h-3.5 text-green-500" title="Approved" />
-                        )}
-                        {req.status === 'rejected' && (
-                          <XCircle className="w-3.5 h-3.5 text-red-500" title="Rejected" />
                         )}
                       </div>
                     </td>
@@ -855,8 +849,14 @@ export default function RequestManagement() {
                 <div className="space-y-3 pt-4 border-t border-border">
                   <div className="flex justify-between items-center bg-muted/30 p-3 rounded-lg border border-border">
                     <span className="text-sm font-semibold">Disciplinary Action taken:</span>
-                    <span className={`text-sm ${selectedRequest.manager_note?.includes('[Disciplinary Penalty Applied: Yes]') ? 'text-destructive font-bold' : 'text-muted-foreground font-medium'}`}>
-                      {selectedRequest.manager_note?.includes('[Disciplinary Penalty Applied: Yes]') ? 'Yes - Applied' : 'No'}
+                    <span className={`text-sm ${selectedRequest.manager_note?.match(/\[Disciplinary Penalty Applied:\s*([0-9.]+)\s*minutes\]/) ? 'text-destructive font-bold' : 'text-muted-foreground font-medium'}`}>
+                      {(() => {
+                        const match = selectedRequest.manager_note?.match(/\[Disciplinary Penalty Applied:\s*([0-9.]+)\s*minutes\]/);
+                        if (match && match[1]) {
+                          return `Yes - ${match[1]} Minutes`;
+                        }
+                        return 'No';
+                      })()}
                     </span>
                   </div>
                 </div>
@@ -893,14 +893,14 @@ export default function RequestManagement() {
                 {(selectedRequest.type === 'permission_to_leave' || selectedRequest.type === 'shift_interruption_review' || selectedRequest.type === 'early_leave_approval') && (
                   <div className="bg-destructive/5 p-4 rounded-xl border border-destructive/20 animate-in fade-in slide-in-from-top-2">
                     <label className="text-sm font-bold text-destructive block mb-2">
-                      Apply Disciplinary Penalty (Hours)
+                      Apply Disciplinary Penalty (Minutes)
                     </label>
                     <input
                       type="number"
-                      value={penaltyHours}
-                      onChange={(e) => setPenaltyHours(Math.max(0, Number(e.target.value)))}
-                      placeholder="0.0"
-                      step="0.5"
+                      value={penaltyMinutes}
+                      onChange={(e) => setPenaltyMinutes(Math.max(0, Number(e.target.value)))}
+                      placeholder="0"
+                      step="5"
                       className="w-full px-3 py-2 bg-background border border-destructive/20 rounded-lg focus:ring-2 focus:ring-destructive/20 outline-none font-mono"
                     />
                     <p className="text-[11px] text-muted-foreground mt-2 italic">
