@@ -187,6 +187,17 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                     `Early clock-in by ${otMinutes} minutes`,
                     JSON.stringify({ raw_overtime_minutes: otMinutes, requested_overtime_minutes: requestedOtMinutes })
                 );
+            } else if (isUnscheduled) {
+                db.prepare(`
+                    INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
+                    VALUES (?, 'overtime_approval', ?, ?, ?, ?, 'pending')
+                `).run(
+                    userId,
+                    newId,
+                    newId,
+                    'Unscheduled Shift Started',
+                    JSON.stringify({ raw_overtime_minutes: 0, requested_overtime_minutes: 0 })
+                );
             }
 
             return newId;
