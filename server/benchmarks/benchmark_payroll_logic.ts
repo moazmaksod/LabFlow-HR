@@ -134,7 +134,7 @@ const calculateUserPayrollSlow = (user: any, start_date: string, end_date: strin
         } else {
             totalActualWorkedMinutes += workedMinutes;
             totalMissingMinutes += Math.max(0, expectedForDay - workedMinutes);
-            totalPaidPermissionMinutes += log.paid_permission_minutes || 0;
+            totalPaidPermissionMinutes += log.accepted_duration || 0;
         }
     });
 
@@ -252,7 +252,7 @@ const calculateUserPayrollFast = (user: any, start_date: string, end_date: strin
         } else {
             totalActualWorkedMinutes += workedMinutes;
             totalMissingMinutes += Math.max(0, expectedForDay - workedMinutes);
-            totalPaidPermissionMinutes += log.paid_permission_minutes || 0;
+            totalPaidPermissionMinutes += log.accepted_duration || 0;
         }
     });
 

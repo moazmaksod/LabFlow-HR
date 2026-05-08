@@ -61,8 +61,8 @@ export default function RequestManagement() {
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, status, manager_note, approved_minutes, is_paid_permission, paid_permission_minutes, penalty_minutes }: { id: number, status: string, manager_note?: string, approved_minutes?: number, is_paid_permission?: boolean, paid_permission_minutes?: number, penalty_minutes?: number }) => {
-      const res = await api.put(`/requests/${id}/status`, { status, manager_note, approved_minutes, is_paid_permission, paid_permission_minutes, penalty_minutes });
+    mutationFn: async ({ id, status, manager_note, approved_minutes, accepted_duration, penalty_minutes }: { id: number, status: string, manager_note?: string, approved_minutes?: number, accepted_duration?: number, penalty_minutes?: number }) => {
+      const res = await api.put(`/requests/${id}/status`, { status, manager_note, approved_minutes, accepted_duration, penalty_minutes });
       return res.data;
     },
     onSuccess: () => {
@@ -205,17 +205,13 @@ export default function RequestManagement() {
     }
 
     let finalApprovedMinutes = undefined;
-    let isPaid = false;
-    let paidMins = 0;
+    let finalAcceptedDuration = undefined;
 
     if (selectedRequest.type === 'overtime_approval') {
       finalApprovedMinutes = approvedMinutes;
     } else if (selectedRequest.type === 'permission_to_leave' || selectedRequest.type === 'shift_interruption_review' || selectedRequest.type === 'early_leave_approval' || selectedRequest.type === 'attendance_correction') {
       finalApprovedMinutes = adjustedDurationMinutes;
-      if (adjustedDurationMinutes > 0) {
-        isPaid = true;
-        paidMins = adjustedDurationMinutes;
-      }
+      finalAcceptedDuration = adjustedDurationMinutes;
     }
 
     updateStatusMutation.mutate({
@@ -223,8 +219,7 @@ export default function RequestManagement() {
       status: 'approved',
       manager_note: managerNote,
       approved_minutes: finalApprovedMinutes,
-      is_paid_permission: isPaid,
-      paid_permission_minutes: paidMins,
+      accepted_duration: finalAcceptedDuration,
       penalty_minutes: penaltyMinutes
     });
   };

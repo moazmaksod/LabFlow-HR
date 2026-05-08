@@ -371,6 +371,11 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                         parsedDetails.raw_overtime_minutes = earlyMins;
                         parsedDetails.requested_overtime_minutes = earlyMins;
                         db.prepare("UPDATE requests SET attendance_id = ?, reference_id = ?, details = ? WHERE id = ?").run(info.lastInsertRowid, info.lastInsertRowid, JSON.stringify(parsedDetails), existingOt.id);
+                    } else {
+                        db.prepare(`
+                            INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
+                            VALUES (?, 'overtime_approval', ?, ?, 'Early Clock-in (Unscheduled)', ?, 'pending')
+                        `).run(userId, info.lastInsertRowid, info.lastInsertRowid, JSON.stringify({ raw_overtime_minutes: earlyMins, requested_overtime_minutes: earlyMins }));
                     }
                 }
             }

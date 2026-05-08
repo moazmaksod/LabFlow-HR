@@ -73,8 +73,8 @@ CREATE TABLE IF NOT EXISTS attendance (
     location_lat REAL,
     location_lng REAL,
     approved_overtime_minutes INTEGER DEFAULT 0,
-    is_paid_permission BOOLEAN DEFAULT 0,
-    paid_permission_minutes INTEGER DEFAULT 0,
+
+    accepted_duration INTEGER DEFAULT 0,
     shift_id TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -92,8 +92,8 @@ CREATE TABLE IF NOT EXISTS requests (
     reason TEXT NOT NULL,
     details TEXT,
     manager_note TEXT,
-    is_paid_permission BOOLEAN DEFAULT 0,
-    paid_permission_minutes INTEGER DEFAULT 0,
+
+    accepted_duration INTEGER DEFAULT 0,
     status TEXT NOT NULL CHECK(status IN ('pending', 'approved', 'rejected', 'canceled')) DEFAULT 'pending',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,

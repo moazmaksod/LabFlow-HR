@@ -176,7 +176,7 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
     try {
         const actorId = (req as AuthRequest).user!.id;
         const { id } = req.params;
-        const { status, manager_note, approved_minutes, is_paid_permission, paid_permission_minutes, penalty_minutes } = req.body;
+        const { status, manager_note, approved_minutes, accepted_duration, penalty_minutes } = req.body;
 
         if (!['approved', 'rejected'].includes(status)) {
             res.status(400).json({ error: 'Invalid status' });
@@ -215,12 +215,11 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                 finalNote = (finalNote || '') + `\n[Disciplinary Penalty Applied: ${penalty_minutes} minutes]`;
             }
 
-            // Update the request status, manager note and is_paid_permission
-            db.prepare('UPDATE requests SET status = ?, manager_note = ?, is_paid_permission = ?, paid_permission_minutes = ? WHERE id = ?').run(
+            // Update the request status and manager note
+            db.prepare('UPDATE requests SET status = ?, manager_note = ?, accepted_duration = ? WHERE id = ?').run(
                 status,
                 finalNote,
-                is_paid_permission ? 1 : 0,
-                paid_permission_minutes || 0,
+                accepted_duration != null ? accepted_duration : null,
                 id
             );
 
@@ -232,11 +231,10 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
 
             // If approved, handle specific request types
             if (status === 'approved') {
-                // Sync is_paid_permission and paid_permission_minutes to attendance if applicable
-                if (requestRecord.attendance_id) {
-                    db.prepare('UPDATE attendance SET is_paid_permission = ?, paid_permission_minutes = ? WHERE id = ?').run(
-                        is_paid_permission ? 1 : 0,
-                        paid_permission_minutes || 0,
+                // Sync accepted_duration to attendance if applicable
+                if (requestRecord.attendance_id && (requestRecord.type === 'permission_to_leave' || requestRecord.type === 'shift_interruption_review' || requestRecord.type === 'early_leave_approval')) {
+                    db.prepare('UPDATE attendance SET accepted_duration = ? WHERE id = ?').run(
+                        accepted_duration != null ? accepted_duration : 0,
                         requestRecord.attendance_id
                     );
                 }
@@ -499,20 +497,11 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                     VALUES (?, ?, 'overtime', ?, ?, ?, ?)
                 `).run(payrollId, id, hours, amount, status === 'approved' ? 'applied' : 'rejected', manager_note);
             } else if (requestRecord.type === 'permission_to_leave') {
-                const minutes = paid_permission_minutes || 0;
-                const hours = minutes / 60;
-
-                if (status === 'approved' && !is_paid_permission && hours > 0) {
-                    const amount = hours * hourlyRate;
+                if (status === 'rejected') {
                     db.prepare(`
                         INSERT INTO payroll_transactions (payroll_id, reference_id, type, hours, amount, status, manager_notes)
-                        VALUES (?, ?, 'step_away_unpaid', ?, ?, 'applied', ?)
-                    `).run(payrollId, id, hours, amount, manager_note);
-                } else if (status === 'rejected') {
-                    db.prepare(`
-                        INSERT INTO payroll_transactions (payroll_id, reference_id, type, hours, amount, status, manager_notes)
-                        VALUES (?, ?, 'step_away_unpaid', ?, 0, 'rejected', ?)
-                    `).run(payrollId, id, hours, manager_note);
+                        VALUES (?, ?, 'step_away_unpaid', 0, 0, 'rejected', ?)
+                    `).run(payrollId, id, manager_note);
                 }
             }
 

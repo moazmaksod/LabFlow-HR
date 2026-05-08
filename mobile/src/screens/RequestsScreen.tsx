@@ -104,8 +104,8 @@ export default function RequestsScreen() {
       const payload = {
         status: actionType,
         manager_note: managerNote,
-        is_paid_permission: isPaidPermission,
-        paid_permission_minutes: isPaidPermission ? parseInt(paidPermissionMinutes) || 0 : 0
+        accepted_duration_legacy_unused: isPaidPermission,
+        accepted_duration: parseInt(paidPermissionMinutes) || 0
       };
       await api.put(`/requests/${selectedRequest.id}/status`, payload);
       Alert.alert('Success', `Request has been ${actionType}.`);
@@ -116,8 +116,8 @@ export default function RequestsScreen() {
         saveOfflineRequest('PUT', `/requests/${selectedRequest.id}/status`, {
           status: actionType,
           manager_note: managerNote,
-          is_paid_permission: isPaidPermission,
-          paid_permission_minutes: isPaidPermission ? parseInt(paidPermissionMinutes) || 0 : 0
+          accepted_duration_legacy_unused: isPaidPermission,
+          accepted_duration: parseInt(paidPermissionMinutes) || 0
         });
         Alert.alert('Offline Mode', 'Network error. Your action was saved locally and will be synced later.');
         setModalVisible(false);
