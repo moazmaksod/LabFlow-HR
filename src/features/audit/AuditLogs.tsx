@@ -8,6 +8,8 @@ import {
     ChevronDown, ChevronUp, Info, DollarSign, Calendar
 } from 'lucide-react';
 import api from '../../lib/axios';
+import { useAuthStore } from '../../store/useAuthStore';
+import { parseAndFormat } from '../../lib/timeManager';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface AuditLog {
@@ -165,7 +167,7 @@ const LogSummary: React.FC<{ log: AuditLog }> = ({ log }) => {
     return <span className="italic text-muted-foreground">System action performed</span>;
 };
 
-const AuditLogRow: React.FC<{ log: AuditLog }> = ({ log }) => {
+const AuditLogRow: React.FC<{ log: AuditLog, timezone?: string }> = ({ log, timezone }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const changes = getChangedKeys(log);
     const oldData = parseValues(log.old_values);
@@ -204,7 +206,7 @@ const AuditLogRow: React.FC<{ log: AuditLog }> = ({ log }) => {
                         </div>
                         <div className="flex flex-col">
                             <span className="text-[10px] font-mono font-bold text-muted-foreground">#{log.id.toString().padStart(6, '0')}</span>
-                            <span className="text-xs font-medium text-foreground">{format(new Date(log.created_at), 'MMM dd, HH:mm')}</span>
+                            <span className="text-xs font-medium text-foreground">{timezone ? parseAndFormat(log.created_at, timezone) : format(new Date(log.created_at), 'MMM dd, HH:mm')}</span>
                         </div>
                     </div>
                 </td>
@@ -332,6 +334,18 @@ export const AuditLogs: React.FC = () => {
     const [entityName, setEntityName] = useState('');
     const [action, setAction] = useState('');
 
+    const { token } = useAuthStore();
+
+    const { data: settings } = useQuery({
+        queryKey: ['settings'],
+        queryFn: async () => {
+            const res = await api.get('/settings', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.data;
+        }
+    });
+
     const { data: rawLogs, isLoading, error } = useQuery<AuditLog[]>({
         queryKey: ['auditLogs', entityName, action],
         queryFn: async () => {
@@ -427,7 +441,7 @@ export const AuditLogs: React.FC = () => {
                         </thead>
                         <tbody className="divide-y divide-border">
                             {logs?.map((log) => (
-                                <AuditLogRow key={log.id} log={log} />
+                                <AuditLogRow key={log.id} log={log} timezone={settings?.company_timezone} />
                             ))}
                         </tbody>
                     </table>

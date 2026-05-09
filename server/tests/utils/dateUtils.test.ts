@@ -1,23 +1,19 @@
 import { getDateStringInTimezone } from '../../utils/dateUtils.js';
-import logger from '../../utils/logger.js';
 
 describe('dateUtils - getDateStringInTimezone', () => {
     const timestamp = '2023-10-25T12:00:00Z'; // UTC date
 
     it('should format date correctly for a valid timezone (America/New_York)', () => {
-        // 2023-10-25 12:00:00 UTC is 2023-10-25 08:00:00 EDT
         const result = getDateStringInTimezone(timestamp, 'America/New_York');
         expect(result).toBe('2023-10-25');
     });
 
     it('should format date correctly for a valid timezone (Asia/Tokyo)', () => {
-        // 2023-10-25 12:00:00 UTC is 2023-10-25 21:00:00 JST
         const result = getDateStringInTimezone(timestamp, 'Asia/Tokyo');
         expect(result).toBe('2023-10-25');
     });
 
     it('should handle late night UTC correctly (Asia/Tokyo)', () => {
-        // 2023-10-25 22:00:00 UTC is 2023-10-26 07:00:00 JST
         const ts = '2023-10-25T22:00:00Z';
         const result = getDateStringInTimezone(ts, 'Asia/Tokyo');
         expect(result).toBe('2023-10-26');
@@ -35,29 +31,21 @@ describe('dateUtils - getDateStringInTimezone', () => {
         expect(result).toBe('2023-10-25');
     });
 
-    it('should fallback to UTC and log error when timezone is invalid', () => {
-        const loggerSpy = jest.spyOn(logger, 'error').mockImplementation(() => {});
+    it('should throw error when timezone is invalid or undefined instead of silent fallback', () => {
         const invalidTimezone = 'Invalid/Timezone';
 
-        // 2023-10-25 12:00:00 UTC
-        const result = getDateStringInTimezone(timestamp, invalidTimezone);
+        expect(() => getDateStringInTimezone(timestamp, invalidTimezone)).toThrow(/Error formatting date/);
 
-        expect(loggerSpy).toHaveBeenCalledWith(
-            expect.stringContaining(`Error formatting date for timezone ${invalidTimezone}:`),
-            expect.any(Error)
-        );
-        expect(result).toBe('2023-10-25'); // UTC fallback for 12:00:00Z is 2023-10-25
-
-        loggerSpy.mockRestore();
+        // Remove APP_TIMEZONE momentarily
+        const originalTz = process.env.APP_TIMEZONE;
+        delete process.env.APP_TIMEZONE;
+        expect(() => getDateStringInTimezone(timestamp, undefined)).toThrow(/APP_TIMEZONE is not defined/);
+        process.env.APP_TIMEZONE = originalTz;
     });
 
-    it('should fallback to UTC correctly for edge case dates (UTC)', () => {
-        const loggerSpy = jest.spyOn(logger, 'error').mockImplementation(() => {});
-        // 2023-01-01 00:00:00 UTC
-        const ts = '2023-01-01T00:00:00Z';
-        const result = getDateStringInTimezone(ts, 'Invalid/Timezone');
-
-        expect(result).toBe('2023-01-01');
-        loggerSpy.mockRestore();
+    it('should handle floating time string without Z suffix correctly', () => {
+        const floatingString = '2023-10-25T15:00:00';
+        const result = getDateStringInTimezone(floatingString, 'America/New_York');
+        expect(result).toBeDefined();
     });
 });

@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/axios';
 import { CheckCircle, XCircle, Clock, FileText, X, AlertCircle } from 'lucide-react';
+import { useAuthStore } from '../../store/useAuthStore';
+import { parseAndFormat } from '../../lib/timeManager';
 
 interface RequestLog {
   id: number;
@@ -40,6 +42,18 @@ export default function RequestManagement() {
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [isBulkRejecting, setIsBulkRejecting] = useState(false);
 
+  const { token } = useAuthStore();
+
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: async () => {
+      const res = await api.get('/settings', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return res.data;
+    }
+  });
+
   const { data: requests, isLoading } = useQuery<RequestLog[]>({
     queryKey: ['requests'],
     queryFn: async () => {
@@ -63,17 +77,13 @@ export default function RequestManagement() {
 
 
   const formatRequestedAt = (isoString: string | null) => {
-    if (!isoString) return '-';
-    return new Date(isoString).toLocaleString([], {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-    });
+    if (!isoString || !settings?.company_timezone) return '-';
+    return parseAndFormat(isoString, settings.company_timezone);
   };
 
   const formatTime = (isoString: string | null) => {
-    if (!isoString) return '-';
-    return new Date(isoString).toLocaleString([], {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-    });
+    if (!isoString || !settings?.company_timezone) return '-';
+    return parseAndFormat(isoString, settings.company_timezone);
   };
 
   const filteredRequests = requests?.filter(req => {

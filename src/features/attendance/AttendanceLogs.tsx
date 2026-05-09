@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../../lib/axios';
 import { Search, Filter, Calendar as CalendarIcon } from 'lucide-react';
 import { formatStatusLabel } from '../../lib/utils';
+import { useAuthStore } from '../../store/useAuthStore';
+import { parseAndFormat } from '../../lib/timeManager';
 
 interface AttendanceLog {
   id: number;
@@ -21,6 +23,18 @@ export default function AttendanceLogs() {
   const [filterDate, setFilterDate] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+
+  const { token } = useAuthStore();
+
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: async () => {
+      const res = await api.get('/settings', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return res.data;
+    }
+  });
 
   const { data: logs, isLoading } = useQuery<AttendanceLog[]>({
     queryKey: ['attendance-logs'],

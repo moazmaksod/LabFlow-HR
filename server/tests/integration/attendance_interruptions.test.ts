@@ -1,3 +1,4 @@
+process.env.APP_TIMEZONE = "America/New_York";
 import request from 'supertest';
 import express from 'express';
 import db from '../../db/index.js';

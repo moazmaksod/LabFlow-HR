@@ -1,3 +1,4 @@
+process.env.APP_TIMEZONE = "America/New_York";
 import request from 'supertest';
 import db, { initDb } from '../../db/index.js';
 import bcrypt from 'bcryptjs';

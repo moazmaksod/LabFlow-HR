@@ -1,3 +1,4 @@
+import { getAppNow } from "../utils/timeManager.js";
 import { Request, Response } from 'express';
 import db from '../db/index.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
@@ -30,12 +31,14 @@ export const createRequest = (req: AuthRequest, res: Response): void => {
             }
         }
 
+        const created_at = getAppNow();
+
         const insert = db.prepare(`
-            INSERT INTO requests (user_id, attendance_id, requested_check_in, requested_check_out, type, reason, status)
-            VALUES (?, ?, ?, ?, ?, ?, 'pending')
+            INSERT INTO requests (user_id, attendance_id, requested_check_in, requested_check_out, type, reason, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
         `);
 
-        const info = insert.run(userId, attendance_id || null, requested_check_in || null, requested_check_out || null, requestType, reason);
+        const info = insert.run(userId, attendance_id || null, requested_check_in || null, requested_check_out || null, requestType, reason, created_at);
         const newReq = db.prepare('SELECT * FROM requests WHERE id = ?').get(info.lastInsertRowid);
 
         logAudit('requests', info.lastInsertRowid as number, 'CREATE', userId, null, newReq);
@@ -155,12 +158,14 @@ export const createAttendanceCorrection = (req: AuthRequest, res: Response): voi
 
         const details = JSON.stringify({ new_clock_in, new_clock_out, breaks, missing_minutes: missingMinutes });
 
+        const created_at = getAppNow();
+
         const insert = db.prepare(`
-            INSERT INTO requests (user_id, attendance_id, type, details, reason, status)
-            VALUES (?, ?, 'attendance_correction', ?, ?, 'pending')
+            INSERT INTO requests (user_id, attendance_id, type, details, reason, status, created_at)
+            VALUES (?, ?, 'attendance_correction', ?, ?, 'pending', ?)
         `);
 
-        const info = insert.run(userId, attendance_id, details, reason);
+        const info = insert.run(userId, attendance_id, details, reason, created_at);
         const newReq = db.prepare('SELECT * FROM requests WHERE id = ?').get(info.lastInsertRowid);
 
         res.status(201).json(newReq);
