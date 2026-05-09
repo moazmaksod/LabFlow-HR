@@ -45,8 +45,9 @@ export default function AttendanceLogs() {
   });
 
   const formatTime = (isoString: string | null) => {
-    if (!isoString) return '-';
-    return new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (!isoString || !settings?.company_timezone) return '-';
+    const full = parseAndFormat(isoString, settings.company_timezone);
+    return full.split(', ')[1] || full.split(' ')[1] || '-';
   };
 
   const filteredLogs = logs?.filter(log => {

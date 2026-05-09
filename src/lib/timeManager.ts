@@ -6,18 +6,16 @@ export const parseAndFormat = (dateString: string | null, timezone?: string | nu
 
     try {
         let dateToFormat: Date;
-        let actualTz = timezone;
 
         if (dateString.includes('Z') || dateString.match(/[+-]\d{2}:\d{2}$/)) {
             dateToFormat = new Date(dateString);
         } else {
-            // Treat SQLite default timestamps and getAppNow() floating times as UTC explicitly to prevent double-shifting.
+            // Treat SQLite default timestamps as UTC explicitly to prevent double-shifting.
             dateToFormat = new Date(dateString.replace(' ', 'T') + 'Z');
-            actualTz = 'UTC';
         }
 
         const formatter = new Intl.DateTimeFormat('en-CA', {
-            timeZone: actualTz,
+            timeZone: timezone,
             month: 'short',
             day: 'numeric',
             hour: '2-digit',
