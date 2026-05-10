@@ -1,0 +1,1 @@
+Memory noted: Live clocks correctly refactored using performance.now() elapsed calculation mapping from initTime + serverTimeOffset. Prevented device sleep debt skew manually mutating shadow clocks via setInterval increments.

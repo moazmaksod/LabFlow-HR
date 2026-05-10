@@ -11,10 +11,13 @@ export default function LiveServerClock() {
   const [displayTime, setDisplayTime] = useState("");
   const [displayDate, setDisplayDate] = useState("");
 
-  const shadowTimeRef = useRef(Date.now() + serverTimeOffset);
+  const initTimeRef = useRef(Date.now() + serverTimeOffset);
+  const initPerfRef = useRef(global.performance ? global.performance.now() : Date.now());
 
   useEffect(() => {
-    shadowTimeRef.current = Date.now() + serverTimeOffset;
+    // Re-initialize anchors when offset changes
+    initTimeRef.current = Date.now() + serverTimeOffset;
+    initPerfRef.current = global.performance ? global.performance.now() : Date.now();
 
     const formatter = new Intl.DateTimeFormat("en-US", {
       timeZone: timezone,
@@ -32,15 +35,21 @@ export default function LiveServerClock() {
     });
 
     const updateDisplay = () => {
-      const now = new Date(shadowTimeRef.current);
-      setDisplayTime(formatter.format(now));
-      setDisplayDate(dateFormatter.format(now));
+      try {
+        const currentPerf = global.performance ? global.performance.now() : Date.now();
+        const elapsed = currentPerf - initPerfRef.current;
+        const now = new Date(initTimeRef.current + elapsed);
+        setDisplayTime(formatter.format(now));
+        setDisplayDate(dateFormatter.format(now));
+      } catch (error) {
+         // Fallback if timezone is invalid
+         setDisplayTime(new Date().toLocaleTimeString());
+      }
     };
 
     updateDisplay();
 
     const interval = setInterval(() => {
-      shadowTimeRef.current += 1000;
       updateDisplay();
     }, 1000);
     return () => clearInterval(interval);
