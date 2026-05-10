@@ -65,3 +65,14 @@ export const getDateStringInTimezone = (timestamp: string | Date | number, timez
         throw new Error(`Error formatting date for timezone ${tz}`);
     }
 };
+
+export const validateClientTimestamp = (clientTimestamp: string): boolean => {
+    const clientTime = new Date(clientTimestamp).getTime();
+    const serverTime = Date.now();
+
+    // Accept up to 60 seconds of deviation
+    if (Math.abs(serverTime - clientTime) > 60000) {
+        return false;
+    }
+    return true;
+};

@@ -1,4 +1,5 @@
-const getTimestamp = () => new Date().toISOString();
+import { getAppNow } from "../utils/timeManager.js";
+const getTimestamp = () => getAppNow();
 
 const logger = {
     info: (...args: any[]) => {

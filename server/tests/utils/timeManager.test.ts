@@ -1,4 +1,4 @@
-import { getAppNow, parseAndFormat } from '../../utils/timeManager.js';
+import { getAppNow, parseAndFormat, validateClientTimestamp } from '../../utils/timeManager.js';
 
 describe('timeManager', () => {
     let originalTz: string | undefined;
@@ -25,5 +25,16 @@ describe('timeManager', () => {
         expect(formatted).toBeDefined();
         expect(formatted).not.toBe('-');
         expect(formatted).toContain('11:00'); // 15 - 4 = 11
+    });
+
+    it('validateClientTimestamp should validate timestamps within 60 seconds', () => {
+        const now = new Date();
+        expect(validateClientTimestamp(now.toISOString())).toBe(true);
+
+        const old = new Date(now.getTime() - 65000);
+        expect(validateClientTimestamp(old.toISOString())).toBe(false);
+
+        const future = new Date(now.getTime() + 65000);
+        expect(validateClientTimestamp(future.toISOString())).toBe(false);
     });
 });
