@@ -1,1 +1,0 @@
-Memory noted: Added anti-cheat time validation in server's timeManager to block client requests with >60s offset. Both Web and Mobile clock translators sync with server offset to maintain monotonic stability and unified UTC standards.

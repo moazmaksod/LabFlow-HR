@@ -1,14 +1,11 @@
-import { useAuthStore } from '../store/useAuthStore';
+import { useNetworkStore } from '../store/useNetworkStore';
 
-// Initialize performance anchor variables
 let initTimeRef = Date.now();
 let initPerfRef = performance.now();
 let currentOffset = 0;
 
-// Update the internal offset variables whenever it changes in the store.
-// In a React app, we usually rely on hooks, but for a pure utility file,
-// we can subscribe to the store to keep a non-reactive copy.
-useAuthStore.subscribe((state) => {
+// Subscribe to offset changes from the network store
+useNetworkStore.subscribe((state) => {
     if (state.serverTimeOffset !== currentOffset) {
         currentOffset = state.serverTimeOffset;
         initTimeRef = Date.now() + currentOffset;
@@ -19,8 +16,9 @@ useAuthStore.subscribe((state) => {
 /**
  * Returns the current server-synchronized UTC time (ISO string)
  * using a monotonic clock to prevent OS sleep debt and local timezone issues.
+ * This is the mandatory time source for mobile business logic.
  */
-export const getWebNow = (): string => {
+export const getMobileNow = (): string => {
     const elapsed = performance.now() - initPerfRef;
     const now = new Date(initTimeRef + elapsed);
     return now.toISOString();
@@ -38,7 +36,7 @@ export const parseAndFormat = (dateString: string | null, timezone?: string | nu
         if (dateString.includes('Z') || dateString.match(/[+-]\d{2}:\d{2}$/)) {
             dateToFormat = new Date(dateString);
         } else {
-            // Treat SQLite default timestamps as UTC explicitly to prevent double-shifting.
+            // Treat DB timestamps without 'Z' explicitly as UTC
             dateToFormat = new Date(dateString.replace(' ', 'T') + 'Z');
         }
 

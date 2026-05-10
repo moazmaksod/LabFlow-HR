@@ -1,3 +1,4 @@
+import { getWebNow } from "../../lib/timeManager";
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/axios';
@@ -161,7 +162,7 @@ export default function RequestManagement() {
         const hasClockedOut = !!selectedRequest.original_check_out || !!selectedRequest.requested_check_out;
         let hoursPassed = 0;
         if (selectedRequest.original_check_in) {
-            hoursPassed = (Date.now() - new Date(selectedRequest.original_check_in).getTime()) / (1000 * 60 * 60);
+            hoursPassed = (new Date(getWebNow()).getTime() - new Date(selectedRequest.original_check_in).getTime()) / (1000 * 60 * 60);
         }
         if (!hasClockedOut || hoursPassed < 3) {
             isFrozen = true;
@@ -211,7 +212,7 @@ export default function RequestManagement() {
         const hasClockedOut = !!req.original_check_out || !!req.requested_check_out;
         let hoursPassed = 0;
         if (req.original_check_in) {
-            hoursPassed = (Date.now() - new Date(req.original_check_in).getTime()) / (1000 * 60 * 60);
+            hoursPassed = (new Date(getWebNow()).getTime() - new Date(req.original_check_in).getTime()) / (1000 * 60 * 60);
         }
         if (!hasClockedOut || hoursPassed < 3) {
             return true;
