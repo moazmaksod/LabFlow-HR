@@ -1,4 +1,3 @@
-import { getAppNow } from "../../utils/timeManager.js";
 process.env.APP_TIMEZONE = "America/New_York";
 import request from 'supertest';
 import app from '../../app.js';
@@ -46,8 +45,8 @@ describe('Requests API', () => {
       .set('Authorization', `Bearer ${employeeToken}`)
       .send({
         reason: 'Sick leave',
-        requested_check_in: getAppNow(),
-        requested_check_out: getAppNow()
+        requested_check_in: new Date().toISOString(),
+        requested_check_out: new Date().toISOString()
       });
     
     expect(res.status).toBe(201);
@@ -63,7 +62,7 @@ describe('Requests API', () => {
       .post('/api/requests')
       .set('Authorization', `Bearer ${employeeToken}`)
       .send({
-        requested_check_in: getAppNow()
+        requested_check_in: new Date().toISOString()
       });
     
     expect(res.status).toBe(400);
@@ -108,8 +107,8 @@ describe('Requests API', () => {
       .set('Authorization', `Bearer ${employeeToken}`)
       .send({
         reason: 'Vacation',
-        requested_check_in: getAppNow(),
-        requested_check_out: getAppNow()
+        requested_check_in: new Date().toISOString(),
+        requested_check_out: new Date().toISOString()
       });
     expect(createRes.status).toBe(201);
     const newReqId = createRes.body.id;
@@ -149,7 +148,7 @@ describe('Requests API', () => {
 
   it('should allow employee to submit attendance correction request', async () => {
     // Create attendance record
-    const attInsert = db.prepare(`INSERT INTO attendance (user_id, check_in, check_out, date) VALUES (?, ?, ?, ?)`).run(employeeId, getAppNow(), getAppNow(), getAppNow().split('T')[0]);
+    const attInsert = db.prepare(`INSERT INTO attendance (user_id, check_in, check_out, date) VALUES (?, ?, ?, ?)`).run(employeeId, new Date().toISOString(), new Date().toISOString(), new Date().toISOString().split('T')[0]);
     const attendanceId = attInsert.lastInsertRowid;
 
     const res = await request(app)
@@ -157,8 +156,8 @@ describe('Requests API', () => {
       .set('Authorization', `Bearer ${employeeToken}`)
       .send({
         attendance_id: attendanceId,
-        new_clock_in: getAppNow(),
-        new_clock_out: getAppNow(),
+        new_clock_in: new Date().toISOString(),
+        new_clock_out: new Date().toISOString(),
         reason: 'Forgot to clock out'
       });
     

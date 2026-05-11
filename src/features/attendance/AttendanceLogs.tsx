@@ -3,8 +3,6 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../../lib/axios';
 import { Search, Filter, Calendar as CalendarIcon } from 'lucide-react';
 import { formatStatusLabel } from '../../lib/utils';
-import { useAuthStore } from '../../store/useAuthStore';
-import { parseAndFormat } from '../../lib/timeManager';
 
 interface AttendanceLog {
   id: number;
@@ -24,18 +22,6 @@ export default function AttendanceLogs() {
   const [filterStatus, setFilterStatus] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const { token } = useAuthStore();
-
-  const { data: settings } = useQuery({
-    queryKey: ['settings'],
-    queryFn: async () => {
-      const res = await api.get('/settings', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      return res.data;
-    }
-  });
-
   const { data: logs, isLoading } = useQuery<AttendanceLog[]>({
     queryKey: ['attendance-logs'],
     queryFn: async () => {
@@ -45,9 +31,8 @@ export default function AttendanceLogs() {
   });
 
   const formatTime = (isoString: string | null) => {
-    if (!isoString || !settings?.company_timezone) return '-';
-    const full = parseAndFormat(isoString, settings.company_timezone);
-    return full.split(', ')[1] || full.split(' ')[1] || '-';
+    if (!isoString) return '-';
+    return new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   const filteredLogs = logs?.filter(log => {

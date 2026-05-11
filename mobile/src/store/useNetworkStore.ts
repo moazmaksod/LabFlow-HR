@@ -1,4 +1,3 @@
-import { getMobileNow } from "../lib/timeManager";
 import { create } from 'zustand';
 import NetInfo from '@react-native-community/netinfo';
 import { Alert } from 'react-native';
@@ -150,7 +149,7 @@ export const useNetworkStore = create<NetworkState>()(
           attendanceStore.setUserProfile(profileRes.data);
 
           const logs = logsRes.data;
-          const today = getMobileNow().split('T')[0];
+          const today = new Date().toISOString().split('T')[0];
           const activeSession = logs.find((l: any) => l.date === today && !l.check_out);
           
           if (activeSession) {

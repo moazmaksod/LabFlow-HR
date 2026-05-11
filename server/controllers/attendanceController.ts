@@ -1,4 +1,3 @@
-import { getAppNow, validateClientTimestamp } from "../utils/timeManager.js";
 import { evaluateUserAttendance } from "../services/attendanceEvaluationService.js";
 import logger from '../utils/logger.js';
 
@@ -460,7 +459,7 @@ export const clockAttendance = (req: AuthRequest, res: Response): void => {
     try {
         const userId = req.user!.id;
         const { type, lat, lng, deviceId } = req.body;
-        const timestamp = getAppNow();
+        const timestamp = new Date().toISOString();
 
         if (!type || !['check_in', 'check_out'].includes(type) || lat === undefined || lng === undefined || !deviceId) {
             res.status(400).json({ error: 'Missing required fields or deviceId' });
@@ -705,7 +704,7 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
     try {
         const userId = req.user!.id;
         const { deviceId } = req.body;
-        const timestamp = getAppNow(); // Server is the single source of truth
+        const timestamp = new Date().toISOString(); // Server is the single source of truth
 
         if (!deviceId) {
             logger.debug('[stepAway] Missing deviceId');
@@ -854,7 +853,7 @@ export const resumeWork = (req: AuthRequest, res: Response): void => {
     try {
         const userId = req.user!.id;
         const { deviceId } = req.body;
-        const timestamp = getAppNow(); // Server is the single source of truth
+        const timestamp = new Date().toISOString(); // Server is the single source of truth
 
         if (!deviceId) {
             res.status(400).json({ error: 'Missing deviceId' });

@@ -1,4 +1,3 @@
-import { getAppNow } from "../utils/timeManager.js";
 import db from '../db/index.js';
 import logger from '../utils/logger.js';
 
@@ -7,7 +6,7 @@ export const evaluateUserAttendance = (userId: number, timezone: string): void =
     try {
         const evaluate = db.transaction((uid: number) => {
             logger.debug('[evaluateUserAttendance] Transaction Entry: uid=', uid);
-            const now = getAppNow();
+            const now = new Date().toISOString();
             logger.debug('[evaluateUserAttendance] now=', now);
 
             // Scenario B: Scheduled Shift extending into Overtime

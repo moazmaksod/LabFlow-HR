@@ -1,10 +1,7 @@
-import { getWebNow } from "../../lib/timeManager";
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/axios';
 import { CheckCircle, XCircle, Clock, FileText, X, AlertCircle } from 'lucide-react';
-import { useAuthStore } from '../../store/useAuthStore';
-import { parseAndFormat } from '../../lib/timeManager';
 
 interface RequestLog {
   id: number;
@@ -43,18 +40,6 @@ export default function RequestManagement() {
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [isBulkRejecting, setIsBulkRejecting] = useState(false);
 
-  const { token } = useAuthStore();
-
-  const { data: settings } = useQuery({
-    queryKey: ['settings'],
-    queryFn: async () => {
-      const res = await api.get('/settings', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      return res.data;
-    }
-  });
-
   const { data: requests, isLoading } = useQuery<RequestLog[]>({
     queryKey: ['requests'],
     queryFn: async () => {
@@ -78,13 +63,17 @@ export default function RequestManagement() {
 
 
   const formatRequestedAt = (isoString: string | null) => {
-    if (!isoString || !settings?.company_timezone) return '-';
-    return parseAndFormat(isoString, settings.company_timezone);
+    if (!isoString) return '-';
+    return new Date(isoString).toLocaleString([], {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
   };
 
   const formatTime = (isoString: string | null) => {
-    if (!isoString || !settings?.company_timezone) return '-';
-    return parseAndFormat(isoString, settings.company_timezone);
+    if (!isoString) return '-';
+    return new Date(isoString).toLocaleString([], {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
   };
 
   const filteredRequests = requests?.filter(req => {
@@ -162,7 +151,7 @@ export default function RequestManagement() {
         const hasClockedOut = !!selectedRequest.original_check_out || !!selectedRequest.requested_check_out;
         let hoursPassed = 0;
         if (selectedRequest.original_check_in) {
-            hoursPassed = (new Date(getWebNow()).getTime() - new Date(selectedRequest.original_check_in).getTime()) / (1000 * 60 * 60);
+            hoursPassed = (Date.now() - new Date(selectedRequest.original_check_in).getTime()) / (1000 * 60 * 60);
         }
         if (!hasClockedOut || hoursPassed < 3) {
             isFrozen = true;
@@ -212,7 +201,7 @@ export default function RequestManagement() {
         const hasClockedOut = !!req.original_check_out || !!req.requested_check_out;
         let hoursPassed = 0;
         if (req.original_check_in) {
-            hoursPassed = (new Date(getWebNow()).getTime() - new Date(req.original_check_in).getTime()) / (1000 * 60 * 60);
+            hoursPassed = (Date.now() - new Date(req.original_check_in).getTime()) / (1000 * 60 * 60);
         }
         if (!hasClockedOut || hoursPassed < 3) {
             return true;

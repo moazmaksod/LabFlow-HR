@@ -1,4 +1,3 @@
-import { getAppNow, validateClientTimestamp } from "../utils/timeManager.js";
 import { evaluateUserAttendance } from "../services/attendanceEvaluationService.js";
 import logger from '../utils/logger.js';
 import { getDateStringInTimezone } from '../utils/dateUtils.js';
@@ -15,7 +14,7 @@ import { generateShiftInstances } from '../services/shiftInstanceService.js';
 export const getUsers = (req: Request, res: Response): void => {
     try {
         const timezone = process.env.APP_TIMEZONE!;
-        const currentServerTime = getAppNow();
+        const currentServerTime = new Date().toISOString();
 
         // Get users with their profile and job info, excluding managers
         const users = db.prepare(`
@@ -179,7 +178,7 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
         }
 
         const timezone = process.env.APP_TIMEZONE!;
-        const currentServerTime = getAppNow();
+        const currentServerTime = new Date().toISOString();
 
         const currentShiftRecord = db.prepare(`
             SELECT * FROM shift_instances

@@ -8,9 +8,7 @@ export default function TimezoneClock() {
 
   const { token, serverTimeOffset } = useAuthStore();
   const [time, setTime] = useState<string>('');
-
-  const initTimeRef = useRef(Date.now() + (serverTimeOffset || 0));
-  const initPerfRef = useRef(performance.now());
+  const shadowTimeRef = useRef(Date.now() + (serverTimeOffset || 0));
 
   const { data: settings } = useQuery({
     queryKey: ['settings'],
@@ -23,8 +21,7 @@ export default function TimezoneClock() {
       if (serverDateStr) {
         const serverTime = new Date(serverDateStr).getTime();
         const offset = serverTime - Date.now();
-        initTimeRef.current = Date.now() + offset;
-        initPerfRef.current = performance.now();
+        shadowTimeRef.current = Date.now() + offset; // تحديث "ساعة الظل" فوراً
       }
 
       return res.data;
@@ -38,8 +35,8 @@ export default function TimezoneClock() {
 
     const updateTime = () => {
       try {
-        const elapsed = performance.now() - initPerfRef.current;
-        const now = new Date(initTimeRef.current + elapsed);
+        shadowTimeRef.current += 1000;
+        const now = new Date(shadowTimeRef.current);
         const formatter = new Intl.DateTimeFormat('en-US', {
           timeZone: selectedTimezone,
           hour: '2-digit',
