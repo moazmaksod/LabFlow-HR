@@ -1,14 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { useAuthStore } from '../store/useAuthStore';
 import { Clock } from 'lucide-react';
+import { getWebNow } from '../lib/timeManager';
 
 export default function TimezoneClock() {
-
   const { token, serverTimeOffset } = useAuthStore();
   const [time, setTime] = useState<string>('');
-  const shadowTimeRef = useRef(Date.now() + (serverTimeOffset || 0));
 
   const { data: settings } = useQuery({
     queryKey: ['settings'],
@@ -16,14 +15,6 @@ export default function TimezoneClock() {
       const res = await axios.get('/api/settings', {
         headers: { Authorization: `Bearer ${token}` }
       });
-
-      const serverDateStr = res.headers.date; // الوقت الفعلي للسيرفر لحظة الرد
-      if (serverDateStr) {
-        const serverTime = new Date(serverDateStr).getTime();
-        const offset = serverTime - Date.now();
-        shadowTimeRef.current = Date.now() + offset; // تحديث "ساعة الظل" فوراً
-      }
-
       return res.data;
     }
   });
@@ -35,8 +26,9 @@ export default function TimezoneClock() {
 
     const updateTime = () => {
       try {
-        shadowTimeRef.current += 1000;
-        const now = new Date(shadowTimeRef.current);
+        const nowIso = getWebNow();
+        const now = new Date(nowIso);
+
         const formatter = new Intl.DateTimeFormat('en-US', {
           timeZone: selectedTimezone,
           hour: '2-digit',
@@ -63,7 +55,7 @@ export default function TimezoneClock() {
     const interval = setInterval(updateTime, 1000);
 
     return () => clearInterval(interval);
-  }, [settings?.company_timezone]);
+  }, [settings?.company_timezone, serverTimeOffset]);
 
   if (!time) return null;
 

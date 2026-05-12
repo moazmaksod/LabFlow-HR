@@ -2,20 +2,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Globe } from 'lucide-react-native';
 import { useNetworkStore } from '../store/useNetworkStore';
-
+import { getMobileNow } from '../lib/timeManager';
 
 export default function LiveServerClock() {
-  const serverTimeOffset = useNetworkStore((state) => state.serverTimeOffset);
   const timezone = useNetworkStore((state) => state.serverTimezone);
+  const serverTimeOffset = useNetworkStore((state) => state.serverTimeOffset); // just to trigger re-renders if it changes
 
   const [displayTime, setDisplayTime] = useState("");
   const [displayDate, setDisplayDate] = useState("");
 
-  const shadowTimeRef = useRef(Date.now() + serverTimeOffset);
-
   useEffect(() => {
-    shadowTimeRef.current = Date.now() + serverTimeOffset;
-
     const formatter = new Intl.DateTimeFormat("en-US", {
       timeZone: timezone,
       hour: "2-digit",
@@ -32,19 +28,23 @@ export default function LiveServerClock() {
     });
 
     const updateDisplay = () => {
-      const now = new Date(shadowTimeRef.current);
-      setDisplayTime(formatter.format(now));
-      setDisplayDate(dateFormatter.format(now));
+      try {
+        const now = new Date(getMobileNow());
+        setDisplayTime(formatter.format(now));
+        setDisplayDate(dateFormatter.format(now));
+      } catch (error) {
+        setDisplayTime(new Date().toLocaleTimeString());
+      }
     };
 
     updateDisplay();
 
     const interval = setInterval(() => {
-      shadowTimeRef.current += 1000;
       updateDisplay();
     }, 1000);
+
     return () => clearInterval(interval);
-  }, [serverTimeOffset, timezone]);
+  }, [timezone, serverTimeOffset]); // re-run if timezone or offset explicitly updates
 
   return (
     <View style={styles.container}>
