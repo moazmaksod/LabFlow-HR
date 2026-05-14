@@ -2,18 +2,22 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Globe } from 'lucide-react-native';
 import { useNetworkStore } from '../store/useNetworkStore';
+import { useAuthStore } from '../store/useAuthStore';
 import { getMobileNow } from '../lib/timeManager';
 
 export default function LiveServerClock() {
-  const timezone = useNetworkStore((state) => state.serverTimezone);
+  const serverTimezone = useNetworkStore((state) => state.serverTimezone);
+  const user = useAuthStore((state) => state.user);
   const serverTimeOffset = useNetworkStore((state) => state.serverTimeOffset); // just to trigger re-renders if it changes
 
   const [displayTime, setDisplayTime] = useState("");
   const [displayDate, setDisplayDate] = useState("");
 
+  const displayTimezone = user?.display_timezone ? user.display_timezone : Intl.DateTimeFormat().resolvedOptions().timeZone;
+
   useEffect(() => {
     const formatter = new Intl.DateTimeFormat("en-US", {
-      timeZone: timezone,
+      timeZone: displayTimezone,
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
@@ -21,7 +25,7 @@ export default function LiveServerClock() {
     });
 
     const dateFormatter = new Intl.DateTimeFormat("en-GB", {
-      timeZone: timezone,
+      timeZone: displayTimezone,
       weekday: "long",
       day: "numeric",
       month: "short"
@@ -44,7 +48,7 @@ export default function LiveServerClock() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [timezone, serverTimeOffset]); // re-run if timezone or offset explicitly updates
+  }, [displayTimezone, serverTimeOffset]); // re-run if timezone or offset explicitly updates
 
   return (
     <View style={styles.container}>
@@ -52,7 +56,7 @@ export default function LiveServerClock() {
         <View style={styles.timeRow}>
           <Globe size={14} color="#71717a" style={styles.icon} />
           <Text style={styles.text}>
-            {displayTime} ({timezone})
+            {displayTime} ({displayTimezone})
           </Text>
         </View>
         {displayDate ? (

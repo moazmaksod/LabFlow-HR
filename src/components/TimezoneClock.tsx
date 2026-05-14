@@ -6,7 +6,7 @@ import { Clock } from 'lucide-react';
 import { getWebNow } from '../lib/timeManager';
 
 export default function TimezoneClock() {
-  const { token, serverTimeOffset } = useAuthStore();
+  const { token, serverTimeOffset, user } = useAuthStore();
   const [time, setTime] = useState<string>('');
 
   const { data: settings } = useQuery({
@@ -20,9 +20,10 @@ export default function TimezoneClock() {
   });
 
   useEffect(() => {
-    if (!settings?.company_timezone) return;
-
-    const selectedTimezone = settings.company_timezone;
+    const selectedTimezone = user?.display_timezone
+      ? user.display_timezone
+      : Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (!selectedTimezone) return;
 
     const updateTime = () => {
       try {
@@ -55,7 +56,7 @@ export default function TimezoneClock() {
     const interval = setInterval(updateTime, 1000);
 
     return () => clearInterval(interval);
-  }, [settings?.company_timezone, serverTimeOffset]);
+  }, [user?.display_timezone, settings?.company_timezone, serverTimeOffset]);
 
   if (!time) return null;
 
@@ -66,7 +67,7 @@ export default function TimezoneClock() {
       <div className="flex items-center gap-2">
         <Clock className="w-4 h-4" />
         <span>{timeStr}</span>
-        <span className="text-xs opacity-70 ml-1">({settings?.company_timezone})</span>
+        <span className="text-xs opacity-70 ml-1">({user?.display_timezone ? user.display_timezone : Intl.DateTimeFormat().resolvedOptions().timeZone})</span>
       </div>
       {dateStr && (
         <span className="text-xs opacity-80 mt-0.5">{dateStr}</span>

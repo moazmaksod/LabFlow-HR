@@ -2,7 +2,9 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from '@react-navigation/native';
-import { User, Camera, Save, LogOut, Mail, UserCircle, Lock, Info, DollarSign, Calendar, Clock, Shield, LayoutDashboard, MapPin, Landmark, HeartHandshake, Phone, FileText } from 'lucide-react-native';
+import { User, Camera, Save, LogOut, Mail, UserCircle, Lock, Info, DollarSign, Calendar, Clock, Shield, LayoutDashboard, MapPin, Landmark, HeartHandshake, Phone, FileText, Globe } from 'lucide-react-native';
+import { Picker } from '@react-native-picker/picker';
+import timezones from '../lib/timezones';
 import api from '../lib/axios';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNetworkStore } from '../store/useNetworkStore';
@@ -46,6 +48,7 @@ export default function ProfileScreen() {
       date_of_birth: undefined,
       national_id: '',
       bio: '',
+      display_timezone: '',
     }
   });
 
@@ -86,6 +89,7 @@ export default function ProfileScreen() {
         date_of_birth: userProfile.date_of_birth ? new Date(userProfile.date_of_birth) : undefined,
         national_id: userProfile.national_id || '',
         bio: userProfile.bio || '',
+        display_timezone: userProfile.display_timezone || '',
       });
       setAvatar(userProfile.profile_picture_url || null);
     }
@@ -169,6 +173,7 @@ export default function ProfileScreen() {
         personal_phone: data.personal_phone,
         date_of_birth: data.date_of_birth ? data.date_of_birth.toISOString().split('T')[0] : null,
         national_id: data.national_id,
+        display_timezone: data.display_timezone,
       };
 
       const response = await api.put('/users/profile', finalData);
@@ -417,6 +422,29 @@ export default function ProfileScreen() {
               />
             </View>
             {errors.bio && <Text style={styles.errorText}>{String(errors.bio.message)}</Text>}
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Display Timezone</Text>
+            <View style={[styles.inputWrapper, { paddingVertical: 0 }]}>
+              <Globe size={18} color="#71717a" style={[styles.inputIcon, { marginLeft: 16 }]} />
+              <Controller
+                control={control}
+                name="display_timezone"
+                render={({ field: { onChange, value } }) => (
+                  <Picker
+                    selectedValue={value || ''}
+                    onValueChange={onChange}
+                    style={{ flex: 1, marginLeft: -8 }}
+                  >
+                    <Picker.Item label={`Device Default (${Intl.DateTimeFormat().resolvedOptions().timeZone})`} value="" />
+                    {timezones.map((tz: string) => (
+                      <Picker.Item key={tz} label={tz} value={tz} />
+                    ))}
+                  </Picker>
+                )}
+              />
+            </View>
           </View>
         </View>
 

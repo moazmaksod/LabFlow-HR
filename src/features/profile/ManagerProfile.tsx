@@ -30,6 +30,7 @@ export default function ManagerProfile() {
       date_of_birth: undefined,
       national_id: '',
       bio: '',
+      display_timezone: '',
     },
   });
 
@@ -51,6 +52,7 @@ export default function ManagerProfile() {
         date_of_birth: profile.date_of_birth ? new Date(profile.date_of_birth) : undefined,
         national_id: profile.national_id || '',
         bio: profile.bio || '',
+        display_timezone: profile.display_timezone || '',
       });
       setPreviewUrl(profile.profile_picture_url || '');
     }
@@ -82,6 +84,7 @@ export default function ManagerProfile() {
     if (data.date_of_birth) formData.append('date_of_birth', data.date_of_birth.toISOString());
     if (data.national_id) formData.append('national_id', data.national_id);
     if (data.bio) formData.append('bio', data.bio);
+    if (data.display_timezone !== undefined) formData.append('display_timezone', data.display_timezone);
 
     const fileInput = document.getElementById('avatar-upload') as HTMLInputElement;
     if (fileInput && fileInput.files && fileInput.files[0]) {
@@ -217,6 +220,19 @@ export default function ManagerProfile() {
                 rows={3}
               />
               {errors.bio && <p className="text-xs text-red-500">{errors.bio.message}</p>}
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Display Timezone</label>
+              <select
+                {...register('display_timezone')}
+                className="w-full px-4 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
+              >
+                <option value="">Device Default ({Intl.DateTimeFormat().resolvedOptions().timeZone})</option>
+                {Intl.supportedValuesOf('timeZone').map((tz) => (
+                  <option key={tz} value={tz}>{tz}</option>
+                ))}
+              </select>
             </div>
 
           </div>

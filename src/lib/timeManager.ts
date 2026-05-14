@@ -21,7 +21,10 @@ export const getWebNow = (): string => {
 
 export const parseAndFormat = (dateString: string | null, timezone?: string | null): string => {
     if (!dateString) return '-';
-    if (!timezone) {
+
+    // If user's timezone is null/empty, fallback to device's system timezone
+    const resolvedTimezone = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (!resolvedTimezone) {
         throw new Error("Timezone is not defined. Critical configuration missing.");
     }
 
@@ -34,7 +37,7 @@ export const parseAndFormat = (dateString: string | null, timezone?: string | nu
         }
 
         const formatter = new Intl.DateTimeFormat('en-CA', {
-            timeZone: timezone,
+            timeZone: resolvedTimezone,
             month: 'short',
             day: 'numeric',
             hour: '2-digit',

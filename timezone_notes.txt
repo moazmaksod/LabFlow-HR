@@ -1,0 +1,1 @@
+Recording memory: Refactoring timezone architecture to rely on user-level display timezones while preserving UTC-based security checks and anti-cheat validation. For React Native, avoided standard `Intl.supportedValuesOf('timeZone')` due to Hermes' partial Intl support, instead injecting a static list.

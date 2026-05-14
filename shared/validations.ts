@@ -57,6 +57,7 @@ export const EmployeeProfileSchema = z.object({
   date_of_birth: pastDateSchema.optional().nullable().or(z.literal("")),
   national_id: nationalIdSchema.optional().nullable().or(z.literal("")),
   bio: textSanitizedSchema.optional().nullable().or(z.literal("")),
+  display_timezone: z.string().optional().nullable().or(z.literal("")),
 });
 
 // For admin settings
