@@ -244,8 +244,20 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
             const oldUser = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
             const oldProfile = db.prepare('SELECT * FROM profiles WHERE user_id = ?').get(userId);
 
+            const userUpdateFields = [];
+            const userUpdateValues = [];
+
             if (body.name) {
-                db.prepare('UPDATE users SET name = ? WHERE id = ?').run(body.name, userId);
+                userUpdateFields.push('name = ?');
+                userUpdateValues.push(body.name);
+            }
+            if (body.display_timezone !== undefined) {
+                userUpdateFields.push('display_timezone = ?');
+                userUpdateValues.push(body.display_timezone || null);
+            }
+            if (userUpdateFields.length > 0) {
+                userUpdateValues.push(userId);
+                db.prepare(`UPDATE users SET ${userUpdateFields.join(', ')} WHERE id = ?`).run(...userUpdateValues);
             }
 
             const profileExists = db.prepare('SELECT id FROM profiles WHERE user_id = ?').get(userId);
@@ -398,9 +410,24 @@ export const updateUserProfile = (req: Request, res: Response): void => {
                 roleToSet = 'employee';
             }
 
-            if (body.name || roleToSet) {
-                db.prepare('UPDATE users SET name = COALESCE(?, name), role = COALESCE(?, role) WHERE id = ?')
-                  .run(body.name || null, roleToSet || null, id);
+            const userUpdateFields = [];
+            const userUpdateValues = [];
+
+            if (body.name !== undefined) {
+                userUpdateFields.push('name = COALESCE(?, name)');
+                userUpdateValues.push(body.name || null);
+            }
+            if (roleToSet !== undefined) {
+                userUpdateFields.push('role = COALESCE(?, role)');
+                userUpdateValues.push(roleToSet || null);
+            }
+            if (body.display_timezone !== undefined) {
+                userUpdateFields.push('display_timezone = ?');
+                userUpdateValues.push(body.display_timezone || null);
+            }
+            if (userUpdateFields.length > 0) {
+                userUpdateValues.push(id);
+                db.prepare(`UPDATE users SET ${userUpdateFields.join(', ')} WHERE id = ?`).run(...userUpdateValues);
             }
 
             const profileExists = db.prepare('SELECT id FROM profiles WHERE user_id = ?').get(id);
