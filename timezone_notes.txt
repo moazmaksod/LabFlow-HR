@@ -1,1 +1,2 @@
 Recording memory: Refactoring timezone architecture to rely on user-level display timezones while preserving UTC-based security checks and anti-cheat validation. For React Native, avoided standard `Intl.supportedValuesOf('timeZone')` due to Hermes' partial Intl support, instead injecting a static list.
+Memory Note: Display timezone updates must use upload.any() when handling multipart forms with multer since ManagerProfile may append avatars but also handles the primary text fields.

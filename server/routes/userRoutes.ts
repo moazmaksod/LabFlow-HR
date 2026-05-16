@@ -41,7 +41,7 @@ router.use(authenticate);
 
 // Profile routes (Any authenticated user)
 router.get('/profile', getProfile);
-router.put('/profile', upload.none(), updateProfile);
+router.put('/profile', upload.any(), updateProfile);
 
 router.post('/upload-avatar', (req, res, next) => {
   upload.single('avatar')(req, res, (err) => {

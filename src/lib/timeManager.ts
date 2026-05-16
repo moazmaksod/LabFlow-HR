@@ -22,8 +22,9 @@ export const getWebNow = (): string => {
 export const parseAndFormat = (dateString: string | null, timezone?: string | null): string => {
     if (!dateString) return '-';
 
-    // If user's timezone is null/empty, fallback to device's system timezone
-    const resolvedTimezone = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    // Fallback: Provided timezone -> User's Display Timezone -> Device System Timezone
+    const userTimezone = useAuthStore.getState().user?.display_timezone;
+    const resolvedTimezone = timezone || userTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
     if (!resolvedTimezone) {
         throw new Error("Timezone is not defined. Critical configuration missing.");
     }

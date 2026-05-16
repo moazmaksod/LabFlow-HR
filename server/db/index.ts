@@ -30,11 +30,16 @@ export function initDb() {
     db.exec(schema);
 
     // Migration: Add new columns to jobs and profiles
+    const userColumns = db.prepare("PRAGMA table_info(users)").all() as any[];
     const jobColumns = db.prepare("PRAGMA table_info(jobs)").all() as any[];
     const profileColumns = db.prepare("PRAGMA table_info(profiles)").all() as any[];
     const attendanceColumns = db.prepare("PRAGMA table_info(attendance)").all() as any[];
     const requestColumns = db.prepare("PRAGMA table_info(requests)").all() as any[];
     const settingsColumns = db.prepare("PRAGMA table_info(settings)").all() as any[];
+
+    if (!userColumns.some(c => c.name === 'display_timezone')) {
+      db.exec("ALTER TABLE users ADD COLUMN display_timezone TEXT;");
+    }
 
     // Shift instances migration: no specific data migration needed,
     // table and indexes created by db.exec(schema)
