@@ -71,7 +71,7 @@ export default function ManagerProfile() {
       queryClient.invalidateQueries({ queryKey: ['manager-profile'] });
       setSuccessMsg('Profile updated successfully!');
       if (user) {
-        login({ ...user, name: data.name }, useAuthStore.getState().token!);
+        login({ ...user, name: data.name, display_timezone: data.display_timezone }, useAuthStore.getState().token!);
       }
       setTimeout(() => setSuccessMsg(''), 3000);
     }
