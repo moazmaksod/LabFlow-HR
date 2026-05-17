@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { useAuthStore } from '../store/useAuthStore';
 import { Clock } from 'lucide-react';
-import { getWebNow } from '../lib/timeManager';
+import { getWebNow, resolveTimezone, formatDisplayTime } from '../lib/timeManager';
 
 export default function TimezoneClock() {
   const { token, serverTimeOffset, user } = useAuthStore();
@@ -20,34 +20,15 @@ export default function TimezoneClock() {
   });
 
   useEffect(() => {
-    const selectedTimezone = user?.display_timezone
-      ? user.display_timezone
-      : Intl.DateTimeFormat().resolvedOptions().timeZone;
-    if (!selectedTimezone) return;
-
     const updateTime = () => {
       try {
         const nowIso = getWebNow();
-        const now = new Date(nowIso);
+        const timeStr = formatDisplayTime(nowIso, user?.display_timezone, 'hh:mm:ss a');
+        const dateStr = formatDisplayTime(nowIso, user?.display_timezone, 'EEEE, d MMM');
 
-        const formatter = new Intl.DateTimeFormat('en-US', {
-          timeZone: selectedTimezone,
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: true
-        });
-
-        const dateFormatter = new Intl.DateTimeFormat('en-GB', {
-          timeZone: selectedTimezone,
-          weekday: 'long',
-          day: 'numeric',
-          month: 'short'
-        });
-
-        setTime(`${formatter.format(now)}\n${dateFormatter.format(now)}`);
+        setTime(`${timeStr}\n${dateStr}`);
       } catch (error) {
-        // Fallback if timezone is invalid
+        // Fallback if formatting fails
         setTime(new Date().toLocaleTimeString());
       }
     };
@@ -61,13 +42,14 @@ export default function TimezoneClock() {
   if (!time) return null;
 
   const [timeStr, dateStr] = time.includes('\n') ? time.split('\n') : [time, ''];
+  const resolvedTimezoneStr = resolveTimezone(user?.display_timezone);
 
   return (
     <div className="flex flex-col px-3 py-1.5 rounded-md bg-muted/50 text-sm font-medium text-muted-foreground border border-border items-center justify-center">
       <div className="flex items-center gap-2">
         <Clock className="w-4 h-4" />
         <span>{timeStr}</span>
-        <span className="text-xs opacity-70 ml-1">({user?.display_timezone ? user.display_timezone : Intl.DateTimeFormat().resolvedOptions().timeZone})</span>
+        <span className="text-xs opacity-70 ml-1">({resolvedTimezoneStr})</span>
       </div>
       {dateStr && (
         <span className="text-xs opacity-80 mt-0.5">{dateStr}</span>

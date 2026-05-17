@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../../lib/axios';
 import { Search, Filter, Calendar as CalendarIcon } from 'lucide-react';
 import { formatStatusLabel } from '../../lib/utils';
+import { useAuthStore } from '../../store/useAuthStore';
+import { formatDisplayTime } from '../../lib/timeManager';
 
 interface AttendanceLog {
   id: number;
@@ -18,6 +20,7 @@ interface AttendanceLog {
 }
 
 export default function AttendanceLogs() {
+  const user = useAuthStore(state => state.user);
   const [filterDate, setFilterDate] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -32,7 +35,7 @@ export default function AttendanceLogs() {
 
   const formatTime = (isoString: string | null) => {
     if (!isoString) return '-';
-    return new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return formatDisplayTime(isoString, user?.display_timezone, 'HH:mm');
   };
 
   const filteredLogs = logs?.filter(log => {
