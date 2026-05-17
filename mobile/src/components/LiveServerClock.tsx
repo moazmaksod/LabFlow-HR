@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Globe } from 'lucide-react-native';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { useAuthStore } from '../store/useAuthStore';
-import { getMobileNow } from '../lib/timeManager';
+import { getMobileNow, resolveTimezone, formatDisplayTime, formatDisplayDate } from '../lib/timeManager';
 
 export default function LiveServerClock() {
   const serverTimezone = useNetworkStore((state) => state.serverTimezone);
@@ -13,31 +13,16 @@ export default function LiveServerClock() {
   const [displayTime, setDisplayTime] = useState("");
   const [displayDate, setDisplayDate] = useState("");
 
-  const displayTimezone = user?.display_timezone ? user.display_timezone : Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const displayTimezone = resolveTimezone(user?.display_timezone);
 
   useEffect(() => {
-    const formatter = new Intl.DateTimeFormat("en-US", {
-      timeZone: displayTimezone,
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: true
-    });
-
-    const dateFormatter = new Intl.DateTimeFormat("en-GB", {
-      timeZone: displayTimezone,
-      weekday: "long",
-      day: "numeric",
-      month: "short"
-    });
-
     const updateDisplay = () => {
       try {
         const now = new Date(getMobileNow());
-        setDisplayTime(formatter.format(now));
-        setDisplayDate(dateFormatter.format(now));
+        setDisplayTime(formatDisplayTime(now, user?.display_timezone, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true }));
+        setDisplayDate(formatDisplayDate(now, user?.display_timezone, { weekday: "long", day: "numeric", month: "short" }));
       } catch (error) {
-        setDisplayTime(new Date().toLocaleTimeString());
+        setDisplayTime(formatDisplayTime(new Date(), user?.display_timezone, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true }));
       }
     };
 

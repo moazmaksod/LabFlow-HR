@@ -6,6 +6,8 @@ import api from '../lib/axios';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { formatStatusLabel } from '../lib/utils';
 import { useNetworkStore } from '../store/useNetworkStore';
+import { useAuthStore } from '../store/useAuthStore';
+import { formatDisplayTime, formatDisplayDate } from '../lib/timeManager';
 import { saveOfflineRequest } from '../lib/db';
 
 interface AttendanceLog {
@@ -23,6 +25,7 @@ interface AttendanceLog {
 }
 
 export default function HistoryScreen() {
+  const user = useAuthStore((state) => state.user);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -73,13 +76,11 @@ export default function HistoryScreen() {
 
   const formatTime = (isoString: string | null) => {
     if (!isoString) return '--:--';
-    const date = new Date(isoString);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return formatDisplayTime(isoString, user?.display_timezone, { hour: '2-digit', minute: '2-digit' });
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+    return formatDisplayDate(dateString, user?.display_timezone, { weekday: 'short', month: 'short', day: 'numeric' });
   };
 
   const handleCheckInChange = (event: any, date?: Date) => {

@@ -4,7 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from '@react-navigation/native';
 import { User, Camera, Save, LogOut, Mail, UserCircle, Lock, Info, DollarSign, Calendar, Clock, Shield, LayoutDashboard, MapPin, Landmark, HeartHandshake, Phone, FileText, Globe } from 'lucide-react-native';
 import { Picker } from '@react-native-picker/picker';
-import timezones from '../lib/timezones';
+import { simplifiedTimezones, formatDisplayTime } from '../lib/timeManager';
 import api from '../lib/axios';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNetworkStore } from '../store/useNetworkStore';
@@ -218,9 +218,9 @@ export default function ProfileScreen() {
   const formatTime = (timeStr: string) => {
     if (!timeStr) return '';
     const [h, m] = timeStr.split(':').map(Number);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    const h12 = h % 12 || 12;
-    return `${h12}:${m.toString().padStart(2, '0')} ${ampm}`;
+    const date = new Date();
+    date.setUTCHours(h, m, 0, 0);
+    return formatDisplayTime(date, userProfile.display_timezone || user?.display_timezone, { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
   };
 
   const renderScheduleTable = (scheduleStr: string | null) => {
@@ -438,7 +438,7 @@ export default function ProfileScreen() {
                     style={{ flex: 1, marginLeft: -8 }}
                   >
                     <Picker.Item label={`Device Default (${Intl.DateTimeFormat().resolvedOptions().timeZone})`} value="" />
-                    {timezones.map((tz: string) => (
+                    {simplifiedTimezones.map((tz: string) => (
                       <Picker.Item key={tz} label={tz} value={tz} />
                     ))}
                   </Picker>
