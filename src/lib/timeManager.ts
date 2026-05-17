@@ -47,11 +47,14 @@ export const formatDisplayTime = (
 
     try {
         let dateToFormat: Date;
-        if (dateString.includes('Z') || dateString.match(/[+-]\d{2}:\d{2}$/)) {
+        const hasTimezone = dateString.includes('Z') || /[+-]\d{2}:?\d{2}$/.test(dateString.trim());
+        if (hasTimezone) {
             dateToFormat = new Date(dateString);
         } else {
-            // Append Z if missing to ensure it is parsed as UTC
-            dateToFormat = new Date(dateString.replace(' ', 'T') + 'Z');
+            const isoString = dateString.includes('T') ? dateString : dateString.replace(' ', 'T');
+            // Only append Z if it looks like a time string (contains a colon) to avoid breaking date-only strings
+            const finalString = isoString.includes(':') ? `${isoString}Z` : isoString;
+            dateToFormat = new Date(finalString);
         }
 
         return formatInTimeZone(dateToFormat, resolvedTimezone, formatString);
@@ -61,11 +64,20 @@ export const formatDisplayTime = (
     }
 };
 
+
+let cachedLocalizedMonths: { value: number; label: string }[] | null = null;
+
 export const getLocalizedMonths = (): { value: number; label: string }[] => {
-    return Array.from({ length: 12 }, (_, i) => ({
+    if (cachedLocalizedMonths) {
+        return cachedLocalizedMonths;
+    }
+    const formatter = new Intl.DateTimeFormat(undefined, { month: 'long' });
+
+    cachedLocalizedMonths = Array.from({ length: 12 }, (_, i) => ({
         value: i + 1,
-        label: format(new Date(2000, i, 1), 'MMMM')
+        label: formatter.format(new Date(2000, i, 1))
     }));
+    return cachedLocalizedMonths;
 };
 
 export const parseAndFormat = (dateString: string | null, timezone?: string | null): string => {
