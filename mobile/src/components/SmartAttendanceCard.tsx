@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Dimensions, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { Clock, Calendar, Play, Pause, AlertCircle } from 'lucide-react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { Play, Pause, AlertCircle } from 'lucide-react-native';
 import { useAttendanceStore } from '../store/useAttendanceStore';
-import { formatDisplayTime, formatDisplayDate } from '../lib/timeManager';
+import { formatDisplayDate, formatTimeString } from '../lib/timeManager';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { formatDuration } from '../lib/utils';
@@ -39,13 +39,10 @@ export default function SmartAttendanceCard({
   const user = useAuthStore((state) => state.user);
 
   const formatShiftTime = (timeStr: string) => {
-    if (!timeStr) return '--:--';
-    const [h, m] = timeStr.split(':').map(Number);
-    const date = new Date();
-    date.setUTCHours(h, m, 0, 0);
-    return formatDisplayTime(date, user?.display_timezone, { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+    return formatTimeString(timeStr, user?.display_timezone);
   };
-  console.debug('[SmartAttendanceCard] Entry props:', {currentStatus, consumedBreakMinutes, lunchBreakMinutes});
+
+  // console.debug('[SmartAttendanceCard] Entry props:', {currentStatus, consumedBreakMinutes, lunchBreakMinutes});
   const activeSession = useAttendanceStore((state) => state.activeSession);
   const serverTimeOffset = useNetworkStore((state) => state.serverTimeOffset);
   const lastLocalSyncTime = useNetworkStore((state) => state.lastLocalSyncTime);
@@ -94,66 +91,66 @@ export default function SmartAttendanceCard({
             </View>
           </View>
           <View style={styles.buttonRow}>
-          {isTampered ? (
-            <View style={styles.tamperContainer}>
-              <AlertCircle color="#ef4444" size={24} style={{ marginBottom: 8 }} />
-              <Text style={styles.tamperTitle}>Device Time Out of Sync</Text>
-              <Text style={styles.tamperText}>
-                Please set your phone's Date & Time to 'Automatic' to log attendance.
-              </Text>
-            </View>
-          ) : !isClockedIn ? (
-            <TouchableOpacity 
-              style={[styles.clockButton, styles.clockInButton, loading && styles.disabledButton]}
-              onPress={() => handleClock('check_in')}
-              disabled={loading}
-            >
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Unscheduled Clock In</Text>}
-            </TouchableOpacity>
-          ) : (
-            <>
-              {currentStatus === 'working' && !isUnscheduledSession && (
-                <TouchableOpacity
-                  style={[styles.clockButton, styles.stepAwayButton, loading && styles.disabledButton]}
-                  onPress={handleStepAway}
-                  disabled={loading}
-                >
-                  <Pause color="#fff" size={20} style={{ marginRight: 8 }} />
-                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Step Away</Text>}
-                </TouchableOpacity>
-              )}
-              {currentStatus === 'away' && !isUnscheduledSession && (
-                <TouchableOpacity
-                  style={[styles.clockButton, styles.resumeButton, loading && styles.disabledButton]}
-                  onPress={handleResumeWork}
-                  disabled={loading}
-                >
-                  <Play color="#fff" size={20} style={{ marginRight: 8 }} />
-                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Resume Work</Text>}
-                </TouchableOpacity>
-              )}
-
+            {isTampered ? (
+              <View style={styles.tamperContainer}>
+                <AlertCircle color="#ef4444" size={24} style={{ marginBottom: 8 }} />
+                <Text style={styles.tamperTitle}>Device Time Out of Sync</Text>
+                <Text style={styles.tamperText}>
+                  Please set your phone's Date & Time to 'Automatic' to log attendance.
+                </Text>
+              </View>
+            ) : !isClockedIn ? (
               <TouchableOpacity
-                style={[styles.clockButton, styles.clockOutButton, loading && styles.disabledButton]}
-                onPress={() => handleClock('check_out')}
+                style={[styles.clockButton, styles.clockInButton, loading && styles.disabledButton]}
+                onPress={() => handleClock('check_in')}
                 disabled={loading}
               >
-                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Clock Out</Text>}
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Unscheduled Clock In</Text>}
               </TouchableOpacity>
-            </>
-          )}
-        </View>
+            ) : (
+              <>
+                {currentStatus === 'working' && !isUnscheduledSession && (
+                  <TouchableOpacity
+                    style={[styles.clockButton, styles.stepAwayButton, loading && styles.disabledButton]}
+                    onPress={handleStepAway}
+                    disabled={loading}
+                  >
+                    <Pause color="#fff" size={20} style={{ marginRight: 8 }} />
+                    {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Step Away</Text>}
+                  </TouchableOpacity>
+                )}
+                {currentStatus === 'away' && !isUnscheduledSession && (
+                  <TouchableOpacity
+                    style={[styles.clockButton, styles.resumeButton, loading && styles.disabledButton]}
+                    onPress={handleResumeWork}
+                    disabled={loading}
+                  >
+                    <Play color="#fff" size={20} style={{ marginRight: 8 }} />
+                    {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Resume Work</Text>}
+                  </TouchableOpacity>
+                )}
+
+                <TouchableOpacity
+                  style={[styles.clockButton, styles.clockOutButton, loading && styles.disabledButton]}
+                  onPress={() => handleClock('check_out')}
+                  disabled={loading}
+                >
+                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Clock Out</Text>}
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
         </View>
       </View>
     );
   }
 
   // --- 1. إعداد الثوابت الزمنية المطلقة ---
-  const currentNowMs = now.getTime(); 
+  const currentNowMs = now.getTime();
   const shiftStartMs = new Date(todayShift.start_utc).getTime();
   const shiftEndMs = new Date(todayShift.end_utc).getTime();
   const totalShiftMins = (shiftEndMs - shiftStartMs) / 60000;
-  const shiftDate = new Date(shiftStartMs); 
+  const shiftDate = new Date(shiftStartMs);
 
   let headerTitle = isClockedIn ? 'Active Shift' : 'Next Shift';
 
@@ -178,8 +175,8 @@ export default function SmartAttendanceCard({
   // Determine timeline scaling bounds
   let checkInMs = shiftStartMs;
   if (isClockedIn && activeSession) {
-      const checkInStr = activeSession.check_in.endsWith('Z') ? activeSession.check_in : activeSession.check_in.replace(' ', 'T') + 'Z';
-      checkInMs = new Date(checkInStr).getTime();
+    const checkInStr = activeSession.check_in.endsWith('Z') ? activeSession.check_in : activeSession.check_in.replace(' ', 'T') + 'Z';
+    checkInMs = new Date(checkInStr).getTime();
   }
 
   const timelineStartMs = Math.min(shiftStartMs, checkInMs);
@@ -206,7 +203,7 @@ export default function SmartAttendanceCard({
       activeSession.breaks.forEach((b: any) => {
         const bStartStr = b.start_time.endsWith('Z') ? b.start_time : b.start_time.replace(' ', 'T') + 'Z';
         const bEndStr = b.end_time ? (b.end_time.endsWith('Z') ? b.end_time : b.end_time.replace(' ', 'T') + 'Z') : null;
-        
+
         const bStartMs = new Date(bStartStr).getTime();
         const bEndMs = bEndStr ? new Date(bEndStr).getTime() : currentNowMs;
 
@@ -291,9 +288,9 @@ export default function SmartAttendanceCard({
                   else if (seg.type === 'overtime') segStyle = styles.segmentOvertime;
 
                   return (
-                    <View 
-                      key={idx} 
-                      style={[styles.timelineSegment, segStyle, { width: `${seg.widthPct}%` }]} 
+                    <View
+                      key={idx}
+                      style={[styles.timelineSegment, segStyle, { width: `${seg.widthPct}%` }]}
                     />
                   );
                 })}
@@ -301,12 +298,12 @@ export default function SmartAttendanceCard({
 
               {/* Visual Shift Markers */}
               {timelineStartMs < shiftStartMs && (
-                  <View style={[styles.shiftMarker, { left: `${startMarkerPct}%` }]} />
+                <View style={[styles.shiftMarker, { left: `${startMarkerPct}%` }]} />
               )}
               {timelineEndMs > shiftEndMs && (
-                  <View style={[styles.shiftMarker, { left: `${endMarkerPct}%` }]} />
+                <View style={[styles.shiftMarker, { left: `${endMarkerPct}%` }]} />
               )}
-              
+
               {/* "Now" Indicator */}
               <View style={[styles.nowIndicator, { left: `${nowPct}%` }]}>
                 <View style={styles.nowIndicatorLine} />
@@ -317,12 +314,12 @@ export default function SmartAttendanceCard({
             {/* Timeline Labels */}
             <View style={[styles.timelineLabels, { position: 'relative', height: 20 }]}>
               {timelineStartMs < shiftStartMs && (
-                  <Text style={[styles.timelineLabelText, { position: 'absolute', left: 0 }]}>{formatShiftTime(new Date(timelineStartMs).toTimeString().substring(0, 5))}</Text>
+                <Text style={[styles.timelineLabelText, { position: 'absolute', left: 0 }]}>{formatShiftTime(new Date(timelineStartMs).toTimeString().substring(0, 5))}</Text>
               )}
               <Text style={[styles.timelineLabelText, { position: 'absolute', left: `${startMarkerPct}%`, transform: [{ translateX: -15 }] }]}>{formatShiftTime(todayShift.start)}</Text>
               <Text style={[styles.timelineLabelText, { position: 'absolute', left: `${endMarkerPct}%`, transform: [{ translateX: -15 }] }]}>{formatShiftTime(todayShift.end)}</Text>
               {timelineEndMs > shiftEndMs && (
-                  <Text style={[styles.timelineLabelText, { position: 'absolute', right: 0 }]}>{formatShiftTime(new Date(timelineEndMs).toTimeString().substring(0, 5))}</Text>
+                <Text style={[styles.timelineLabelText, { position: 'absolute', right: 0 }]}>{formatShiftTime(new Date(timelineEndMs).toTimeString().substring(0, 5))}</Text>
               )}
             </View>
 
@@ -388,7 +385,7 @@ export default function SmartAttendanceCard({
               </Text>
             </View>
           ) : !isClockedIn ? (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.clockButton, styles.clockInButton, loading && styles.disabledButton]}
               onPress={() => handleClock('check_in')}
               disabled={loading}
@@ -398,7 +395,7 @@ export default function SmartAttendanceCard({
           ) : (
             <>
               {currentStatus === 'working' && !isUnscheduledSession && (
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={[styles.clockButton, styles.stepAwayButton, loading && styles.disabledButton]}
                   onPress={handleStepAway}
                   disabled={loading}
@@ -408,7 +405,7 @@ export default function SmartAttendanceCard({
                 </TouchableOpacity>
               )}
               {currentStatus === 'away' && !isUnscheduledSession && (
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={[styles.clockButton, styles.resumeButton, loading && styles.disabledButton]}
                   onPress={handleResumeWork}
                   disabled={loading}
@@ -417,8 +414,8 @@ export default function SmartAttendanceCard({
                   {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Resume Work</Text>}
                 </TouchableOpacity>
               )}
-              
-              <TouchableOpacity 
+
+              <TouchableOpacity
                 style={[styles.clockButton, styles.clockOutButton, loading && styles.disabledButton]}
                 onPress={() => handleClock('check_out')}
                 disabled={loading}

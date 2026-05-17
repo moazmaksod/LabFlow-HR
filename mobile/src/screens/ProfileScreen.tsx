@@ -4,7 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from '@react-navigation/native';
 import { User, Camera, Save, LogOut, Mail, UserCircle, Lock, Info, DollarSign, Calendar, Clock, Shield, LayoutDashboard, MapPin, Landmark, HeartHandshake, Phone, FileText, Globe } from 'lucide-react-native';
 import { Picker } from '@react-native-picker/picker';
-import { simplifiedTimezones, formatDisplayTime } from '../lib/timeManager';
+import { simplifiedTimezones, formatDisplayTime, formatTimeString } from '../lib/timeManager';
 import api from '../lib/axios';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNetworkStore } from '../store/useNetworkStore';
@@ -138,15 +138,15 @@ export default function ProfileScreen() {
 
       const newAvatarUrl = response.data.url;
       setAvatar(newAvatarUrl);
-      
+
       // Update profile with new avatar URL
       const updateRes = await api.put('/users/profile', { profile_picture_url: newAvatarUrl });
       setUserProfile(updateRes.data);
       Alert.alert('Success', 'Avatar updated successfully');
     } catch (error: any) {
       // Graceful error catching to avoid redbox
-      const message = error.isNetworkError 
-        ? 'Network unavailable. Please try again when online.' 
+      const message = error.isNetworkError
+        ? 'Network unavailable. Please try again when online.'
         : (error.response?.data?.error || 'Failed to upload avatar');
       Alert.alert('Avatar Update', message);
     } finally {
@@ -199,28 +199,25 @@ export default function ProfileScreen() {
     if (!hireDate) return 'Not set';
     const start = new Date(hireDate);
     const now = new Date();
-    
+
     let years = now.getFullYear() - start.getFullYear();
     let months = now.getMonth() - start.getMonth();
-    
+
     if (months < 0) {
       years--;
       months += 12;
     }
-    
+
     const parts = [];
     if (years > 0) parts.push(`${years} year${years > 1 ? 's' : ''}`);
     if (months > 0) parts.push(`${months} month${months > 1 ? 's' : ''}`);
-    
+
     return parts.length > 0 ? parts.join(', ') : 'Less than a month';
   };
 
   const formatTime = (timeStr: string) => {
     if (!timeStr) return '';
-    const [h, m] = timeStr.split(':').map(Number);
-    const date = new Date();
-    date.setUTCHours(h, m, 0, 0);
-    return formatDisplayTime(date, userProfile.display_timezone || user?.display_timezone, { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+    return formatTimeString(timeStr, userProfile?.display_timezone || user?.display_timezone, { hour: '2-digit', minute: '2-digit' });
   };
 
   const renderScheduleTable = (scheduleStr: string | null) => {
@@ -228,7 +225,7 @@ export default function ProfileScreen() {
     try {
       const schedule = JSON.parse(scheduleStr);
       const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-      
+
       return (
         <View style={styles.scheduleTable}>
           <View style={styles.tableHeader}>
@@ -238,7 +235,7 @@ export default function ProfileScreen() {
           {days.map((day) => {
             const shifts = schedule[day];
             const isActive = Array.isArray(shifts) && shifts.length > 0;
-            
+
             let shiftText = 'Off';
             if (isActive) {
               shiftText = shifts.map((s: any) => {
@@ -283,9 +280,9 @@ export default function ProfileScreen() {
           accessibilityRole="button"
         >
           {avatar ? (
-            <Image 
-              source={{ uri: avatar.startsWith('http') ? avatar : `${BASE_URL}${avatar}` }} 
-              style={styles.avatar} 
+            <Image
+              source={{ uri: avatar.startsWith('http') ? avatar : `${BASE_URL}${avatar}` }}
+              style={styles.avatar}
             />
           ) : (
             <View style={styles.avatarPlaceholder}>
@@ -448,9 +445,9 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-<View style={styles.section}>
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>Job Details</Text>
-          
+
           <View style={styles.detailsCard}>
             <View style={styles.detailsGrid}>
               <View style={styles.detailItem}>
@@ -460,7 +457,7 @@ export default function ProfileScreen() {
                   <Text style={styles.detailValue}>${userProfile?.hourly_rate || 0}/hr</Text>
                 </View>
               </View>
-              
+
               <View style={styles.detailItem}>
                 <Calendar size={16} color="#71717a" />
                 <View style={styles.detailContent}>
@@ -504,9 +501,9 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        <TouchableOpacity 
-          style={[styles.saveButton, !isConnected && styles.disabledButton]} 
-          onPress={handleUpdateProfile} 
+        <TouchableOpacity
+          style={[styles.saveButton, !isConnected && styles.disabledButton]}
+          onPress={handleUpdateProfile}
           disabled={loading || !isConnected}
         >
           {loading ? <ActivityIndicator color="#fff" /> : (
