@@ -206,9 +206,10 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
         let current_shift = null;
         if (currentShiftRecord) {
             logger.debug('[getProfile] currentShiftRecord Branch Entry');
-            // Need to calculate local start/end times based on the timezone for the response payload
+            // Need to calculate local start/end times based on the display timezone for the response payload
+            const displayTimezone = user.display_timezone || timezone;
             const formatter = new Intl.DateTimeFormat('en-US', {
-                timeZone: timezone,
+                timeZone: displayTimezone,
                 hour: '2-digit', minute: '2-digit',
                 hour12: false
             });
