@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Dimensions, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Clock, Calendar, Play, Pause, AlertCircle } from 'lucide-react-native';
 import { useAttendanceStore } from '../store/useAttendanceStore';
+import { formatDisplayTime, formatDisplayDate } from '../lib/timeManager';
+import { useAuthStore } from '../store/useAuthStore';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { formatDuration } from '../lib/utils';
 
@@ -24,14 +26,6 @@ const timeToMinutes = (timeStr: string) => {
   return h * 60 + m;
 };
 
-const formatTime = (timeStr: string) => {
-  if (!timeStr) return '';
-  const [h, m] = timeStr.split(':').map(Number);
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  const h12 = h % 12 || 12;
-  return `${h12}:${m.toString().padStart(2, '0')} ${ampm}`;
-};
-
 export default function SmartAttendanceCard({
   currentShift,
   currentStatus,
@@ -42,6 +36,15 @@ export default function SmartAttendanceCard({
   handleResumeWork,
   lunchBreakMinutes
 }: SmartAttendanceCardProps) {
+  const user = useAuthStore((state) => state.user);
+
+  const formatShiftTime = (timeStr: string) => {
+    if (!timeStr) return '--:--';
+    const [h, m] = timeStr.split(':').map(Number);
+    const date = new Date();
+    date.setUTCHours(h, m, 0, 0);
+    return formatDisplayTime(date, user?.display_timezone, { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+  };
   console.debug('[SmartAttendanceCard] Entry props:', {currentStatus, consumedBreakMinutes, lunchBreakMinutes});
   const activeSession = useAttendanceStore((state) => state.activeSession);
   const serverTimeOffset = useNetworkStore((state) => state.serverTimeOffset);
@@ -262,11 +265,7 @@ export default function SmartAttendanceCard({
               {headerTitle}
             </Text>
             <Text style={styles.timelineSubtitle}>
-              {shiftDate.toLocaleDateString('en-GB', { 
-                weekday: 'long', 
-                day: 'numeric', 
-                month: 'short' 
-              }).replace(/,/g, '')} {'\n'} {formatTime(todayShift.start)} - {formatTime(todayShift.end)}
+              {formatDisplayDate(shiftDate, user?.display_timezone, { weekday: 'long', day: 'numeric', month: 'short' }).replace(/,/g, '')} {'\n'} {formatShiftTime(todayShift.start)} - {formatShiftTime(todayShift.end)}
             </Text>
           </View>
           <View style={[styles.statusBadge, currentStatus === 'working' ? styles.statusWorking : currentStatus === 'away' ? styles.statusAway : styles.statusNone]}>
@@ -318,12 +317,12 @@ export default function SmartAttendanceCard({
             {/* Timeline Labels */}
             <View style={[styles.timelineLabels, { position: 'relative', height: 20 }]}>
               {timelineStartMs < shiftStartMs && (
-                  <Text style={[styles.timelineLabelText, { position: 'absolute', left: 0 }]}>{formatTime(new Date(timelineStartMs).toTimeString().substring(0, 5))}</Text>
+                  <Text style={[styles.timelineLabelText, { position: 'absolute', left: 0 }]}>{formatShiftTime(new Date(timelineStartMs).toTimeString().substring(0, 5))}</Text>
               )}
-              <Text style={[styles.timelineLabelText, { position: 'absolute', left: `${startMarkerPct}%`, transform: [{ translateX: -15 }] }]}>{formatTime(todayShift.start)}</Text>
-              <Text style={[styles.timelineLabelText, { position: 'absolute', left: `${endMarkerPct}%`, transform: [{ translateX: -15 }] }]}>{formatTime(todayShift.end)}</Text>
+              <Text style={[styles.timelineLabelText, { position: 'absolute', left: `${startMarkerPct}%`, transform: [{ translateX: -15 }] }]}>{formatShiftTime(todayShift.start)}</Text>
+              <Text style={[styles.timelineLabelText, { position: 'absolute', left: `${endMarkerPct}%`, transform: [{ translateX: -15 }] }]}>{formatShiftTime(todayShift.end)}</Text>
               {timelineEndMs > shiftEndMs && (
-                  <Text style={[styles.timelineLabelText, { position: 'absolute', right: 0 }]}>{formatTime(new Date(timelineEndMs).toTimeString().substring(0, 5))}</Text>
+                  <Text style={[styles.timelineLabelText, { position: 'absolute', right: 0 }]}>{formatShiftTime(new Date(timelineEndMs).toTimeString().substring(0, 5))}</Text>
               )}
             </View>
 
@@ -370,7 +369,7 @@ export default function SmartAttendanceCard({
         {currentStatus === 'away' && currentShift && (
           <View style={styles.breakInfoContainer}>
             <Text style={styles.breakWarningText}>
-              Your break will end automatically at {formatTime(currentShift.end_time || currentShift.end)}.
+              Your break will end automatically at {formatShiftTime(currentShift.end_time || currentShift.end)}.
             </Text>
           </View>
         )}

@@ -4,6 +4,8 @@ import { DollarSign, Calendar, ChevronRight, X, Info, AlertCircle, CheckCircle2 
 import { useFocusEffect } from '@react-navigation/native';
 import api from '../lib/axios';
 import { useNetworkStore } from '../store/useNetworkStore';
+import { useAuthStore } from '../store/useAuthStore';
+import { formatDisplayDate } from '../lib/timeManager';
 
 interface PayrollRecord {
   id: number;
@@ -26,6 +28,7 @@ interface PayrollTransaction {
 }
 
 export default function PayslipScreen() {
+  const user = useAuthStore((state) => state.user);
   const [payrolls, setPayrolls] = useState<PayrollRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -89,13 +92,11 @@ export default function PayslipScreen() {
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString([], { month: 'short', year: 'numeric' });
+    return formatDisplayDate(dateString, user?.display_timezone, { month: 'short', year: 'numeric' });
   };
 
   const formatFullDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+    return formatDisplayDate(dateString, user?.display_timezone, { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const renderPayrollItem = ({ item }: { item: PayrollRecord }) => (
