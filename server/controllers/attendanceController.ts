@@ -3,7 +3,7 @@ import logger from '../utils/logger.js';
 
 import { Request, Response } from 'express';
 import db from '../db/index.js';
-import { getDateStringInTimezone } from '../utils/dateUtils.js';
+import { getDateStringInTimezone, getAppNow } from '../utils/timeManager.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
 import { logAudit } from '../services/auditService.js';
 import { getSettingsCache, setSettingsCache } from '../utils/cache.js';
@@ -459,7 +459,7 @@ export const clockAttendance = (req: AuthRequest, res: Response): void => {
     try {
         const userId = req.user!.id;
         const { type, lat, lng, deviceId } = req.body;
-        const timestamp = new Date().toISOString();
+        const timestamp = getAppNow();
 
         if (!type || !['check_in', 'check_out'].includes(type) || lat === undefined || lng === undefined || !deviceId) {
             res.status(400).json({ error: 'Missing required fields or deviceId' });
@@ -673,7 +673,7 @@ export const getAttendanceStats = (req: Request, res: Response): void => {
         `).all();
 
         const timezone = process.env.APP_TIMEZONE!;
-        const todayDateStr = getDateStringInTimezone(new Date(), timezone);
+        const todayDateStr = getDateStringInTimezone(new Date(getAppNow()), timezone);
 
         const todayStats = db.prepare(`
             SELECT
@@ -704,7 +704,7 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
     try {
         const userId = req.user!.id;
         const { deviceId } = req.body;
-        const timestamp = new Date().toISOString(); // Server is the single source of truth
+        const timestamp = getAppNow(); // Server is the single source of truth
 
         if (!deviceId) {
             logger.debug('[stepAway] Missing deviceId');
@@ -749,9 +749,9 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
         }
 
         if (activeShift) {
-            logger.debug('[stepAway] activeShift Branch Entry: shiftEndMs=', new Date(activeShift.end_time).getTime(), 'nowMs=', Date.now());
+            logger.debug('[stepAway] activeShift Branch Entry: shiftEndMs=', new Date(activeShift.end_time).getTime(), 'nowMs=', new Date(getAppNow()).getTime());
             const shiftEndMs = new Date(activeShift.end_time).getTime();
-            const nowMs = Date.now(); // Strictly use server execution time for safety check
+            const nowMs = new Date(getAppNow()).getTime(); // Strictly use server execution time for safety check
             // Block if request is after or within 1 minute of shift end
             if (nowMs >= shiftEndMs - 60000) {
                 logger.debug('[stepAway] Shift has ended. Please clock out instead.');
@@ -853,7 +853,7 @@ export const resumeWork = (req: AuthRequest, res: Response): void => {
     try {
         const userId = req.user!.id;
         const { deviceId } = req.body;
-        const timestamp = new Date().toISOString(); // Server is the single source of truth
+        const timestamp = getAppNow(); // Server is the single source of truth
 
         if (!deviceId) {
             res.status(400).json({ error: 'Missing deviceId' });

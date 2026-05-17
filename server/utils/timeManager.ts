@@ -58,7 +58,10 @@ export const getDateStringInTimezone = (timestamp: string | Date | number, timez
 
         return formatter.format(date);
     } catch (error) {
-        throw new Error(`Error formatting date for timezone ${tz}`);
+        logger.error(`Error formatting date for timezone ${tz}:`, error);
+        // Fallback to UTC if timezone is invalid
+        const d = new Date(timestamp);
+        return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
     }
 };
 

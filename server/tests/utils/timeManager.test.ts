@@ -1,7 +1,7 @@
-import { getDateStringInTimezone } from '../../utils/dateUtils.js';
+import { getDateStringInTimezone } from '../../utils/timeManager.js';
 import logger from '../../utils/logger.js';
 
-describe('dateUtils - getDateStringInTimezone', () => {
+describe('timeManager - getDateStringInTimezone', () => {
     const timestamp = '2023-10-25T12:00:00Z'; // UTC date
 
     it('should format date correctly for a valid timezone (America/New_York)', () => {

@@ -1,12 +1,13 @@
 import db from '../db/index.js';
 import logger from '../utils/logger.js';
+import { getAppNow } from "../utils/timeManager.js";
 
 export const evaluateUserAttendance = (userId: number, timezone: string): void => {
     logger.debug('[evaluateUserAttendance] Entry: userId=', userId, 'timezone=', timezone);
     try {
         const evaluate = db.transaction((uid: number) => {
             logger.debug('[evaluateUserAttendance] Transaction Entry: uid=', uid);
-            const now = new Date().toISOString();
+            const now = getAppNow();
             logger.debug('[evaluateUserAttendance] now=', now);
 
             // Scenario B: Scheduled Shift extending into Overtime
@@ -53,7 +54,7 @@ export const evaluateUserAttendance = (userId: number, timezone: string): void =
                         UPDATE attendance SET check_out = ? WHERE id = ?
                     `).run(activeScheduled.scheduled_end_time, activeScheduled.id);
 
-                    const unscheduledShiftId = `unscheduled_${activeScheduled.date.replace(/-/g, '')}_${Date.now()}`;
+                    const unscheduledShiftId = `unscheduled_${activeScheduled.date.replace(/-/g, '')}_${new Date(getAppNow()).getTime()}`;
 
                     // Insert new active unscheduled attendance
                     db.prepare(`
