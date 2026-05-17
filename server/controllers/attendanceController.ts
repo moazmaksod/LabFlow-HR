@@ -17,8 +17,8 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
     const Δλ = (lon2 - lon1) * Math.PI / 180;
 
     const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-              Math.cos(φ1) * Math.cos(φ2) *
-              Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+        Math.cos(φ1) * Math.cos(φ2) *
+        Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
     return R * c;
@@ -48,7 +48,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
         // Generate an unscheduled ID if there's no shift instance
         let shiftId = shiftInstance ? shiftInstance.id.toString() : `unscheduled_${logicalDate.replace(/-/g, '')}_${new Date(timestamp).getTime()}`;
 
-// Re-entry logic: Is there already a closed attendance for this user and logical date?
+        // Re-entry logic: Is there already a closed attendance for this user and logical date?
         const existingAttendance = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ? ORDER BY check_in DESC LIMIT 1').get(userId, logicalDate) as any;
 
         if (existingAttendance) {
@@ -134,7 +134,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                 return { status: 200, data: updatedRecord };
             }
         }
-        
+
         // Normal Check-in logic
         let status = 'on_time';
         let isUnscheduled = false;
@@ -317,9 +317,9 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
 
             const outDiffMinutes = (checkOutTime.getTime() - shiftEnd.getTime()) / (1000 * 60);
             if (outDiffMinutes < -gracePeriod) {
-                 officialStatus = officialStatus === 'on_time' ? 'early_out' : officialStatus;
-                 const earlyMinutes = Math.floor(Math.abs(outDiffMinutes));
-                 db.prepare(`
+                officialStatus = officialStatus === 'on_time' ? 'early_out' : officialStatus;
+                const earlyMinutes = Math.floor(Math.abs(outDiffMinutes));
+                db.prepare(`
                     INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
                     VALUES (?, 'early_leave_approval', ?, ?, ?, ?, 'pending')
                  `).run(
@@ -328,7 +328,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                     activeSession.id,
                     `System detected early leave by ${earlyMinutes} minutes.`,
                     JSON.stringify({ early_leave_minutes: earlyMinutes, missing_minutes: earlyMinutes })
-                 );
+                );
             }
 
             db.prepare(`
@@ -525,10 +525,10 @@ export const syncOfflineLogs = (req: AuthRequest, res: Response): void => {
                 if ('error' in result) {
                     results.push({ logId: log.id, status: 'skipped', reason: result.error });
                 } else {
-                    results.push({ 
-                        logId: log.id, 
-                        status: 'success', 
-                        action: result.status === 201 ? 'inserted' : 'updated' 
+                    results.push({
+                        logId: log.id,
+                        status: 'success',
+                        action: result.status === 201 ? 'inserted' : 'updated'
                     });
                 }
             }
@@ -673,7 +673,7 @@ export const getAttendanceStats = (req: Request, res: Response): void => {
         `).all();
 
         const timezone = process.env.APP_TIMEZONE!;
-        const todayDateStr = getDateStringInTimezone(new Date(getAppNow()), timezone);
+        const todayDateStr = getDateStringInTimezone(getAppNow(), timezone);
 
         const todayStats = db.prepare(`
             SELECT
@@ -749,13 +749,13 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
         }
 
         if (activeShift) {
-            logger.debug('[stepAway] activeShift Branch Entry: shiftEndMs=', new Date(activeShift.end_time).getTime(), 'nowMs=', new Date(getAppNow()).getTime());
+            const nowMs = new Date(timestamp).getTime(); // Strictly use server execution time for safety check
             const shiftEndMs = new Date(activeShift.end_time).getTime();
-            const nowMs = new Date(getAppNow()).getTime(); // Strictly use server execution time for safety check
+            logger.debug('[stepAway] activeShift Branch Entry: shiftEndMs=', shiftEndMs, 'nowMs=', nowMs);
             // Block if request is after or within 1 minute of shift end
             if (nowMs >= shiftEndMs - 60000) {
                 logger.debug('[stepAway] Shift has ended. Please clock out instead.');
-                res.status(400).json({ error: 'Shift has ended. Please clock out instead.' });
+                res.status(400).json({ error: 'Shift has about to end. Please clock out instead.' });
                 return;
             }
         }

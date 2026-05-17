@@ -54,7 +54,7 @@ export const evaluateUserAttendance = (userId: number, timezone: string): void =
                         UPDATE attendance SET check_out = ? WHERE id = ?
                     `).run(activeScheduled.scheduled_end_time, activeScheduled.id);
 
-                    const unscheduledShiftId = `unscheduled_${activeScheduled.date.replace(/-/g, '')}_${new Date(getAppNow()).getTime()}`;
+                    const unscheduledShiftId = `unscheduled_${activeScheduled.date.replace(/-/g, '')}_${new Date(now).getTime()}`;
 
                     // Insert new active unscheduled attendance
                     db.prepare(`
