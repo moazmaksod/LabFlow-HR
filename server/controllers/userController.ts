@@ -1,6 +1,6 @@
 import { evaluateUserAttendance } from "../services/attendanceEvaluationService.js";
 import logger from '../utils/logger.js';
-import { getDateStringInTimezone } from '../utils/dateUtils.js';
+import { getDateStringInTimezone } from '../utils/timeManager.js';
 
 import { Request, Response } from 'express';
 import db from '../db/index.js';

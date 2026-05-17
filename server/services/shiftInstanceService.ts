@@ -1,5 +1,6 @@
 import db from '../db/index.js';
 import logger from '../utils/logger.js';
+import { getAppNow } from "../utils/timeManager.js";
 
 export function generateShiftInstances(userId: number, weeklyScheduleRaw: any, timezone: string): void {
     logger.debug(`generateShiftInstances triggered for user ${userId}`);
@@ -52,7 +53,7 @@ export function generateShiftInstances(userId: number, weeklyScheduleRaw: any, t
         return guessUTC;
     };
 
-    const now = new Date();
+    const now = new Date(getAppNow());
     const localNow = getLocalTimeUTC(now);
 
     try {

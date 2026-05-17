@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import db from '../db/index.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
-import { getDateStringInTimezone } from '../utils/dateUtils.js';
+import { getDateStringInTimezone } from '../utils/timeManager.js';
 import { getOrCreateDraftPayroll } from './payrollController.js';
 import { logAudit } from '../services/auditService.js';
 import logger from '../utils/logger.js';
