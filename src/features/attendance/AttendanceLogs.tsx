@@ -33,7 +33,7 @@ export default function AttendanceLogs() {
     }
   });
 
-
+  const formatTime = (isoString: string | null) => formatDisplayTime(isoString, user?.display_timezone, 'HH:mm');
 
   const filteredLogs = logs?.filter(log => {
     const matchesDate = filterDate ? log.date === filterDate : true;
