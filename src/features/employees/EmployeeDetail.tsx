@@ -29,7 +29,7 @@ const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'
 
 export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps) {
   const queryClient = useQueryClient();
-  const userTimezone = useAuthStore(state => state.user?.timezone);
+  const userTimezone = useAuthStore(state => state.user?.display_timezone);
 
   const [isSaving, setIsSaving] = useState(false);
   const [hasScheduleError, setHasScheduleError] = useState(false);
