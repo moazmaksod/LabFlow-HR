@@ -200,7 +200,7 @@ export default function RequestManagement() {
         const hasClockedOut = !!req.original_check_out || !!req.requested_check_out;
         let hoursPassed = 0;
         if (req.original_check_in) {
-            hoursPassed = (new Date(getSystemNow()).getTime() - new Date(req.original_check_in).getTime()) / (1000 * 60 * 60);
+            hoursPassed = calculateHoursPassed(req.original_check_in);
         }
         if (!hasClockedOut || hoursPassed < 3) {
             return true;
