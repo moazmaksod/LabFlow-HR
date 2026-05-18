@@ -126,7 +126,7 @@ export default function AttendanceLogs() {
                         <div className="space-y-1">
                           {log.breaks.map((b: any, idx: number) => (
                             <div key={idx} className="text-muted-foreground">
-                              {formatDisplayTime(b.start_time, user?.display_timezone, 'HH:mm')} - {b.end_time ? formatDisplayTime(b.end_time, user?.display_timezone, 'HH:mm') : 'Ongoing'}
+                              {formatTime(b.start_time)} - {b.end_time ? formatTime(b.end_time) : 'Ongoing'}
                             </div>
                           ))}
                         </div>
