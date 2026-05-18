@@ -8,6 +8,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { HrEmployeeDetailSchema } from '../../../shared/validations';
+import { useAuthStore } from '../../store/useAuthStore';
+import { formatForDateInput, parseFromDateInput, formatDisplayTime } from '../../lib/timeManager';
 
 interface EmployeeDetailProps {
   userId: number;
@@ -27,6 +29,7 @@ const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'
 
 export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps) {
   const queryClient = useQueryClient();
+  const userTimezone = useAuthStore(state => state.user?.display_timezone);
 
   const [isSaving, setIsSaving] = useState(false);
   const [hasScheduleError, setHasScheduleError] = useState(false);
@@ -130,14 +133,14 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
         bank_account_iban: employee.bank_account_iban || '',
         legal_name: employee.legal_name || '',
         id_photo_url: employee.id_photo_url || '',
-        hire_date: employee.hire_date || '',
-        date_of_birth: employee.date_of_birth || '',
+        hire_date: formatForDateInput(employee.hire_date, userTimezone) || '',
+        date_of_birth: formatForDateInput(employee.date_of_birth, userTimezone) || '',
         gender: employee.gender || '',
         allow_overtime: employee.allow_overtime || false,
         max_overtime_hours: employee.max_overtime_hours || 0
       });
     }
-  }, [employee]);
+  }, [employee, userTimezone]);
 
   const updateMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -173,11 +176,11 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
     }
     setIsSaving(true);
     const finalData = { ...watchedData, ...data };
-    if (finalData.date_of_birth instanceof Date) {
-      finalData.date_of_birth = finalData.date_of_birth.toISOString().split('T')[0];
+    if (finalData.date_of_birth) {
+      finalData.date_of_birth = parseFromDateInput(String(finalData.date_of_birth), userTimezone);
     }
-    if (finalData.hire_date instanceof Date) {
-      finalData.hire_date = finalData.hire_date.toISOString().split('T')[0];
+    if (finalData.hire_date) {
+      finalData.hire_date = parseFromDateInput(String(finalData.hire_date), userTimezone);
     }
     updateMutation.mutate(finalData, {
       onSettled: () => setIsSaving(false)
@@ -196,7 +199,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
   }
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
@@ -207,7 +210,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
         <div className="flex items-center gap-6">
           <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center text-primary font-bold text-2xl shadow-inner border border-primary/20">
             {watchedData.profile_picture_url ? (
-              <img 
+              <img
                 src={watchedData.profile_picture_url.startsWith('http') ? watchedData.profile_picture_url : `${window.location.origin}${watchedData.profile_picture_url}`}
                 alt={watchedData.name}
                 className="w-full h-full rounded-2xl object-cover"
@@ -280,7 +283,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Date of Birth</label>
-                    <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">{watchedData.date_of_birth ? (watchedData.date_of_birth instanceof Date ? watchedData.date_of_birth.toISOString().split('T')[0] : String(watchedData.date_of_birth).split('T')[0]) : "-"}</div>
+                    <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">{watchedData.date_of_birth ? formatDisplayTime(String(watchedData.date_of_birth), userTimezone, 'yyyy-MM-dd') : "-"}</div>
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Gender</label>
@@ -339,8 +342,8 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Legal Name</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     {...register("legal_name")}
 
                     placeholder="Official legal name"
@@ -349,8 +352,8 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Hire Date</label>
-                  <input 
-                    type="date" 
+                  <input
+                    type="date"
                     {...register("hire_date")}
                     className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${errors.hire_date ? "border-red-500" : "border-border"}`}
                   />
@@ -359,14 +362,14 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                   <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">ID Photo</label>
                   <div className="flex items-center gap-4">
                     {watchedData.id_photo_url && (
-                      <img 
+                      <img
                         src={watchedData.id_photo_url.startsWith('http') ? watchedData.id_photo_url : `${window.location.origin}${watchedData.id_photo_url}`}
                         alt="ID Photo"
                         className="w-12 h-12 rounded-lg object-cover border border-border"
                         referrerPolicy="no-referrer"
                       />
                     )}
-                    <input 
+                    <input
                       type="file"
                       accept="image/*"
                       onChange={async (e) => {
@@ -397,7 +400,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
               <div className="grid grid-cols-1 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Job Role</label>
-                  <select 
+                  <select
                     {...register("job_id")}
                     className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${errors.job_id ? "border-red-500" : "border-border"}`}
                   >
@@ -440,8 +443,8 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                     <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Overtime Policy</span>
                     <p className="text-xs font-medium">Allow extra hours</p>
                   </div>
-                  <input 
-                    type="checkbox" 
+                  <input
+                    type="checkbox"
                     {...register("allow_overtime")}
                     className="w-5 h-5 rounded-lg border-border text-primary focus:ring-primary transition-all"
                   />
@@ -449,8 +452,8 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                 {watchedData.allow_overtime && (
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Max OT Hours / Week</label>
-                    <input 
-                      type="number" 
+                    <input
+                      type="number"
                       step="0.5"
                       {...register("max_overtime_hours")}
                       className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${errors.max_overtime_hours ? "border-red-500" : "border-border"}`}
@@ -460,7 +463,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
 
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Employment Status</label>
-                  <select 
+                  <select
                     {...register("status")}
                     className={`w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${
                       watchedData.status === 'active' ? 'text-emerald-600' : 'text-rose-600'
@@ -475,14 +478,14 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                 {watchedData.status === 'suspended' && (
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Suspension Reason</label>
-                    <textarea 
+                    <textarea
                       {...register("suspension_reason")}
                       placeholder="Enter reason for suspension..."
                       className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all min-h-[80px] resize-none"
                     />
                   </div>
                 )}
-                
+
                 {/* Device Binding Section */}
                 <div className="pt-4 border-t border-border">
                   <div className="flex items-center justify-between p-4 bg-muted/30 border border-border rounded-xl">
@@ -496,7 +499,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                       </div>
                     </div>
                     {watchedData.device_id && (
-                      <button 
+                      <button
                         onClick={() => {
                           if (window.confirm('Are you sure you want to reset this employee\'s device binding? They will be able to clock in from a new device.')) {
                             resetDeviceMutation.mutate();
@@ -532,7 +535,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                   <p className="text-xs text-muted-foreground mt-1">Define the standard weekly timeline for this employee.</p>
                 </div>
                 <div className="flex items-center gap-6">
-                  <button 
+                  <button
                     onClick={() => reset({ ...watchedData, weekly_schedule: {} })}
                     className="text-[10px] font-black uppercase tracking-[0.2em] text-rose-500 hover:text-rose-600 transition-colors"
                   >
@@ -554,9 +557,9 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                   </div>
                 </div>
               </div>
-              
+
               <div className="min-h-[400px]">
-                <WeeklyScheduleBuilder 
+                <WeeklyScheduleBuilder
                   schedule={watchedData.weekly_schedule || {}}
                   onChange={(newSchedule) => reset({ ...watchedData, weekly_schedule: newSchedule })}
                   onError={setHasScheduleError}

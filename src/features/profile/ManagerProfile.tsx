@@ -7,6 +7,7 @@ import api from '../../lib/axios';
 import { useAuthStore } from '../../store/useAuthStore';
 import { User, Image as ImageIcon, Camera } from 'lucide-react';
 import { EmployeeProfileSchema } from '../../../shared/validations';
+import { formatForDateInput, parseFromDateInput, getDeviceTimezone, getSupportedTimezones } from '../../lib/timeManager';
 
 type ProfileUpdateData = z.infer<typeof EmployeeProfileSchema>;
 
@@ -49,14 +50,14 @@ export default function ManagerProfile() {
       reset({
         legal_name: profile.name || '',
         personal_phone: profile.emergency_contact_phone || '',
-        date_of_birth: profile.date_of_birth ? new Date(profile.date_of_birth) : undefined,
+        date_of_birth: formatForDateInput(profile.date_of_birth, user?.display_timezone) || '',
         national_id: profile.national_id || '',
         bio: profile.bio || '',
         display_timezone: profile.display_timezone || '',
       });
       setPreviewUrl(profile.profile_picture_url || '');
     }
-  }, [profile, reset]);
+  }, [profile, reset, user?.display_timezone]);
 
   const updateMutation = useMutation({
     mutationFn: async (data: FormData) => {
@@ -81,7 +82,7 @@ export default function ManagerProfile() {
     const formData = new FormData();
     formData.append('name', data.legal_name);
     if (data.personal_phone) formData.append('emergency_contact_phone', data.personal_phone);
-    if (data.date_of_birth) formData.append('date_of_birth', data.date_of_birth.toISOString());
+    if (data.date_of_birth) formData.append('date_of_birth', parseFromDateInput(data.date_of_birth, user?.display_timezone));
     if (data.national_id) formData.append('national_id', data.national_id);
     if (data.bio) formData.append('bio', data.bio);
     if (data.display_timezone !== undefined) formData.append('display_timezone', data.display_timezone);
@@ -228,8 +229,8 @@ export default function ManagerProfile() {
                 {...register('display_timezone')}
                 className="w-full px-4 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
               >
-                <option value="">Device Default ({Intl.DateTimeFormat().resolvedOptions().timeZone})</option>
-                {Intl.supportedValuesOf('timeZone').map((tz) => (
+                <option value="">Device Default ({getDeviceTimezone()})</option>
+                {getSupportedTimezones().map((tz) => (
                   <option key={tz} value={tz}>{tz}</option>
                 ))}
               </select>
