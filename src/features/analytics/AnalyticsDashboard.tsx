@@ -1,12 +1,14 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../lib/axios';
-import { 
+import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend
 } from 'recharts';
 import { Users, Clock, AlertTriangle, CheckCircle } from 'lucide-react';
 import { formatStatusLabel } from '../../lib/utils';
+import { formatDisplayTime, DateFormats } from '../../lib/timeManager';
+import { useAuthStore } from '../../store/useAuthStore';
 
 const STATUS_COLORS: Record<string, string> = {
   'on_time': '#10b981', // green
@@ -24,6 +26,8 @@ interface StatsData {
 }
 
 export default function AnalyticsDashboard() {
+  const user = useAuthStore(state => state.user);
+
   const { data: stats, isLoading } = useQuery<StatsData>({
     queryKey: ['attendance-stats'],
     queryFn: async () => {
@@ -38,11 +42,16 @@ export default function AnalyticsDashboard() {
 
   const totalToday = (stats?.today.present || 0) + (stats?.today.late || 0) + (stats?.today.absent || 0);
 
-  const formattedStatusDistribution = stats?.statusDistribution?.map(item => ({
+  const formattedStatusDistribution = React.useMemo(() => stats?.statusDistribution?.map(item => ({
     ...item,
     originalName: item.name,
     name: formatStatusLabel(item.name)
-  })) || [];
+  })) || [], [stats?.statusDistribution]);
+
+  const formattedDailyHours = React.useMemo(() => stats?.dailyHours?.map(item => ({
+    ...item,
+    date: formatDisplayTime(item.date, user?.display_timezone, DateFormats.ANALYTICS_CHART)
+  })) || [], [stats?.dailyHours, user?.display_timezone]);
 
   return (
     <div className="space-y-6">
@@ -86,13 +95,13 @@ export default function AnalyticsDashboard() {
         <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
           <h3 className="text-lg font-semibold mb-6">Total Hours Worked (Last 7 Days)</h3>
           <div className="h-80">
-            {stats?.dailyHours && stats.dailyHours.length > 0 ? (
+            {formattedDailyHours && formattedDailyHours.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stats.dailyHours} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <BarChart data={formattedDailyHours} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                   <XAxis dataKey="date" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
                   <YAxis domain={[0, 'auto']} tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
-                  <Tooltip 
+                  <Tooltip
                     cursor={{ fill: 'rgba(0,0,0,0.05)' }}
                     contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
                   />
@@ -125,7 +134,7 @@ export default function AnalyticsDashboard() {
                       <Cell key={`cell-${index}`} fill={STATUS_COLORS[entry.originalName] || STATUS_COLORS['default']} />
                     ))}
                   </Pie>
-                  <Tooltip 
+                  <Tooltip
                     contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
                   />
                   <Legend verticalAlign="bottom" height={36} iconType="circle" />

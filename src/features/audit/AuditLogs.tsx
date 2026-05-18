@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { formatDisplayTime } from '../../lib/timeManager';
+import { formatDisplayTime, DateFormats } from '../../lib/timeManager';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useTranslation } from 'react-i18next';
 import { 
@@ -206,7 +206,7 @@ const AuditLogRow: React.FC<{ log: AuditLog }> = ({ log }) => {
                         </div>
                         <div className="flex flex-col">
                             <span className="text-[10px] font-mono font-bold text-muted-foreground">#{log.id.toString().padStart(6, '0')}</span>
-                            <span className="text-xs font-medium text-foreground">{formatDisplayTime(log.created_at, user?.display_timezone, 'MMM dd, HH:mm')}</span>
+                            <span className="text-xs font-medium text-foreground">{formatDisplayTime(log.created_at, user?.display_timezone, DateFormats.AUDIT_LOG)}</span>
                         </div>
                     </div>
                 </td>
