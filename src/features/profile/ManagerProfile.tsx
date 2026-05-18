@@ -82,7 +82,7 @@ export default function ManagerProfile() {
     const formData = new FormData();
     formData.append('name', data.legal_name);
     if (data.personal_phone) formData.append('emergency_contact_phone', data.personal_phone);
-    if (data.date_of_birth) formData.append('date_of_birth', parseFromDateInput(data.date_of_birth, user?.timezone));
+    if (data.date_of_birth) formData.append('date_of_birth', parseFromDateInput(data.date_of_birth, user?.display_timezone));
     if (data.national_id) formData.append('national_id', data.national_id);
     if (data.bio) formData.append('bio', data.bio);
     if (data.display_timezone !== undefined) formData.append('display_timezone', data.display_timezone);
