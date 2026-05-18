@@ -25,11 +25,7 @@ export default function TimezoneClock() {
       const timeStr = formatDisplayTime(nowIso, user?.display_timezone, 'hh:mm:ss a');
       const dateStr = formatDisplayTime(nowIso, user?.display_timezone, 'EEEE, d MMM');
 
-      if (timeStr === '-' || dateStr === '-') {
-        setTime(new Date().toLocaleTimeString());
-      } else {
-        setTime(`${timeStr}\n${dateStr}`);
-      }
+      setTime(`${timeStr}\n${dateStr}`);
     };
 
     updateTime();
