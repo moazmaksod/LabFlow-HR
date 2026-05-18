@@ -150,7 +150,7 @@ export default function RequestManagement() {
         const hasClockedOut = !!selectedRequest.original_check_out || !!selectedRequest.requested_check_out;
         let hoursPassed = 0;
         if (selectedRequest.original_check_in) {
-            hoursPassed = (new Date(getSystemNow()).getTime() - new Date(selectedRequest.original_check_in).getTime()) / (1000 * 60 * 60);
+            hoursPassed = calculateHoursPassed(selectedRequest.original_check_in);
         }
         if (!hasClockedOut || hoursPassed < 3) {
             isFrozen = true;
