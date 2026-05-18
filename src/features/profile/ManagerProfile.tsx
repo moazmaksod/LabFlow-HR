@@ -50,7 +50,7 @@ export default function ManagerProfile() {
       reset({
         legal_name: profile.name || '',
         personal_phone: profile.emergency_contact_phone || '',
-        date_of_birth: formatForDateInput(profile.date_of_birth, user?.timezone) || '',
+        date_of_birth: formatForDateInput(profile.date_of_birth, user?.display_timezone) || '',
         national_id: profile.national_id || '',
         bio: profile.bio || '',
         display_timezone: profile.display_timezone || '',
