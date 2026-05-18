@@ -119,8 +119,8 @@ export default function AttendanceLogs() {
                       <div className="text-xs text-muted-foreground">{log.job_title || 'No Job Assigned'}</div>
                     </td>
                     <td className="px-6 py-4">{log.date}</td>
-                    <td className="px-6 py-4 font-mono">{formatDisplayTime(log.check_in, user?.display_timezone, 'HH:mm')}</td>
-                    <td className="px-6 py-4 font-mono">{formatDisplayTime(log.check_out, user?.display_timezone, 'HH:mm')}</td>
+                    <td className="px-6 py-4 font-mono">{formatTime(log.check_in)}</td>
+                    <td className="px-6 py-4 font-mono">{formatTime(log.check_out)}</td>
                     <td className="px-6 py-4 font-mono text-xs">
                       {log.breaks && log.breaks.length > 0 ? (
                         <div className="space-y-1">
