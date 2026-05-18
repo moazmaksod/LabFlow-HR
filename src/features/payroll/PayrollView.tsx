@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/axios';
 import { Download, Calendar as CalendarIcon, DollarSign, Play } from 'lucide-react';
-import { formatDisplayTime, getLocalizedMonths } from '../../lib/timeManager';
+import { formatDisplayTime, getLocalizedMonths, getLocalDateParts, DateFormats } from '../../lib/timeManager';
 import { useAuthStore } from '../../store/useAuthStore';
 
 interface PayrollRecord {
@@ -34,9 +34,9 @@ interface PayrollTransaction {
 export default function PayrollView() {
   const user = useAuthStore(state => state.user);
   const queryClient = useQueryClient();
-  const today = new Date();
-  const [selectedMonth, setSelectedMonth] = useState(today.getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState(today.getFullYear());
+  const { month: defaultMonth, year: defaultYear } = getLocalDateParts(user?.display_timezone);
+  const [selectedMonth, setSelectedMonth] = useState(defaultMonth);
+  const [selectedYear, setSelectedYear] = useState(defaultYear);
   const [selectedPayrollId, setSelectedPayrollId] = useState<number | null>(null);
 
   const { data: payrolls, isLoading } = useQuery<PayrollRecord[]>({
@@ -315,7 +315,7 @@ export default function PayrollView() {
                                             {tx.manager_notes || <span className="opacity-30">No note provided</span>}
                                           </td>
                                           <td className="px-4 py-2 text-muted-foreground font-mono">
-                                            {formatDisplayTime(tx.created_at, user?.display_timezone, 'yyyy-MM-dd HH:mm')}
+                                            {formatDisplayTime(tx.created_at, user?.display_timezone, DateFormats.PAYROLL_VIEW)}
                                           </td>
                                         </tr>
                                       );
