@@ -1,5 +1,6 @@
 import React from 'react';
 import { Clock, Copy, Trash2, CheckCircle2, Circle, Info, Plus } from 'lucide-react';
+import { formatDuration } from '../lib/timeManager';
 
 interface Shift {
   start: string;
@@ -58,12 +59,6 @@ const calculateDuration = (start: string, end: string) => {
     return (1440 - startMins) + endMins; // Crosses midnight
   }
   return endMins - startMins;
-};
-
-const formatDuration = (totalMins: number) => {
-  const hours = Math.floor(totalMins / 60);
-  const mins = totalMins % 60;
-  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
 };
 
 export const WeeklyScheduleBuilder: React.FC<WeeklyScheduleBuilderProps> = ({ schedule, onChange, onError, requiredWeeklyHours }) => {
