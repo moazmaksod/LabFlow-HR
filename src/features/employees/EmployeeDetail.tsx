@@ -140,7 +140,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
         max_overtime_hours: employee.max_overtime_hours || 0
       });
     }
-  }, [employee]);
+  }, [employee, userTimezone]);
 
   const updateMutation = useMutation({
     mutationFn: async (data: any) => {
