@@ -57,7 +57,7 @@ export default function ManagerProfile() {
       });
       setPreviewUrl(profile.profile_picture_url || '');
     }
-  }, [profile, reset, user?.timezone]);
+  }, [profile, reset, user?.display_timezone]);
 
   const updateMutation = useMutation({
     mutationFn: async (data: FormData) => {
