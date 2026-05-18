@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/axios';
+import { useAuthStore } from '../../store/useAuthStore';
+import { formatDisplayTime, getWebNow as getSystemNow } from '../../lib/timeManager';
 import { CheckCircle, XCircle, Clock, FileText, X, AlertCircle } from 'lucide-react';
 
 interface RequestLog {
@@ -21,6 +23,7 @@ interface RequestLog {
 
 export default function RequestManagement() {
   const queryClient = useQueryClient();
+  const user = useAuthStore(state => state.user);
   const [filterStatus, setFilterStatus] = useState('pending');
   const [filterEmployee, setFilterEmployee] = useState('');
   const [filterType, setFilterType] = useState('all');
@@ -64,16 +67,12 @@ export default function RequestManagement() {
 
   const formatRequestedAt = (isoString: string | null) => {
     if (!isoString) return '-';
-    return new Date(isoString).toLocaleString([], {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-    });
+    return formatDisplayTime(isoString, user?.display_timezone, 'MMM dd, HH:mm');
   };
 
   const formatTime = (isoString: string | null) => {
     if (!isoString) return '-';
-    return new Date(isoString).toLocaleString([], {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-    });
+    return formatDisplayTime(isoString, user?.display_timezone, 'MMM dd, HH:mm');
   };
 
   const filteredRequests = requests?.filter(req => {
@@ -151,7 +150,7 @@ export default function RequestManagement() {
         const hasClockedOut = !!selectedRequest.original_check_out || !!selectedRequest.requested_check_out;
         let hoursPassed = 0;
         if (selectedRequest.original_check_in) {
-            hoursPassed = (Date.now() - new Date(selectedRequest.original_check_in).getTime()) / (1000 * 60 * 60);
+            hoursPassed = (new Date(getSystemNow()).getTime() - new Date(selectedRequest.original_check_in).getTime()) / (1000 * 60 * 60);
         }
         if (!hasClockedOut || hoursPassed < 3) {
             isFrozen = true;
@@ -201,7 +200,7 @@ export default function RequestManagement() {
         const hasClockedOut = !!req.original_check_out || !!req.requested_check_out;
         let hoursPassed = 0;
         if (req.original_check_in) {
-            hoursPassed = (Date.now() - new Date(req.original_check_in).getTime()) / (1000 * 60 * 60);
+            hoursPassed = (new Date(getSystemNow()).getTime() - new Date(req.original_check_in).getTime()) / (1000 * 60 * 60);
         }
         if (!hasClockedOut || hoursPassed < 3) {
             return true;

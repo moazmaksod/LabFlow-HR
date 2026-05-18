@@ -33,10 +33,7 @@ export default function AttendanceLogs() {
     }
   });
 
-  const formatTime = (isoString: string | null) => {
-    if (!isoString) return '-';
-    return formatDisplayTime(isoString, user?.display_timezone, 'HH:mm');
-  };
+
 
   const filteredLogs = logs?.filter(log => {
     const matchesDate = filterDate ? log.date === filterDate : true;
@@ -122,14 +119,14 @@ export default function AttendanceLogs() {
                       <div className="text-xs text-muted-foreground">{log.job_title || 'No Job Assigned'}</div>
                     </td>
                     <td className="px-6 py-4">{log.date}</td>
-                    <td className="px-6 py-4 font-mono">{formatTime(log.check_in)}</td>
-                    <td className="px-6 py-4 font-mono">{formatTime(log.check_out)}</td>
+                    <td className="px-6 py-4 font-mono">{formatDisplayTime(log.check_in, user?.display_timezone, 'HH:mm')}</td>
+                    <td className="px-6 py-4 font-mono">{formatDisplayTime(log.check_out, user?.display_timezone, 'HH:mm')}</td>
                     <td className="px-6 py-4 font-mono text-xs">
                       {log.breaks && log.breaks.length > 0 ? (
                         <div className="space-y-1">
                           {log.breaks.map((b: any, idx: number) => (
                             <div key={idx} className="text-muted-foreground">
-                              {formatTime(b.start_time)} - {b.end_time ? formatTime(b.end_time) : 'Ongoing'}
+                              {formatDisplayTime(b.start_time, user?.display_timezone, 'HH:mm')} - {b.end_time ? formatDisplayTime(b.end_time, user?.display_timezone, 'HH:mm') : 'Ongoing'}
                             </div>
                           ))}
                         </div>
