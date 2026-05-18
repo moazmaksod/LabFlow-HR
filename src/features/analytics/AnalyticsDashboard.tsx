@@ -42,16 +42,16 @@ export default function AnalyticsDashboard() {
 
   const totalToday = (stats?.today.present || 0) + (stats?.today.late || 0) + (stats?.today.absent || 0);
 
-  const formattedStatusDistribution = stats?.statusDistribution?.map(item => ({
+  const formattedStatusDistribution = React.useMemo(() => stats?.statusDistribution?.map(item => ({
     ...item,
     originalName: item.name,
     name: formatStatusLabel(item.name)
-  })) || [];
+  })) || [], [stats?.statusDistribution]);
 
-  const formattedDailyHours = stats?.dailyHours?.map(item => ({
+  const formattedDailyHours = React.useMemo(() => stats?.dailyHours?.map(item => ({
     ...item,
     date: formatDisplayTime(item.date, user?.display_timezone, DateFormats.ANALYTICS_CHART)
-  })) || [];
+  })) || [], [stats?.dailyHours, user?.display_timezone]);
 
   return (
     <div className="space-y-6">
