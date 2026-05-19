@@ -55,8 +55,8 @@ export const resolveTimezone = (userPreference?: string | null): string => {
 
 export const calculateHoursBetween = (startTime: string | null, endTime?: string): number => {
     if (!startTime) return 0;
-    const end = endTime ? new Date(endTime).getTime() : new Date(getSystemNow()).getTime();
-    const start = new Date(startTime).getTime();
+    const end = endTime ? getTimestamp(endTime) : new Date(getSystemNow()).getTime();
+    const start = getTimestamp(startTime);
     const diff = end - start;
     return diff > 0 ? diff / (1000 * 60 * 60) : 0;
 };
@@ -70,7 +70,11 @@ export const formatDuration = (totalMins: number): string => {
 
 export const getTimestamp = (isoString: string): number => {
     if (!isoString) return 0;
-    return new Date(isoString).getTime();
+    const normalized = isoString.replace(' ', 'T');
+    const finalString = normalized.includes(':') && !normalized.endsWith('Z')
+        ? `${normalized}Z`
+        : normalized;
+    return new Date(finalString).getTime();
 };
 
 export const formatDisplayTime = (
@@ -125,7 +129,7 @@ export const parseFromDateInput = (dateString: string, userPreference?: string |
         return date.toISOString();
     } catch (e) {
         console.error(`Error parsing date input: ${dateString}`, e);
-        return new Date(dateString).toISOString();
+        return '';
     }
 };
 
