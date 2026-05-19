@@ -1,5 +1,5 @@
 import { useAuthStore } from '../store/useAuthStore';
-import { formatInTimeZone } from 'date-fns-tz';
+import { formatInTimeZone, toDate } from 'date-fns-tz';
 import { format } from 'date-fns';
 
 // Initialize performance anchor variables
@@ -21,19 +21,56 @@ export const getWebNow = (): string => {
     return now.toISOString();
 };
 
+export const getSystemNow = getWebNow;
+
+export enum DateFormats {
+    AUDIT_LOG = 'MMM dd, HH:mm',
+    PAYROLL_VIEW = 'yyyy-MM-dd HH:mm',
+    ANALYTICS_CHART = 'MMM dd',
+    NATIVE_DATE_INPUT = 'yyyy-MM-dd'
+}
+
+export const getDeviceTimezone = (): string => {
+    try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    } catch (e) {
+        return 'UTC';
+    }
+};
+
+export const getSupportedTimezones = (): string[] => {
+    try {
+        return Intl.supportedValuesOf('timeZone');
+    } catch (e) {
+        return [];
+    }
+};
+
 export const resolveTimezone = (userPreference?: string | null): string => {
     if (userPreference) {
         return userPreference;
     }
-    try {
-        const deviceTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        if (deviceTimezone) {
-            return deviceTimezone;
-        }
-    } catch (e) {
-        // Fallback to UTC if resolving device options fails
-    }
-    return 'UTC';
+    return getDeviceTimezone();
+};
+
+export const calculateHoursBetween = (startTime: string | null, endTime?: string): number => {
+    if (!startTime) return 0;
+    const end = endTime ? new Date(endTime).getTime() : new Date(getSystemNow()).getTime();
+    const start = new Date(startTime).getTime();
+    const diff = end - start;
+    return diff > 0 ? diff / (1000 * 60 * 60) : 0;
+};
+
+export const formatDuration = (totalMins: number): string => {
+    if (!totalMins || totalMins < 0) return '00:00';
+    const hours = Math.floor(totalMins / 60);
+    const mins = Math.floor(totalMins % 60);
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+};
+
+export const getTimestamp = (isoString: string): number => {
+    if (!isoString) return 0;
+    return new Date(isoString).getTime();
 };
 
 export const formatDisplayTime = (
@@ -64,6 +101,53 @@ export const formatDisplayTime = (
     }
 };
 
+export const formatForDateInput = (dateString: string | null, userPreference?: string | null): string => {
+    if (!dateString) return '';
+    return formatDisplayTime(dateString, userPreference, DateFormats.NATIVE_DATE_INPUT);
+};
+
+export const parseFromDateInput = (dateString: string, userPreference?: string | null): string => {
+    if (!dateString) return '';
+
+    // If the input is already a full ISO string (like from tests or preexisting data), we can parse it directly
+    if (dateString.includes('T')) {
+        return new Date(dateString).toISOString();
+    }
+    // Handle raw date strings that are already full Date string representations
+    if (dateString.includes('GMT') || dateString.includes('Time')) {
+        return new Date(dateString).toISOString();
+    }
+
+    const resolvedTimezone = resolveTimezone(userPreference);
+    try {
+        // Parse date as midnight in the resolved timezone and convert to UTC
+        const date = toDate(`${dateString}T00:00:00`, { timeZone: resolvedTimezone });
+        return date.toISOString();
+    } catch (e) {
+        console.error(`Error parsing date input: ${dateString}`, e);
+        return new Date(dateString).toISOString();
+    }
+};
+
+export const getLocalDateParts = (timezone?: string | null): { month: number; year: number } => {
+    const resolvedTimezone = resolveTimezone(timezone);
+    const now = new Date(getSystemNow());
+
+    // Use formatInTimeZone to safely extract the parts for the correct timezone
+    try {
+        const monthStr = formatInTimeZone(now, resolvedTimezone, 'M');
+        const yearStr = formatInTimeZone(now, resolvedTimezone, 'yyyy');
+        return {
+            month: parseInt(monthStr, 10),
+            year: parseInt(yearStr, 10)
+        };
+    } catch (e) {
+        return {
+            month: now.getUTCMonth() + 1,
+            year: now.getUTCFullYear()
+        };
+    }
+};
 
 let cachedLocalizedMonths: { value: number; label: string }[] | null = null;
 
