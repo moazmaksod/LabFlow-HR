@@ -147,6 +147,35 @@ export const parseFromDateInput = (dateString: string, userPreference?: string |
     }
 };
 
+export const formatTimeOnlyToLocal = (utcTimeStr: string, userPreference?: string | null): string => {
+    if (!utcTimeStr) return '';
+    try {
+        const resolvedTimezone = resolveTimezone(userPreference);
+        // Use a recent anchor date to ensure modern timezone rules apply.
+        // Using epoch 0 (1970) could use obsolete timezone offsets.
+        const todayStr = new Date().toISOString().split('T')[0];
+        const date = new Date(`${todayStr}T${utcTimeStr}:00Z`);
+        return formatInTimeZone(date, resolvedTimezone, 'HH:mm');
+    } catch (e) {
+        console.error(`Error formatting time only: ${utcTimeStr}`, e);
+        return utcTimeStr;
+    }
+};
+
+export const parseTimeOnlyToUTC = (localTimeStr: string, userPreference?: string | null): string => {
+    if (!localTimeStr) return '';
+    try {
+        const resolvedTimezone = resolveTimezone(userPreference);
+        const now = new Date();
+        const localDateStr = formatInTimeZone(now, resolvedTimezone, 'yyyy-MM-dd');
+        const date = toDate(`${localDateStr}T${localTimeStr}:00`, { timeZone: resolvedTimezone });
+        return formatInTimeZone(date, 'UTC', 'HH:mm');
+    } catch (e) {
+        console.error(`Error parsing time only: ${localTimeStr}`, e);
+        return localTimeStr;
+    }
+};
+
 export const getLocalDateParts = (timezone?: string | null): { month: number; year: number } => {
     const resolvedTimezone = resolveTimezone(timezone);
     const now = new Date(getSystemNow());

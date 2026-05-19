@@ -9,18 +9,6 @@ import settingsRoutes from './routes/settingsRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
 import logger from './utils/logger.js';
 
-// Configuration Fail-Fast Validation
-const tz = process.env.APP_TIMEZONE;
-if (!tz) {
-    logger.error('FATAL ERROR: APP_TIMEZONE environment variable is missing.');
-    process.exit(1);
-}
-try {
-    Intl.DateTimeFormat(undefined, { timeZone: tz });
-} catch (e) {
-    logger.error(`FATAL ERROR: Invalid APP_TIMEZONE '${tz}'. Must be a valid IANA timezone.`);
-    process.exit(1);
-}
 
 const app = express();
 
@@ -61,7 +49,7 @@ const evaluationInterval = setInterval(() => {
         `).all() as any[];
 
         for (const user of activeUsers) {
-            evaluateUserAttendance(user.user_id, process.env.APP_TIMEZONE!);
+            evaluateUserAttendance(user.user_id);
         }
     } catch (error) {
         logger.error("Error evaluating real-time attendance:", error);

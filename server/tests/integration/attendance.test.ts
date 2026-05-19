@@ -170,7 +170,7 @@ describe('Attendance API - Schedule Driven Architecture', () => {
 
     // Evaluate attendance to trigger auto-split logic for overtime scenarios if applicable
     const { evaluateUserAttendance } = await import('../../services/attendanceEvaluationService.js');
-    evaluateUserAttendance(Number(employeeId2), process.env.APP_TIMEZONE!);
+    evaluateUserAttendance(Number(employeeId2));
 
     const updatedReqs = db.prepare(`SELECT * FROM requests WHERE type = 'overtime_approval' AND user_id = ?`).all(employeeId2) as any[];
 

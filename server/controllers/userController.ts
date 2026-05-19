@@ -1,6 +1,5 @@
 import { evaluateUserAttendance } from "../services/attendanceEvaluationService.js";
 import logger from '../utils/logger.js';
-import { getDateStringInTimezone } from '../utils/timeManager.js';
 
 import { Request, Response } from 'express';
 import db from '../db/index.js';
@@ -13,7 +12,7 @@ import { generateShiftInstances } from '../services/shiftInstanceService.js';
 
 export const getUsers = (req: Request, res: Response): void => {
     try {
-        const timezone = process.env.APP_TIMEZONE!;
+
         const currentServerTime = new Date().toISOString();
 
         // Get users with their profile and job info, excluding managers
@@ -151,7 +150,7 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
     logger.debug('[getProfile] Entry: userId=', req.user?.id);
     try {
         const userId = req.user!.id;
-        evaluateUserAttendance(userId, process.env.APP_TIMEZONE!);
+        evaluateUserAttendance(userId);
 
         const user = db.prepare(`
             SELECT
@@ -177,7 +176,7 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
             return;
         }
 
-        const timezone = process.env.APP_TIMEZONE!;
+        const timezone = 'UTC';
         const currentServerTime = new Date().toISOString();
 
         const currentShiftRecord = db.prepare(`
@@ -191,7 +190,7 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
 
         // Fetch all today shifts to calculate TotalDailyMinutes for break limits.
         // For night shifts, if they are currently in a shift, use that shift's logical date
-        let logicalDateToUse = getDateStringInTimezone(currentServerTime, timezone);
+        let logicalDateToUse = currentServerTime.split('T')[0];
         if (currentShiftRecord) {
             logger.debug('[getProfile] currentShiftRecord Branch Entry');
             logicalDateToUse = currentShiftRecord.logical_date;
@@ -360,7 +359,7 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
 export const getUserById = (req: Request, res: Response): void => {
     try {
         const { id } = req.params;
-        evaluateUserAttendance(Number(id), process.env.APP_TIMEZONE!);
+        evaluateUserAttendance(Number(id));
 
         const user = db.prepare(`
             SELECT
@@ -524,7 +523,7 @@ export const updateUserProfile = (req: Request, res: Response): void => {
         if (body.weekly_schedule) {
             try {
                 // Generate new future shifts based on the updated schedule
-                generateShiftInstances(Number(id), body.weekly_schedule, process.env.APP_TIMEZONE!);
+                generateShiftInstances(Number(id), body.weekly_schedule);
             } catch (err) {
                 logger.error(`Failed to regenerate shifts for user ${id} after profile update:`, err);
             }

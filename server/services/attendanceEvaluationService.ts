@@ -2,8 +2,8 @@ import db from '../db/index.js';
 import logger from '../utils/logger.js';
 import { getAppNow } from "../utils/timeManager.js";
 
-export const evaluateUserAttendance = (userId: number, timezone: string): void => {
-    logger.debug('[evaluateUserAttendance] Entry: userId=', userId, 'timezone=', timezone);
+export const evaluateUserAttendance = (userId: number): void => {
+    logger.debug('[evaluateUserAttendance] Entry: userId=', userId);
     try {
         const evaluate = db.transaction((uid: number) => {
             logger.debug('[evaluateUserAttendance] Transaction Entry: uid=', uid);

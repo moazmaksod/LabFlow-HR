@@ -9,7 +9,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { HrEmployeeDetailSchema } from '../../../shared/validations';
 import { useAuthStore } from '../../store/useAuthStore';
-import { formatForDateInput, parseFromDateInput, formatDisplayTime } from '../../lib/timeManager';
+import { formatForDateInput, parseFromDateInput, formatDisplayTime, formatTimeOnlyToLocal, parseTimeOnlyToUTC } from '../../lib/timeManager';
 
 interface EmployeeDetailProps {
   userId: number;
@@ -108,10 +108,16 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
       DAYS.forEach(day => {
         const daySchedule = (schedule as any)[day];
         if (Array.isArray(daySchedule)) {
-          fullSchedule[day] = daySchedule;
+          fullSchedule[day] = daySchedule.map((shift: any) => ({
+            start: formatTimeOnlyToLocal(shift.start, userTimezone),
+            end: formatTimeOnlyToLocal(shift.end, userTimezone)
+          }));
         } else if (daySchedule && !daySchedule.isOff) {
           // Migrate old format
-          fullSchedule[day] = [{ start: daySchedule.start || '09:00', end: daySchedule.end || '17:00' }];
+          fullSchedule[day] = [{ 
+            start: formatTimeOnlyToLocal(daySchedule.start || '09:00', userTimezone), 
+            end: formatTimeOnlyToLocal(daySchedule.end || '17:00', userTimezone) 
+          }];
         } else {
           fullSchedule[day] = [];
         }
@@ -181,6 +187,16 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
     }
     if (finalData.hire_date) {
       finalData.hire_date = parseFromDateInput(String(finalData.hire_date), userTimezone);
+    }
+    if (finalData.weekly_schedule) {
+      const utcSchedule: WeeklySchedule = {};
+      Object.keys(finalData.weekly_schedule).forEach(day => {
+        utcSchedule[day] = finalData.weekly_schedule[day].map((shift: Shift) => ({
+          start: parseTimeOnlyToUTC(shift.start, userTimezone),
+          end: parseTimeOnlyToUTC(shift.end, userTimezone)
+        }));
+      });
+      finalData.weekly_schedule = utcSchedule;
     }
     updateMutation.mutate(finalData, {
       onSettled: () => setIsSaving(false)
