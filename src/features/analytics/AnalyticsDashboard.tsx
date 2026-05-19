@@ -36,12 +36,7 @@ export default function AnalyticsDashboard() {
     }
   });
 
-  if (isLoading) {
-    return <div className="p-8 text-center text-muted-foreground">Loading analytics...</div>;
-  }
-
-  const totalToday = (stats?.today.present || 0) + (stats?.today.late || 0) + (stats?.today.absent || 0);
-
+  // 1. ALL HOOKS MUST GO HERE (Above the early return)
   const formattedStatusDistribution = React.useMemo(() => stats?.statusDistribution?.map(item => ({
     ...item,
     originalName: item.name,
@@ -52,6 +47,14 @@ export default function AnalyticsDashboard() {
     ...item,
     date: formatDisplayTime(item.date, user?.display_timezone, DateFormats.ANALYTICS_CHART)
   })) || [], [stats?.dailyHours, user?.display_timezone]);
+
+  // 2. NOW IT IS SAFE TO RETURN EARLY
+  if (isLoading) {
+    return <div className="p-8 text-center text-muted-foreground">Loading analytics...</div>;
+  }
+
+  // Calculate this after loading check (doesn't have to be a hook)
+  const totalToday = (stats?.today.present || 0) + (stats?.today.late || 0) + (stats?.today.absent || 0);
 
   return (
     <div className="space-y-6">
