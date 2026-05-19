@@ -46,6 +46,14 @@ export const getSupportedTimezones = (): string[] => {
     }
 };
 
+export const is12HourSystem = (): boolean => {
+    try {
+        return Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions().hour12 || false;
+    } catch (e) {
+        return false; // Fallback to 24h
+    }
+};
+
 export const resolveTimezone = (userPreference?: string | null): string => {
     if (userPreference) {
         return userPreference;
@@ -86,6 +94,12 @@ export const formatDisplayTime = (
 
     const resolvedTimezone = resolveTimezone(userPreference);
 
+    // Dynamically respect system 12h/24h preference
+    let finalFormatString = formatString;
+    if (finalFormatString.includes('HH:mm')) {
+        finalFormatString = finalFormatString.replace('HH:mm', is12HourSystem() ? 'hh:mm a' : 'HH:mm');
+    }
+
     try {
         let dateToFormat: Date;
         const hasTimezone = dateString.includes('Z') || /[+-]\d{2}:?\d{2}$/.test(dateString.trim());
@@ -98,7 +112,7 @@ export const formatDisplayTime = (
             dateToFormat = new Date(finalString);
         }
 
-        return formatInTimeZone(dateToFormat, resolvedTimezone, formatString);
+        return formatInTimeZone(dateToFormat, resolvedTimezone, finalFormatString);
     } catch (e) {
         console.error(`Error formatting date string: ${dateString}`, e);
         return '-';
