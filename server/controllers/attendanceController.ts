@@ -3,7 +3,7 @@ import logger from '../utils/logger.js';
 
 import { Request, Response } from 'express';
 import db from '../db/index.js';
-import { getDateStringInTimezone, getAppNow } from '../utils/timeManager.js';
+import { getAppNow } from '../utils/timeManager.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
 import { logAudit } from '../services/auditService.js';
 import { getSettingsCache, setSettingsCache } from '../utils/cache.js';
@@ -24,7 +24,7 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
     return R * c;
 };
 
-function processAttendanceEvent(userId: number, type: string, timestamp: string, lat: number, lng: number, userProfile: any, timezone: string, schedule: any) {
+function processAttendanceEvent(userId: number, type: string, timestamp: string, lat: number, lng: number, userProfile: any, schedule: any) {
     if (type === 'check_in') {
         let settings = getSettingsCache();
         if (!settings) {
@@ -42,7 +42,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             LIMIT 1
         `).get(userId, timestamp, gracePeriod) as any;
 
-        const logicalDate = shiftInstance ? shiftInstance.logical_date : getDateStringInTimezone(timestamp, timezone);
+        const logicalDate = shiftInstance ? shiftInstance.logical_date : timestamp.split('T')[0];
         const scheduledTime = shiftInstance ? new Date(shiftInstance.start_time) : null;
 
         // Generate an unscheduled ID if there's no shift instance
@@ -232,7 +232,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
 
         const shiftStart = shiftInstance ? new Date(shiftInstance.start_time) : null;
         const shiftEnd = shiftInstance ? new Date(shiftInstance.end_time) : null;
-        const logicalDate = shiftInstance ? shiftInstance.logical_date : getDateStringInTimezone(timestamp, timezone);
+        const logicalDate = shiftInstance ? shiftInstance.logical_date : timestamp.split('T')[0];
 
         let settings = getSettingsCache();
         if (!settings) {
@@ -441,7 +441,7 @@ function handleClockAction(userId: number, type: string, lat: number, lng: numbe
         }
     }
 
-    const timezone = process.env.APP_TIMEZONE!;
+
 
     let schedule = null;
     if (userProfile.weekly_schedule) {
@@ -452,7 +452,7 @@ function handleClockAction(userId: number, type: string, lat: number, lng: numbe
         }
     }
 
-    return processAttendanceEvent(userId, type, timestamp, lat, lng, userProfile, timezone, schedule);
+    return processAttendanceEvent(userId, type, timestamp, lat, lng, userProfile, schedule);
 }
 
 export const clockAttendance = (req: AuthRequest, res: Response): void => {
@@ -546,7 +546,7 @@ export const syncOfflineLogs = (req: AuthRequest, res: Response): void => {
 export const getMyLogs = (req: AuthRequest, res: Response): void => {
     try {
         const userId = req.user!.id;
-        evaluateUserAttendance(userId, process.env.APP_TIMEZONE!);
+        evaluateUserAttendance(userId);
         const logs = db.prepare(`
             SELECT * FROM attendance
             WHERE user_id = ?
@@ -605,7 +605,7 @@ export const getAttendanceLogs = (req: Request, res: Response): void => {
         `).all() as any[];
 
         for (const u of activeUsers) {
-            evaluateUserAttendance(u.user_id, process.env.APP_TIMEZONE!);
+            evaluateUserAttendance(u.user_id);
         }
 
         const logs = db.prepare(`
@@ -672,8 +672,7 @@ export const getAttendanceStats = (req: Request, res: Response): void => {
             LIMIT 7
         `).all();
 
-        const timezone = process.env.APP_TIMEZONE!;
-        const todayDateStr = getDateStringInTimezone(getAppNow(), timezone);
+        const todayDateStr = getAppNow().split('T')[0];
 
         const todayStats = db.prepare(`
             SELECT

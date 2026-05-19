@@ -4,6 +4,7 @@ import { generateShiftInstances } from '../../services/shiftInstanceService.js';
 let testUserId: number | bigint;
 
 beforeAll(() => {
+    process.env.APP_TIMEZONE = 'UTC';
     initDb();
 
     // Insert a dummy user and job
@@ -30,7 +31,7 @@ describe('Shift Generation Service', () => {
         });
 
         // UTC testing
-        generateShiftInstances(Number(testUserId), schedule, 'UTC');
+        generateShiftInstances(Number(testUserId), schedule);
 
         const instances = db.prepare('SELECT * FROM shift_instances WHERE user_id = ? ORDER BY start_time ASC').all(testUserId) as any[];
 
@@ -52,7 +53,7 @@ describe('Shift Generation Service', () => {
             wednesday: [{ start: "17:00", end: "05:00" }] // 5 PM to 5 AM next day
         });
 
-        generateShiftInstances(Number(testUserId), schedule, 'America/New_York');
+        generateShiftInstances(Number(testUserId), schedule);
 
         const instances = db.prepare('SELECT * FROM shift_instances WHERE user_id = ? ORDER BY start_time ASC').all(testUserId) as any[];
 

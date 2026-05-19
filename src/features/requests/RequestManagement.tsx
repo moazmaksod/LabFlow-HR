@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/axios';
 import { useAuthStore } from '../../store/useAuthStore';
-import { formatDisplayTime, getWebNow as getSystemNow } from '../../lib/timeManager';
+import { formatDisplayTime, getWebNow as getSystemNow, calculateHoursBetween, getTimestamp } from '../../lib/timeManager';
 import { CheckCircle, XCircle, Clock, FileText, X, AlertCircle } from 'lucide-react';
 
 interface RequestLog {
@@ -85,18 +85,16 @@ export default function RequestManagement() {
       if (typeStr !== filterType) return false;
     }
 
-    const reqDate = new Date(req.created_at).getTime();
+    const reqDate = getTimestamp(req.created_at);
 
     if (filterStartDate) {
-      const start = new Date(filterStartDate);
-      start.setHours(0, 0, 0, 0);
-      if (reqDate < start.getTime()) return false;
+      const startTimestamp = getTimestamp(filterStartDate);
+      if (reqDate < startTimestamp) return false;
     }
 
     if (filterEndDate) {
-      const end = new Date(filterEndDate);
-      end.setHours(23, 59, 59, 999);
-      if (reqDate > end.getTime()) return false;
+      const endTimestamp = getTimestamp(filterEndDate) + (24 * 60 * 60 * 1000) - 1;
+      if (reqDate > endTimestamp) return false;
     }
 
     return true;
@@ -150,7 +148,7 @@ export default function RequestManagement() {
         const hasClockedOut = !!selectedRequest.original_check_out || !!selectedRequest.requested_check_out;
         let hoursPassed = 0;
         if (selectedRequest.original_check_in) {
-            hoursPassed = calculateHoursPassed(selectedRequest.original_check_in);
+            hoursPassed = calculateHoursBetween(selectedRequest.original_check_in);
         }
         if (!hasClockedOut || hoursPassed < 3) {
             isFrozen = true;
@@ -200,7 +198,7 @@ export default function RequestManagement() {
         const hasClockedOut = !!req.original_check_out || !!req.requested_check_out;
         let hoursPassed = 0;
         if (req.original_check_in) {
-            hoursPassed = calculateHoursPassed(req.original_check_in);
+            hoursPassed = calculateHoursBetween(req.original_check_in);
         }
         if (!hasClockedOut || hoursPassed < 3) {
             return true;

@@ -6,8 +6,7 @@ const router = Router();
 
 
 router.get('/server-time', (req, res) => {
-    const timezone = process.env.APP_TIMEZONE!;
-    res.json({ serverTime: new Date().toISOString(), timezone });
+    res.json({ serverTime: new Date().toISOString(), timezone: 'UTC' });
 });
 
 router.use(authenticate);

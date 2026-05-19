@@ -2,7 +2,7 @@ import db from '../db/index.js';
 import logger from '../utils/logger.js';
 import { getAppNow } from "../utils/timeManager.js";
 
-export function generateShiftInstances(userId: number, weeklyScheduleRaw: any, timezone: string): void {
+export function generateShiftInstances(userId: number, weeklyScheduleRaw: any): void {
     logger.debug(`generateShiftInstances triggered for user ${userId}`);
 
     if (!weeklyScheduleRaw) {
@@ -24,37 +24,10 @@ export function generateShiftInstances(userId: number, weeklyScheduleRaw: any, t
         return;
     }
 
-    const formatter = new Intl.DateTimeFormat('en-US', {
-        timeZone: timezone,
-        year: 'numeric', month: '2-digit', day: '2-digit',
-        hour: '2-digit', minute: '2-digit', second: '2-digit',
-        hour12: false
-    });
-
-    const getLocalTimeUTC = (date: Date) => {
-        const parts = formatter.formatToParts(date);
-        const getPart = (type: string) => parts.find(p => p.type === type)?.value || '00';
-        return new Date(Date.UTC(
-            parseInt(getPart('year')), parseInt(getPart('month')) - 1, parseInt(getPart('day')),
-            parseInt(getPart('hour')), parseInt(getPart('minute')), parseInt(getPart('second'))
-        ));
-    };
-
-    const fromLocalToUTC = (localDate: Date) => {
-        let guessUTC = new Date(Date.UTC(
-            localDate.getUTCFullYear(), localDate.getUTCMonth(), localDate.getUTCDate(),
-            localDate.getUTCHours(), localDate.getUTCMinutes(), localDate.getUTCSeconds()
-        ));
-        for (let i = 0; i < 4; i++) {
-            const gLocal = getLocalTimeUTC(guessUTC);
-            const diff = localDate.getTime() - gLocal.getTime();
-            guessUTC.setTime(guessUTC.getTime() + diff);
-        }
-        return guessUTC;
-    };
-
+    // Since the frontend now explicitly converts shift times to UTC before saving,
+    // we evaluate logical dates and shift times directly in UTC.
     const now = new Date(getAppNow());
-    const localNow = getLocalTimeUTC(now);
+    const localNow = new Date(now.getTime()); // we just use UTC now as the anchor
 
     try {
         const generateTransaction = db.transaction(() => {
@@ -84,16 +57,13 @@ export function generateShiftInstances(userId: number, weeklyScheduleRaw: any, t
                         const [startH, startM] = shift.start.split(':').map(Number);
                         const [endH, endM] = shift.end.split(':').map(Number);
 
-                        const shiftStartLocal = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), startH, startM, 0));
-                        const shiftEndLocal = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), endH, endM, 0));
+                        const shiftStartUTC = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), startH, startM, 0));
+                        const shiftEndUTC = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), endH, endM, 0));
 
                         // Midnight crossing fix
                         if (endH < startH || (endH === startH && endM < startM)) {
-                            shiftEndLocal.setUTCDate(shiftEndLocal.getUTCDate() + 1);
+                            shiftEndUTC.setUTCDate(shiftEndUTC.getUTCDate() + 1);
                         }
-
-                        const shiftStartUTC = fromLocalToUTC(shiftStartLocal);
-                        const shiftEndUTC = fromLocalToUTC(shiftEndLocal);
 
                         // CRITICAL LOGICAL FIX: Check if the shift ENDS in the future, not just starts.
                         if (shiftEndUTC > now) {
