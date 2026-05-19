@@ -32,7 +32,7 @@ export default function TimezoneClock() {
     const interval = setInterval(updateTime, 1000);
 
     return () => clearInterval(interval);
-  }, [user?.display_timezone, settings?.company_timezone, serverTimeOffset]);
+  }, [user?.display_timezone, serverTimeOffset]);
 
   if (!time) return null;
 

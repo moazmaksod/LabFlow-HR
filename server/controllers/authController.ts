@@ -160,8 +160,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         res.json({
             message: 'Login successful',
             token,
-            user: { id: user.id, name: user.name, email: user.email, role: user.role },
-            company_timezone: 'UTC'
+            user: { id: user.id, name: user.name, email: user.email, role: user.role }
         });
     } catch (error) {
         logger.error('Login error:', error);

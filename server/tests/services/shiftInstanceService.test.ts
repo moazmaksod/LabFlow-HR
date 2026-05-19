@@ -4,7 +4,6 @@ import { generateShiftInstances } from '../../services/shiftInstanceService.js';
 let testUserId: number | bigint;
 
 beforeAll(() => {
-    process.env.APP_TIMEZONE = 'UTC';
     initDb();
 
     // Insert a dummy user and job

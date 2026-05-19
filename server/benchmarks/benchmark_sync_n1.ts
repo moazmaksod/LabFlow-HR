@@ -10,8 +10,8 @@ function setupMockData() {
     db.prepare('DELETE FROM attendance').run();
 
     db.prepare(`
-        INSERT INTO settings (id, company_name, company_timezone, late_grace_period, geofence_toggle)
-        VALUES (1, 'Bench Co', 'UTC', 15, 0)
+        INSERT INTO settings (id, company_name, late_grace_period, geofence_toggle)
+        VALUES (1, 'Bench Co', 15, 0)
     `).run();
 
     const insertUser = db.prepare(`

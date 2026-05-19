@@ -1,17 +1,14 @@
-process.env.APP_TIMEZONE = "America/New_York";
 import request from 'supertest';
 import db, { initDb } from '../../db/index.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
-process.env.APP_TIMEZONE = 'America/New_York';
 import app from '../../app.js';
 
 let employeeToken: string;
 let employeeId: number | bigint;
 
 beforeAll(async () => {
-  process.env.APP_TIMEZONE = 'America/New_York';
   initDb();
 
   db.prepare(`UPDATE settings SET office_lat = 37.7749, office_lng = -122.4194, geofence_radius = 50, late_grace_period = 15 WHERE id = 1`).run();

@@ -21,8 +21,7 @@ export const getSettings = (req: Request, res: Response): void => {
             return;
         }
 
-        // Attach environment-driven timezone to the settings payload
-        settings.company_timezone = 'UTC';
+
 
         res.json(settings);
     } catch (error) {
@@ -121,8 +120,7 @@ export const updateSettings = (req: AuthRequest, res: Response): void => {
             const updatedSettings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
             logAudit('settings', 1, 'UPDATE', req.user!.id, oldSettings, updatedSettings);
 
-            // Re-inject environment-driven timezone
-            updatedSettings.company_timezone = 'UTC';
+
 
             return updatedSettings;
         });

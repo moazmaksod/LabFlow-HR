@@ -7,7 +7,7 @@ export const getAppNow = (): string => {
 export const parseAndFormat = (dateString: string | null, timezone?: string): string => {
     if (!dateString) return '-';
 
-    const tz = timezone || process.env.APP_TIMEZONE || 'UTC';
+    const tz = timezone || 'UTC';
 
     try {
         let dateToFormat: Date;

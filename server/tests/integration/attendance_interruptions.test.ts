@@ -1,11 +1,9 @@
-process.env.APP_TIMEZONE = "America/New_York";
 import request from 'supertest';
 import express from 'express';
 import db from '../../db/index.js';
 import { schema } from '../../db/schema.js';
 import jwt from 'jsonwebtoken';
 
-process.env.APP_TIMEZONE = 'UTC';
 import attendanceRoutes from '../../routes/attendanceRoutes.js';
 
 const app = express();
@@ -64,7 +62,6 @@ describe('Attendance Interruptions API', () => {
         );
 
         // Create settings
-        process.env.APP_TIMEZONE = 'UTC';
         db.prepare(`UPDATE settings SET office_lat = 0, office_lng = 0, geofence_radius = 1000000 WHERE id = 1`).run();
 
         employeeToken = jwt.sign({ id: employeeId, role: 'employee' }, JWT_SECRET);
