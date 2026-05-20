@@ -3,7 +3,7 @@ import logger from '../utils/logger.js';
 
 import { Request, Response } from 'express';
 import db from '../db/index.js';
-import { getAppNow } from '../utils/timeManager.js';
+import { getAppNow, getDifferenceInMinutes } from '../utils/timeManager.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
 import { logAudit } from '../services/auditService.js';
 import { getSettingsCache, setSettingsCache } from '../utils/cache.js';
@@ -147,21 +147,23 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             status = 'unscheduled';
             isUnscheduled = true;
         } else {
-            const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
+            const isAfterStart = clockInTime > scheduledTime;
+            const diffMinutes = isAfterStart 
+                ? getDifferenceInMinutes(scheduledTime, clockInTime)
+                : getDifferenceInMinutes(clockInTime, scheduledTime);
 
-            if (diffMinutes > gracePeriod) {
-                // دخول متأخر بعد فترة السماح
-                status = 'late_in';
-            } else if (diffMinutes < -gracePeriod) {
-                // دخول مبكر جداً (قبل فترة السماح) -> يعتبر Unscheduled
-                status = 'unscheduled';
-                isUnscheduled = true;
-                shiftId = `unscheduled_${logicalDate.replace(/-/g, '')}_${clockInTime.getTime()}`;
-            } else if (diffMinutes < 0 && diffMinutes >= -gracePeriod) {
-                // THE FIX: دخول مبكر ضمن فترة السماح.
-                // الحالة تبقى 'on_time'، ولن نولد له Unscheduled ID، ولن نولد له Overtime request.
-                // سيعتبر كأنه بدأ الشفت في موعده بالضبط.
-                // otMinutes ستبقى 0، ولن يتم إدخال طلب أوفر تايم.
+            if (isAfterStart) {
+                if (diffMinutes > gracePeriod) {
+                    // دخول متأخر بعد فترة السماح
+                    status = 'late_in';
+                }
+            } else {
+                if (diffMinutes > gracePeriod) {
+                    // دخول مبكر جداً (قبل فترة السماح) -> يعتبر Unscheduled
+                    status = 'unscheduled';
+                    isUnscheduled = true;
+                    shiftId = `unscheduled_${logicalDate.replace(/-/g, '')}_${clockInTime.getTime()}`;
+                }
             }
         }
 
@@ -172,6 +174,20 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             `);
             const info = insert.run(userId, timestamp, logicalDate, lat, lng, status, shiftId);
             const newId = info.lastInsertRowid;
+
+            if (status === 'late_in') {
+                const lateMinutes = getDifferenceInMinutes(scheduledTime, clockInTime);
+                db.prepare(`
+                    INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
+                    VALUES (?, 'late_in_approval', ?, ?, ?, ?, 'pending')
+                `).run(
+                    userId,
+                    newId,
+                    newId,
+                    `Late check-in by ${lateMinutes} minutes.`,
+                    JSON.stringify({ late_in_minutes: lateMinutes, missing_minutes: lateMinutes })
+                );
+            }
 
             if (otMinutes > 0 && !isUnscheduled) {
                 const maxOtMinutes = (userProfile.max_overtime_hours || 0) * 60;
@@ -253,7 +269,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                 `).run(timestamp, lat, lng, activeSession.id);
                 updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id);
 
-                const otMins = Math.floor((checkOutTime.getTime() - checkInTime.getTime()) / (1000 * 60));
+                const otMins = getDifferenceInMinutes(checkInTime, checkOutTime);
                 if (otMins > 0) {
                     db.prepare(`
                         INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
@@ -279,7 +295,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                 `).run(timestamp, lat, lng, activeSession.id);
                 updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id);
 
-                const otMins = Math.floor((checkOutTime.getTime() - checkInTime.getTime()) / (1000 * 60));
+                const otMins = getDifferenceInMinutes(checkInTime, checkOutTime);
                 if (otMins > 0) {
                     db.prepare(`
                         INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
@@ -311,24 +327,15 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
 
             let officialStatus = activeSession.status;
             if (officialStatus === 'unscheduled') {
-                const diffMinutes = (officialSegmentStart.getTime() - shiftStart.getTime()) / (1000 * 60);
+                const diffMinutes = getDifferenceInMinutes(shiftStart, officialSegmentStart);
                 officialStatus = diffMinutes > gracePeriod ? 'late_in' : 'on_time';
             }
 
-            const outDiffMinutes = (checkOutTime.getTime() - shiftEnd.getTime()) / (1000 * 60);
-            if (outDiffMinutes < -gracePeriod) {
-                officialStatus = officialStatus === 'on_time' ? 'early_out' : officialStatus;
-                const earlyMinutes = Math.floor(Math.abs(outDiffMinutes));
-                db.prepare(`
-                    INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
-                    VALUES (?, 'early_leave_approval', ?, ?, ?, ?, 'pending')
-                 `).run(
-                    userId,
-                    activeSession.id,
-                    activeSession.id,
-                    `System detected early leave by ${earlyMinutes} minutes.`,
-                    JSON.stringify({ early_leave_minutes: earlyMinutes, missing_minutes: earlyMinutes })
-                );
+            if (checkOutTime < shiftEnd) {
+                const outDiffMinutes = getDifferenceInMinutes(checkOutTime, shiftEnd);
+                if (outDiffMinutes > gracePeriod) {
+                    officialStatus = officialStatus === 'on_time' ? 'early_out' : officialStatus;
+                }
             }
 
             db.prepare(`
@@ -341,7 +348,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
 
             // Insert Early Segment
             if (earlySegmentStart && earlySegmentEnd) {
-                const earlyMins = Math.floor((earlySegmentEnd.getTime() - earlySegmentStart.getTime()) / 60000);
+                const earlyMins = getDifferenceInMinutes(earlySegmentStart, earlySegmentEnd);
                 if (earlyMins > 0) {
                     const earlyShiftId = `unscheduled_${logicalDate.replace(/-/g, '')}_${earlySegmentStart.getTime()}`;
                     const insertEarly = db.prepare(`
@@ -359,7 +366,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
 
             // Insert Late Segment
             if (lateSegmentStart && lateSegmentEnd) {
-                const lateMins = Math.floor((lateSegmentEnd.getTime() - lateSegmentStart.getTime()) / 60000);
+                const lateMins = getDifferenceInMinutes(lateSegmentStart, lateSegmentEnd);
                 if (lateMins > 0) {
                     const lateShiftId = `unscheduled_${logicalDate.replace(/-/g, '')}_${lateSegmentStart.getTime()}`;
                     const insertLate = db.prepare(`
@@ -767,9 +774,7 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
         if (activeShift && activeShift.logical_date) {
             const todayShifts = db.prepare('SELECT start_time, end_time FROM shift_instances WHERE user_id = ? AND logical_date = ? AND status != \'Cancelled\'').all(userId, activeShift.logical_date) as any[];
             todayShifts.forEach(shift => {
-                const start = new Date(shift.start_time).getTime();
-                const end = new Date(shift.end_time).getTime();
-                totalDailyMinutes += (end - start) / 60000;
+                totalDailyMinutes += getDifferenceInMinutes(shift.start_time, shift.end_time);
             });
         }
 
@@ -788,9 +793,7 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
         `).all(userId, activeAttendance.date) as any[];
 
         todayInterruptions.forEach(intr => {
-            const start = new Date(intr.start_time).getTime();
-            const end = intr.end_time ? new Date(intr.end_time).getTime() : new Date(timestamp).getTime();
-            consumedBreakMinutes += (end - start) / 60000;
+            consumedBreakMinutes += getDifferenceInMinutes(intr.start_time, intr.end_time || timestamp);
         });
 
         const hasBreakBalance = (autoApprovedLimit - consumedBreakMinutes) > 0;
@@ -814,15 +817,8 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
             const interruptionId = info.lastInsertRowid;
 
             // If no break balance, create a request
-            if (!hasBreakBalance) {
-                logger.debug('[stepAway] !hasBreakBalance Branch Entry. Creating request.');
-                const reqInsert = db.prepare(`
-                    INSERT INTO requests (user_id, attendance_id, type, reference_id, reason, status)
-                    VALUES (?, ?, 'permission_to_leave', ?, 'Step away with 0 break balance', 'pending')
-                `).run(userId, activeAttendance.id, interruptionId);
-                const newReq = db.prepare('SELECT * FROM requests WHERE id = ?').get(reqInsert.lastInsertRowid);
-                logAudit('requests', Number(reqInsert.lastInsertRowid), 'CREATE', userId, null, newReq);
-            }
+            // If no break balance, the request is not created here.
+            // It will be created in resumeWork once the duration is finalized.
 
             const updatedAttendance = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeAttendance.id);
             logAudit('attendance', activeAttendance.id, 'UPDATE', userId, oldAttendance, updatedAttendance);
@@ -898,6 +894,16 @@ export const resumeWork = (req: AuthRequest, res: Response): void => {
 
             // Update attendance status
             db.prepare('UPDATE attendance SET current_status = ? WHERE id = ?').run('working', activeAttendance.id);
+
+            // If no break balance (status was pending_manager), create the request now that it is finalized
+            if (activeInterruption.status === 'pending_manager') {
+                const reqInsert = db.prepare(`
+                    INSERT INTO requests (user_id, attendance_id, type, reference_id, reason, status)
+                    VALUES (?, ?, 'permission_to_leave', ?, 'Step away with 0 break balance', 'pending')
+                `).run(userId, activeAttendance.id, activeInterruption.id);
+                const newReq = db.prepare('SELECT * FROM requests WHERE id = ?').get(reqInsert.lastInsertRowid);
+                logAudit('requests', Number(reqInsert.lastInsertRowid), 'CREATE', userId, null, newReq);
+            }
 
             const updatedInterruption = db.prepare('SELECT * FROM shift_interruptions WHERE id = ?').get(activeInterruption.id);
             logAudit('shift_interruptions', activeInterruption.id, 'UPDATE', userId, oldInterruption, updatedInterruption);

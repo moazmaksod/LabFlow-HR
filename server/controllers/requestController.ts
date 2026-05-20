@@ -5,6 +5,8 @@ import { AuthRequest } from '../middlewares/authMiddleware.js';
 import { getOrCreateDraftPayroll } from './payrollController.js';
 import { logAudit } from '../services/auditService.js';
 import logger from '../utils/logger.js';
+import { evaluateUserAttendance } from '../services/attendanceEvaluationService.js';
+import { getDifferenceInMinutes } from '../utils/timeManager.js';
 
 export const createRequest = (req: AuthRequest, res: Response): void => {
     try {
@@ -53,14 +55,41 @@ export const getRequests = (req: AuthRequest, res: Response): void => {
         let requests;
 
         if (user.role === 'manager') {
+            // JIT evaluate attendance for all users to ensure early leave requests are up-to-date
+            const allUsers = db.prepare('SELECT id FROM users').all() as any[];
+            allUsers.forEach(u => {
+                try {
+                    evaluateUserAttendance(u.id);
+                } catch (e) {
+                    logger.error(`Error JIT evaluating attendance for user ${u.id}:`, e);
+                }
+            });
+
             requests = db.prepare(`
-            SELECT r.*, u.name as user_name, a.date as attendance_date, a.check_in as original_check_in, a.check_out as original_check_out, 
-                   si.start_time as interruption_start_time, si.end_time as interruption_end_time,
-                   s.id as shift_instance_id, s.start_time as shift_start_time, s.end_time as shift_end_time, s.logical_date as shift_logical_date
+                SELECT r.*, u.name as user_name, a.date as attendance_date, a.check_in as original_check_in, a.check_out as original_check_out, 
+                       si.start_time as interruption_start_time, si.end_time as interruption_end_time,
+                       s.id as shift_instance_id, s.start_time as shift_start_time, s.end_time as shift_end_time, s.logical_date as shift_logical_date
                 FROM requests r
                 JOIN users u ON r.user_id = u.id
                 LEFT JOIN attendance a ON r.attendance_id = a.id
-                LEFT JOIN shift_instances s ON a.shift_id = s.id
+                LEFT JOIN shift_instances s ON (
+                    (a.shift_id IS NOT NULL AND a.shift_id = s.id AND a.shift_id NOT LIKE 'unscheduled_%')
+                    OR
+                    (
+                        (a.shift_id IS NULL OR a.shift_id LIKE 'unscheduled_%') 
+                        AND s.id = (
+                            SELECT id FROM shift_instances 
+                            WHERE user_id = r.user_id 
+                              AND logical_date = COALESCE(
+                                  a.date, 
+                                  substr(r.requested_check_in, 1, 10), 
+                                  substr(r.created_at, 1, 10)
+                              )
+                              AND status != 'Cancelled'
+                            LIMIT 1
+                        )
+                    )
+                )
                 LEFT JOIN shift_interruptions si ON r.reference_id = si.id AND r.type IN ('permission_to_leave', 'shift_interruption_review')
                 ORDER BY r.created_at DESC
             `).all();
@@ -72,7 +101,24 @@ export const getRequests = (req: AuthRequest, res: Response): void => {
                 FROM requests r
                 JOIN users u ON r.user_id = u.id
                 LEFT JOIN attendance a ON r.attendance_id = a.id
-                LEFT JOIN shift_instances s ON a.shift_id = s.id
+                LEFT JOIN shift_instances s ON (
+                    (a.shift_id IS NOT NULL AND a.shift_id = s.id AND a.shift_id NOT LIKE 'unscheduled_%')
+                    OR
+                    (
+                        (a.shift_id IS NULL OR a.shift_id LIKE 'unscheduled_%') 
+                        AND s.id = (
+                            SELECT id FROM shift_instances 
+                            WHERE user_id = r.user_id 
+                              AND logical_date = COALESCE(
+                                  a.date, 
+                                  substr(r.requested_check_in, 1, 10), 
+                                  substr(r.created_at, 1, 10)
+                              )
+                              AND status != 'Cancelled'
+                            LIMIT 1
+                        )
+                    )
+                )
                 LEFT JOIN shift_interruptions si ON r.reference_id = si.id AND r.type IN ('permission_to_leave', 'shift_interruption_review')
                 WHERE r.user_id = ?
                 ORDER BY r.created_at DESC
@@ -141,16 +187,22 @@ export const createAttendanceCorrection = (req: AuthRequest, res: Response): voi
                 if (shiftInstance) {
                     if (checkIn) {
                         const startScheduled = new Date(shiftInstance.start_time);
-                        const diff = (new Date(checkIn).getTime() - startScheduled.getTime()) / (1000 * 60);
-                        if (diff > gracePeriod) {
-                            missingMinutes += Math.floor(diff);
+                        const checkInTime = new Date(checkIn);
+                        if (checkInTime > startScheduled) {
+                            const diff = getDifferenceInMinutes(startScheduled, checkInTime);
+                            if (diff > gracePeriod) {
+                                missingMinutes += diff;
+                            }
                         }
                     }
                     if (checkOut) {
                         const endScheduled = new Date(shiftInstance.end_time);
-                        const diff = (endScheduled.getTime() - new Date(checkOut).getTime()) / (1000 * 60);
-                        if (diff > gracePeriod) {
-                            missingMinutes += Math.floor(diff);
+                        const checkOutTime = new Date(checkOut);
+                        if (checkOutTime < endScheduled) {
+                            const diff = getDifferenceInMinutes(checkOutTime, endScheduled);
+                            if (diff > gracePeriod) {
+                                missingMinutes += diff;
+                            }
                         }
                     }
                 }
@@ -296,10 +348,11 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                             if (shiftInstance) {
                                 const scheduledTime = new Date(shiftInstance.start_time);
                                 const clockInTime = new Date(finalCheckIn);
-                                const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
-
-                                if (diffMinutes > gracePeriod) {
-                                    newStatus = 'late_in';
+                                if (clockInTime > scheduledTime) {
+                                    const diffMinutes = getDifferenceInMinutes(scheduledTime, clockInTime);
+                                    if (diffMinutes > gracePeriod) {
+                                        newStatus = 'late_in';
+                                    }
                                 }
                             } else {
                                 newStatus = 'unscheduled';
@@ -397,10 +450,11 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                                 if (shiftInstance) {
                                     const scheduledTime = new Date(shiftInstance.start_time);
                                     const clockInTime = new Date(finalCheckIn);
-                                    const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
-
-                                    if (diffMinutes > gracePeriod) {
-                                        newStatus = 'late_in';
+                                    if (clockInTime > scheduledTime) {
+                                        const diffMinutes = getDifferenceInMinutes(scheduledTime, clockInTime);
+                                        if (diffMinutes > gracePeriod) {
+                                            newStatus = 'late_in';
+                                        }
                                     }
                                 } else {
                                     newStatus = 'unscheduled';
@@ -452,10 +506,11 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                                 if (shiftInstance) {
                                     const scheduledTime = new Date(shiftInstance.start_time);
                                     const clockInTime = new Date(requestRecord.requested_check_in);
-                                    const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
-
-                                    if (diffMinutes > gracePeriod) {
-                                        newStatus = 'late_in';
+                                    if (clockInTime > scheduledTime) {
+                                        const diffMinutes = getDifferenceInMinutes(scheduledTime, clockInTime);
+                                        if (diffMinutes > gracePeriod) {
+                                            newStatus = 'late_in';
+                                        }
                                     }
                                 } else {
                                     newStatus = 'unscheduled';

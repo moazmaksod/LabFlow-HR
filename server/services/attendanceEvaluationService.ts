@@ -1,6 +1,6 @@
 import db from '../db/index.js';
 import logger from '../utils/logger.js';
-import { getAppNow } from "../utils/timeManager.js";
+import { getAppNow, getDifferenceInMinutes } from "../utils/timeManager.js";
 
 export const evaluateUserAttendance = (userId: number): void => {
     logger.debug('[evaluateUserAttendance] Entry: userId=', userId);
@@ -91,9 +91,7 @@ export const evaluateUserAttendance = (userId: number): void => {
                 if (activeShift) {
                     logger.debug('[evaluateUserAttendance] activeShift Branch Entry. Flowing unscheduled to scheduled.');
 
-                    const checkInMs = new Date(activeUnscheduled.check_in).getTime();
-                    const shiftStartMs = new Date(activeShift.start_time).getTime();
-                    const otMinutes = Math.floor((shiftStartMs - checkInMs) / 60000);
+                    const otMinutes = getDifferenceInMinutes(activeUnscheduled.check_in, activeShift.start_time);
 
                     if (otMinutes > 0) {
                         db.prepare(`
@@ -114,6 +112,39 @@ export const evaluateUserAttendance = (userId: number): void => {
                     `).run(uid, activeShift.start_time, activeShift.logical_date, activeShift.id.toString());
                 }
             }
+
+            // Scenario C: JIT Early Leave Evaluation (Only after shift end_time has passed)
+            let settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+            const gracePeriod = settings?.late_grace_period !== undefined ? settings.late_grace_period : 0;
+
+            const earlyLeaveSessions = db.prepare(`
+                SELECT a.*, s.end_time as scheduled_end_time, s.id as shift_instance_id
+                FROM attendance a
+                JOIN shift_instances s ON a.shift_id = s.id
+                LEFT JOIN requests r ON r.attendance_id = a.id AND r.type = 'early_leave_approval'
+                WHERE a.user_id = ? AND a.check_out IS NOT NULL AND s.status != 'Cancelled'
+                  AND s.end_time <= ? AND r.id IS NULL
+            `).all(uid, now) as any[];
+
+            earlyLeaveSessions.forEach(session => {
+                const checkOutTime = new Date(session.check_out);
+                const shiftEnd = new Date(session.scheduled_end_time);
+                if (checkOutTime < shiftEnd) {
+                    const earlyMinutes = getDifferenceInMinutes(checkOutTime, shiftEnd);
+                    if (earlyMinutes > gracePeriod) {
+                        db.prepare(`
+                            INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
+                            VALUES (?, 'early_leave_approval', ?, ?, ?, ?, 'pending')
+                        `).run(
+                            uid,
+                            session.id,
+                            session.id,
+                            `System detected early leave by ${earlyMinutes} minutes.`,
+                            JSON.stringify({ early_leave_minutes: earlyMinutes, missing_minutes: earlyMinutes })
+                        );
+                    }
+                }
+            });
 
             // Cleanup Abandoned Shifts (MUST BE LAST)
             db.prepare(`

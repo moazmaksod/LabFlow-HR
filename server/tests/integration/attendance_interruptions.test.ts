@@ -107,11 +107,9 @@ describe('Attendance Interruptions API', () => {
         expect(interruption).toBeDefined();
         expect(interruption.status).toBe('pending_manager');
 
-        // 4. Verify requests record
+        // 4. Verify requests record is NOT created yet (timing requirement: sent only after resuming)
         const reqRecord = db.prepare('SELECT * FROM requests WHERE user_id = ? AND type = ?').get(employeeId, 'permission_to_leave') as any;
-        expect(reqRecord).toBeDefined();
-        expect(reqRecord.status).toBe('pending');
-        expect(reqRecord.reference_id).toBe(interruption.id);
+        expect(reqRecord).toBeUndefined();
     });
 
     it('should resume work and close the interruption', async () => {
@@ -132,6 +130,12 @@ describe('Attendance Interruptions API', () => {
         // Verify attendance status is back to working
         const attendance = db.prepare('SELECT * FROM attendance WHERE user_id = ?').get(employeeId) as any;
         expect(attendance.current_status).toBe('working');
+
+        // Verify requests record is now created after resuming work
+        const reqRecord = db.prepare('SELECT * FROM requests WHERE user_id = ? AND type = ?').get(employeeId, 'permission_to_leave') as any;
+        expect(reqRecord).toBeDefined();
+        expect(reqRecord.status).toBe('pending');
+        expect(reqRecord.reference_id).toBe(interruption.id);
     });
 
     it('should auto_approve when stepping away with break balance > 0', async () => {

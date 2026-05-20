@@ -4,6 +4,16 @@ export const getAppNow = (): string => {
     return new Date().toISOString();
 };
 
+export const getDifferenceInMinutes = (start: string | Date, end: string | Date): number => {
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    startDate.setSeconds(0, 0);
+    startDate.setMilliseconds(0);
+    endDate.setSeconds(0, 0);
+    endDate.setMilliseconds(0);
+    return Math.max(0, Math.floor((endDate.getTime() - startDate.getTime()) / 60000));
+};
+
 export const parseAndFormat = (dateString: string | null, timezone?: string): string => {
     if (!dateString) return '-';
 
