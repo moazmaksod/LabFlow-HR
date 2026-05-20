@@ -16,6 +16,8 @@ export default function ManagerProfile() {
   const queryClient = useQueryClient();
   const [successMsg, setSuccessMsg] = useState('');
   const [previewUrl, setPreviewUrl] = useState<string>('');
+  const [avatarUrl, setAvatarUrl] = useState<string>('');
+  const [isUploading, setIsUploading] = useState(false);
 
   const {
     register,
@@ -48,24 +50,21 @@ export default function ManagerProfile() {
   useEffect(() => {
     if (profile) {
       reset({
-        legal_name: profile.name || '',
-        personal_phone: profile.emergency_contact_phone || '',
+        legal_name: profile.legal_name || profile.name || '',
+        personal_phone: profile.personal_phone || '',
         date_of_birth: formatForDateInput(profile.date_of_birth, user?.display_timezone) || '',
         national_id: profile.national_id || '',
         bio: profile.bio || '',
         display_timezone: profile.display_timezone || '',
       });
+      setAvatarUrl(profile.profile_picture_url || '');
       setPreviewUrl(profile.profile_picture_url || '');
     }
   }, [profile, reset, user?.display_timezone]);
 
   const updateMutation = useMutation({
-    mutationFn: async (data: FormData) => {
-      const res = await api.put('/users/profile', data, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+    mutationFn: async (data: any) => {
+      const res = await api.put('/users/profile', data);
       return res.data;
     },
     onSuccess: (data) => {
@@ -78,21 +77,23 @@ export default function ManagerProfile() {
     }
   });
 
-  const onSubmit = (data: any) => {
-    const formData = new FormData();
-    formData.append('name', data.legal_name);
-    if (data.personal_phone) formData.append('emergency_contact_phone', data.personal_phone);
-    if (data.date_of_birth) formData.append('date_of_birth', parseFromDateInput(data.date_of_birth, user?.display_timezone));
-    if (data.national_id) formData.append('national_id', data.national_id);
-    if (data.bio) formData.append('bio', data.bio);
-    if (data.display_timezone !== undefined) formData.append('display_timezone', data.display_timezone);
+  const onSubmit = (data: z.infer<typeof EmployeeProfileSchema>) => {
+    const payload = {
+      name: data.legal_name || null,
+      legal_name: data.legal_name || null,
+      personal_phone: data.personal_phone || null,
+      date_of_birth: data.date_of_birth
+        ? (data.date_of_birth instanceof Date
+            ? data.date_of_birth.toISOString().split('T')[0]
+            : new Date(data.date_of_birth).toISOString().split('T')[0])
+        : null,
+      national_id: data.national_id || null,
+      bio: data.bio || null,
+      display_timezone: data.display_timezone || null,
+      profile_picture_url: avatarUrl || null,
+    };
 
-    const fileInput = document.getElementById('avatar-upload') as HTMLInputElement;
-    if (fileInput && fileInput.files && fileInput.files[0]) {
-      formData.append('avatar', fileInput.files[0]);
-    }
-
-    updateMutation.mutate(formData);
+    updateMutation.mutate(payload);
   };
 
   if (isLoading) {
@@ -125,7 +126,7 @@ export default function ManagerProfile() {
             <div className="flex justify-center mb-6">
               <div className="relative group cursor-pointer">
                 <img
-                  src={previewUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(watchLegalName || 'User')}
+                  src={previewUrl ? (previewUrl.startsWith('http') ? previewUrl : `${window.location.origin}${previewUrl}`) : 'https://ui-avatars.com/api/?name=' + encodeURIComponent(watchLegalName || 'User')}
                   alt="Profile Preview"
                   className="w-24 h-24 rounded-full object-cover border-2 border-border group-hover:opacity-50 transition-opacity"
                   onError={(e) => {
@@ -139,12 +140,27 @@ export default function ManagerProfile() {
                   type="file"
                   id="avatar-upload"
                   accept="image/*"
+                  disabled={isUploading}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (file) {
-                      const url = URL.createObjectURL(file);
-                      setPreviewUrl(url);
+                      setIsUploading(true);
+                      const uploadData = new FormData();
+                      uploadData.append('avatar', file);
+                      try {
+                        const res = await api.post('/users/upload-avatar', uploadData, {
+                          headers: {
+                            'Content-Type': 'multipart/form-data',
+                          },
+                        });
+                        setAvatarUrl(res.data.url);
+                        setPreviewUrl(res.data.url);
+                      } catch (err) {
+                        alert('Failed to upload profile image');
+                      } finally {
+                        setIsUploading(false);
+                      }
                     }
                   }}
                 />
@@ -241,10 +257,10 @@ export default function ManagerProfile() {
           <div className="pt-4 border-t border-border flex justify-end">
             <button
               type="submit"
-              disabled={isSubmitting || updateMutation.isPending}
+              disabled={isSubmitting || updateMutation.isPending || isUploading}
               className="px-6 py-2 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
             >
-              {isSubmitting || updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+              {isUploading ? 'Uploading image...' : (isSubmitting || updateMutation.isPending ? 'Saving...' : 'Save Changes')}
             </button>
           </div>
         </form>

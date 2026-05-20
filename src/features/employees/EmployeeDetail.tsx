@@ -394,7 +394,11 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                           const uploadData = new FormData();
                           uploadData.append('avatar', file);
                           try {
-                            const res = await api.post('/users/upload-avatar', uploadData);
+                            const res = await api.post('/users/upload-avatar', uploadData, {
+                              headers: {
+                                'Content-Type': 'multipart/form-data',
+                              },
+                            });
                             reset({ ...watchedData, id_photo_url: res.data.url });
                           } catch (err) {
                             alert('Failed to upload ID photo');
