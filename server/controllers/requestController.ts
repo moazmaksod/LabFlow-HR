@@ -54,20 +54,26 @@ export const getRequests = (req: AuthRequest, res: Response): void => {
 
         if (user.role === 'manager') {
             requests = db.prepare(`
-            SELECT r.*, u.name as user_name, a.date as attendance_date, a.check_in as original_check_in, a.check_out as original_check_out, si.end_time as interruption_end_time
+            SELECT r.*, u.name as user_name, a.date as attendance_date, a.check_in as original_check_in, a.check_out as original_check_out, 
+                   si.start_time as interruption_start_time, si.end_time as interruption_end_time,
+                   s.id as shift_instance_id, s.start_time as shift_start_time, s.end_time as shift_end_time, s.logical_date as shift_logical_date
                 FROM requests r
                 JOIN users u ON r.user_id = u.id
                 LEFT JOIN attendance a ON r.attendance_id = a.id
-            LEFT JOIN shift_interruptions si ON r.reference_id = si.id AND r.type = 'permission_to_leave'
+                LEFT JOIN shift_instances s ON a.shift_id = s.id
+                LEFT JOIN shift_interruptions si ON r.reference_id = si.id AND r.type IN ('permission_to_leave', 'shift_interruption_review')
                 ORDER BY r.created_at DESC
             `).all();
         } else {
             requests = db.prepare(`
-                SELECT r.*, u.name as user_name, a.date as attendance_date, a.check_in as original_check_in, a.check_out as original_check_out, si.end_time as interruption_end_time
+                SELECT r.*, u.name as user_name, a.date as attendance_date, a.check_in as original_check_in, a.check_out as original_check_out, 
+                       si.start_time as interruption_start_time, si.end_time as interruption_end_time,
+                       s.id as shift_instance_id, s.start_time as shift_start_time, s.end_time as shift_end_time, s.logical_date as shift_logical_date
                 FROM requests r
                 JOIN users u ON r.user_id = u.id
                 LEFT JOIN attendance a ON r.attendance_id = a.id
-                LEFT JOIN shift_interruptions si ON r.reference_id = si.id AND r.type = 'permission_to_leave'
+                LEFT JOIN shift_instances s ON a.shift_id = s.id
+                LEFT JOIN shift_interruptions si ON r.reference_id = si.id AND r.type IN ('permission_to_leave', 'shift_interruption_review')
                 WHERE r.user_id = ?
                 ORDER BY r.created_at DESC
             `).all(user.id);
@@ -349,6 +355,8 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                     }
                 } else if (requestRecord.type === 'early_leave_approval' && requestRecord.attendance_id) {
                     db.prepare("UPDATE attendance SET status = 'on_time' WHERE id = ? AND status = 'early_out'").run(requestRecord.attendance_id);
+                } else if (requestRecord.type === 'late_in_approval' && requestRecord.attendance_id) {
+                    db.prepare("UPDATE attendance SET status = 'on_time' WHERE id = ? AND status = 'late_in'").run(requestRecord.attendance_id);
                 } else if (requestRecord.type === 'manual_clock' && (requestRecord.requested_check_in || requestRecord.requested_check_out)) {
                     if (requestRecord.attendance_id) {
                         // Fetch original attendance to save it in the request details for auditing
