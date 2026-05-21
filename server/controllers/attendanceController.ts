@@ -169,7 +169,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
 
         const insertTransaction = db.transaction(() => {
             const insert = db.prepare(`
-                INSERT INTO attendance (user_id, check_in, date, location_lat, location_lng, status, shift_id)
+                INSERT INTO attendance (user_id, check_in, date, check_in_lat, check_in_lng, status, shift_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             `);
             const info = insert.run(userId, timestamp, logicalDate, lat, lng, status, shiftId);
@@ -264,7 +264,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             if (!shiftStart || !shiftEnd || !shiftInstance) {
                 db.prepare(`
                     UPDATE attendance
-                    SET check_out = ?, location_lat = ?, location_lng = ?
+                    SET check_out = ?, check_out_lat = ?, check_out_lng = ?
                     WHERE id = ?
                 `).run(timestamp, lat, lng, activeSession.id);
                 updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id);
@@ -290,7 +290,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             if (checkOutTime <= shiftStart || checkInTime >= shiftEnd) {
                 db.prepare(`
                     UPDATE attendance
-                    SET check_out = ?, location_lat = ?, location_lng = ?, status = 'unscheduled'
+                    SET check_out = ?, check_out_lat = ?, check_out_lng = ?, status = 'unscheduled'
                     WHERE id = ?
                 `).run(timestamp, lat, lng, activeSession.id);
                 updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id);
@@ -340,7 +340,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
 
             db.prepare(`
                 UPDATE attendance
-                SET check_in = ?, check_out = ?, location_lat = ?, location_lng = ?, status = ?, shift_id = ?
+                SET check_in = ?, check_out = ?, check_out_lat = ?, check_out_lng = ?, status = ?, shift_id = ?
                 WHERE id = ?
             `).run(newCheckInStr, newCheckOutStr, lat, lng, officialStatus, officialShiftId, activeSession.id);
 
@@ -352,10 +352,21 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                 if (earlyMins > 0) {
                     const earlyShiftId = generateUnscheduledShiftId(userId, earlySegmentStart);
                     const insertEarly = db.prepare(`
-                        INSERT INTO attendance (user_id, check_in, check_out, date, location_lat, location_lng, status, shift_id)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO attendance (user_id, check_in, check_out, date, check_in_lat, check_in_lng, check_out_lat, check_out_lng, status, shift_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     `);
-                    const info = insertEarly.run(userId, earlySegmentStart.toISOString(), earlySegmentEnd.toISOString(), activeSession.date, lat, lng, 'unscheduled', earlyShiftId);
+                    const info = insertEarly.run(
+                        userId,
+                        earlySegmentStart.toISOString(),
+                        earlySegmentEnd.toISOString(),
+                        activeSession.date,
+                        activeSession.check_in_lat,
+                        activeSession.check_in_lng,
+                        activeSession.check_in_lat,
+                        activeSession.check_in_lng,
+                        'unscheduled',
+                        earlyShiftId
+                    );
 
                     db.prepare(`
                         INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
@@ -370,10 +381,21 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                 if (lateMins > 0) {
                     const lateShiftId = generateUnscheduledShiftId(userId, lateSegmentStart);
                     const insertLate = db.prepare(`
-                        INSERT INTO attendance (user_id, check_in, check_out, date, location_lat, location_lng, status, shift_id)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO attendance (user_id, check_in, check_out, date, check_in_lat, check_in_lng, check_out_lat, check_out_lng, status, shift_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     `);
-                    const info = insertLate.run(userId, lateSegmentStart.toISOString(), lateSegmentEnd.toISOString(), activeSession.date, lat, lng, 'unscheduled', lateShiftId);
+                    const info = insertLate.run(
+                        userId,
+                        lateSegmentStart.toISOString(),
+                        lateSegmentEnd.toISOString(),
+                        activeSession.date,
+                        lat,
+                        lng,
+                        lat,
+                        lng,
+                        'unscheduled',
+                        lateShiftId
+                    );
 
                     db.prepare(`
                         INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)

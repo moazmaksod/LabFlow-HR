@@ -14,8 +14,10 @@ interface AttendanceLog {
   check_in: string;
   check_out: string | null;
   status: string;
-  location_lat: number | null;
-  location_lng: number | null;
+  check_in_lat: number | null;
+  check_in_lng: number | null;
+  check_out_lat: number | null;
+  check_out_lng: number | null;
   breaks?: any[];
 }
 

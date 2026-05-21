@@ -34,8 +34,8 @@ export const evaluateUserAttendance = (userId: number): void => {
                     logger.debug('[evaluateUserAttendance] activeScheduled is final shift and away. Auto-terminating break.');
                     // Auto-Terminate Stepaway and Clock-out
                     db.prepare(`
-                        UPDATE attendance SET check_out = ? WHERE id = ?
-                    `).run(activeScheduled.scheduled_end_time, activeScheduled.id);
+                        UPDATE attendance SET check_out = ?, check_out_lat = ?, check_out_lng = ? WHERE id = ?
+                    `).run(activeScheduled.scheduled_end_time, activeScheduled.check_in_lat, activeScheduled.check_in_lng, activeScheduled.id);
 
                     // End the active step_away interruption
                     db.prepare(`
@@ -51,16 +51,16 @@ export const evaluateUserAttendance = (userId: number): void => {
                     logger.debug('[evaluateUserAttendance] activeScheduled is NOT final shift and away. Ending scheduled and creating unscheduled.');
                     // End scheduled attendance
                     db.prepare(`
-                        UPDATE attendance SET check_out = ? WHERE id = ?
-                    `).run(activeScheduled.scheduled_end_time, activeScheduled.id);
+                        UPDATE attendance SET check_out = ?, check_out_lat = ?, check_out_lng = ? WHERE id = ?
+                    `).run(activeScheduled.scheduled_end_time, activeScheduled.check_in_lat, activeScheduled.check_in_lng, activeScheduled.id);
 
                     const unscheduledShiftId = generateUnscheduledShiftId(uid, now);
 
                     // Insert new active unscheduled attendance
                     db.prepare(`
-                        INSERT INTO attendance (user_id, check_in, check_out, date, status, current_status, shift_id)
-                        VALUES (?, ?, NULL, ?, 'unscheduled', 'working', ?)
-                    `).run(uid, activeScheduled.scheduled_end_time, activeScheduled.date, unscheduledShiftId);
+                        INSERT INTO attendance (user_id, check_in, check_out, date, check_in_lat, check_in_lng, status, current_status, shift_id)
+                        VALUES (?, ?, NULL, ?, ?, ?, 'unscheduled', 'working', ?)
+                    `).run(uid, activeScheduled.scheduled_end_time, activeScheduled.date, activeScheduled.check_in_lat, activeScheduled.check_in_lng, unscheduledShiftId);
 
                     // Update shift instance status
                     db.prepare(`
@@ -102,14 +102,14 @@ export const evaluateUserAttendance = (userId: number): void => {
 
                     // Update unscheduled to end at shift start time
                     db.prepare(`
-                        UPDATE attendance SET check_out = ? WHERE id = ?
-                    `).run(activeShift.start_time, activeUnscheduled.id);
+                        UPDATE attendance SET check_out = ?, check_out_lat = ?, check_out_lng = ? WHERE id = ?
+                    `).run(activeShift.start_time, activeUnscheduled.check_in_lat, activeUnscheduled.check_in_lng, activeUnscheduled.id);
 
                     // Insert new active attendance record for the scheduled shift
                     db.prepare(`
-                        INSERT INTO attendance (user_id, check_in, check_out, date, status, current_status, shift_id)
-                        VALUES (?, ?, NULL, ?, 'on_time', 'working', ?)
-                    `).run(uid, activeShift.start_time, activeShift.logical_date, activeShift.id.toString());
+                        INSERT INTO attendance (user_id, check_in, check_out, date, check_in_lat, check_in_lng, status, current_status, shift_id)
+                        VALUES (?, ?, NULL, ?, ?, ?, 'on_time', 'working', ?)
+                    `).run(uid, activeShift.start_time, activeShift.logical_date, activeUnscheduled.check_in_lat, activeUnscheduled.check_in_lng, activeShift.id.toString());
                 }
             }
 

@@ -16,8 +16,10 @@ interface AttendanceLog {
   check_in: string;
   check_out: string | null;
   status: string;
-  location_lat: number;
-  location_lng: number;
+  check_in_lat: number | null;
+  check_in_lng: number | null;
+  check_out_lat: number | null;
+  check_out_lng: number | null;
   approved_overtime_minutes?: number;
   manager_note?: string;
   breaks?: any[];

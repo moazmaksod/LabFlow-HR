@@ -247,6 +247,71 @@ export function initDb() {
     }
     db.exec("CREATE INDEX IF NOT EXISTS idx_attendance_shift_id ON attendance(shift_id);");
 
+    // Migration: Split location_lat/lng into check_in_lat/lng and check_out_lat/lng
+    const postFinalAttendanceColumns = db.prepare("PRAGMA table_info(attendance)").all() as any[];
+    if (postFinalAttendanceColumns.some(c => c.name === 'location_lat')) {
+      if (!isTestEnv) {
+        logger.info('Migrating attendance table to split location_lat/lng into check_in/check_out coordinates...');
+      }
+      db.exec(`
+        PRAGMA foreign_keys=off;
+        BEGIN TRANSACTION;
+
+        CREATE TABLE attendance_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            check_in DATETIME NOT NULL,
+            check_out DATETIME,
+            date DATE NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('on_time', 'late_in', 'early_out', 'absent', 'half_day', 'unscheduled')) DEFAULT 'on_time',
+            current_status TEXT NOT NULL CHECK(current_status IN ('working', 'away')) DEFAULT 'working',
+            check_in_lat REAL,
+            check_in_lng REAL,
+            check_out_lat REAL,
+            check_out_lng REAL,
+            approved_overtime_minutes INTEGER DEFAULT 0,
+            is_paid_permission BOOLEAN DEFAULT 0,
+            paid_permission_minutes INTEGER DEFAULT 0,
+            shift_id TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        INSERT INTO attendance_new (
+          id, user_id, check_in, check_out, date, status, current_status,
+          check_in_lat, check_in_lng, check_out_lat, check_out_lng,
+          approved_overtime_minutes, is_paid_permission, paid_permission_minutes,
+          shift_id, created_at, updated_at
+        )
+        SELECT 
+          id, user_id, check_in, check_out, date, status, current_status,
+          location_lat, location_lng, 
+          CASE WHEN check_out IS NOT NULL THEN location_lat ELSE NULL END,
+          CASE WHEN check_out IS NOT NULL THEN location_lng ELSE NULL END,
+          approved_overtime_minutes, is_paid_permission, paid_permission_minutes,
+          shift_id, created_at, updated_at
+        FROM attendance;
+
+        DROP TABLE attendance;
+        ALTER TABLE attendance_new RENAME TO attendance;
+
+        CREATE INDEX IF NOT EXISTS idx_attendance_user_id ON attendance(user_id);
+        CREATE INDEX IF NOT EXISTS idx_attendance_shift_id ON attendance(shift_id);
+
+        CREATE TRIGGER IF NOT EXISTS update_attendance_updated_at AFTER UPDATE ON attendance
+        FOR EACH ROW WHEN NEW.updated_at <= OLD.updated_at
+        BEGIN UPDATE attendance SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;
+
+        COMMIT;
+        PRAGMA foreign_keys=on;
+      `);
+      if (!isTestEnv) {
+        logger.info('Attendance table split location migration completed.');
+      }
+    }
+
+
     // Settings bootstrapping is done in schema default values.
     // We should ensure settings table has 1 row with these defaults.
     const settingsCount = db.prepare('SELECT COUNT(*) as count FROM settings').get() as any;
