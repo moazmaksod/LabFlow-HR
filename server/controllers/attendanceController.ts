@@ -3,7 +3,7 @@ import logger from '../utils/logger.js';
 
 import { Request, Response } from 'express';
 import db from '../db/index.js';
-import { getAppNow, getDifferenceInMinutes } from '../utils/timeManager.js';
+import { getAppNow, getDifferenceInMinutes, generateUnscheduledShiftId } from '../utils/timeManager.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
 import { logAudit } from '../services/auditService.js';
 import { getSettingsCache, setSettingsCache } from '../utils/cache.js';
@@ -46,7 +46,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
         const scheduledTime = shiftInstance ? new Date(shiftInstance.start_time) : null;
 
         // Generate an unscheduled ID if there's no shift instance
-        let shiftId = shiftInstance ? shiftInstance.id.toString() : `unscheduled_${logicalDate.replace(/-/g, '')}_${new Date(timestamp).getTime()}`;
+        let shiftId = shiftInstance ? shiftInstance.id.toString() : generateUnscheduledShiftId(userId, timestamp);
 
         // Re-entry logic: Is there already a closed attendance for this user and logical date?
         const existingAttendance = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ? ORDER BY check_in DESC LIMIT 1').get(userId, logicalDate) as any;
@@ -60,7 +60,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             let isOldShiftExpired = false;
             let isSwitchingToNewShift = false;
 
-            if (existingAttendance.shift_id && !existingAttendance.shift_id.startsWith('unscheduled_')) {
+            if (existingAttendance.shift_id && !existingAttendance.shift_id.startsWith('US_')) {
                 const oldShiftInstance = db.prepare('SELECT end_time FROM shift_instances WHERE id = ?').get(existingAttendance.shift_id) as any;
                 if (oldShiftInstance) {
                     const oldEndTime = new Date(oldShiftInstance.end_time).getTime();
@@ -148,7 +148,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             isUnscheduled = true;
         } else {
             const isAfterStart = clockInTime > scheduledTime;
-            const diffMinutes = isAfterStart 
+            const diffMinutes = isAfterStart
                 ? getDifferenceInMinutes(scheduledTime, clockInTime)
                 : getDifferenceInMinutes(clockInTime, scheduledTime);
 
@@ -162,7 +162,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                     // دخول مبكر جداً (قبل فترة السماح) -> يعتبر Unscheduled
                     status = 'unscheduled';
                     isUnscheduled = true;
-                    shiftId = `unscheduled_${logicalDate.replace(/-/g, '')}_${clockInTime.getTime()}`;
+                    shiftId = generateUnscheduledShiftId(userId, clockInTime);
                 }
             }
         }
@@ -242,7 +242,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
         // Retrospective splitting: evaluate session against official shift boundaries
         // Look up the exact shift instance using the relational shift_id stored on check-in
         let shiftInstance = null;
-        if (activeSession.shift_id && !activeSession.shift_id.startsWith('unscheduled_')) {
+        if (activeSession.shift_id && !activeSession.shift_id.startsWith('US_')) {
             shiftInstance = db.prepare('SELECT * FROM shift_instances WHERE id = ?').get(activeSession.shift_id) as any;
         }
 
@@ -350,7 +350,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             if (earlySegmentStart && earlySegmentEnd) {
                 const earlyMins = getDifferenceInMinutes(earlySegmentStart, earlySegmentEnd);
                 if (earlyMins > 0) {
-                    const earlyShiftId = `unscheduled_${logicalDate.replace(/-/g, '')}_${earlySegmentStart.getTime()}`;
+                    const earlyShiftId = generateUnscheduledShiftId(userId, earlySegmentStart);
                     const insertEarly = db.prepare(`
                         INSERT INTO attendance (user_id, check_in, check_out, date, location_lat, location_lng, status, shift_id)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -368,7 +368,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             if (lateSegmentStart && lateSegmentEnd) {
                 const lateMins = getDifferenceInMinutes(lateSegmentStart, lateSegmentEnd);
                 if (lateMins > 0) {
-                    const lateShiftId = `unscheduled_${logicalDate.replace(/-/g, '')}_${lateSegmentStart.getTime()}`;
+                    const lateShiftId = generateUnscheduledShiftId(userId, lateSegmentStart);
                     const insertLate = db.prepare(`
                         INSERT INTO attendance (user_id, check_in, check_out, date, location_lat, location_lng, status, shift_id)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -750,7 +750,7 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
 
         // Clock-out Safety Logic: Prevent Late Requests
         let activeShift: any = null;
-        if (activeAttendance.shift_id && !activeAttendance.shift_id.startsWith('unscheduled_')) {
+        if (activeAttendance.shift_id && !activeAttendance.shift_id.startsWith('US_')) {
             activeShift = db.prepare('SELECT * FROM shift_instances WHERE id = ?').get(activeAttendance.shift_id) as any;
         }
 

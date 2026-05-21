@@ -56,3 +56,17 @@ export const validateClientTimestamp = (clientTimestamp: string): boolean => {
     }
     return true;
 };
+
+export const generateUnscheduledShiftId = (userId: number, timestamp: string | Date): string => {
+    const d = new Date(timestamp);
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const yyyy = d.getUTCFullYear();
+    
+    const hh = String(d.getUTCHours()).padStart(2, '0');
+    const min = String(d.getUTCMinutes()).padStart(2, '0');
+    
+    const random = Math.floor(Math.random() * 1000);
+    
+    return `US_${dd}${mm}${yyyy}_${hh}${min}_${userId}_${random}`;
+};

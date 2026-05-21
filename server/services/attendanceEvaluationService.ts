@@ -1,6 +1,6 @@
 import db from '../db/index.js';
 import logger from '../utils/logger.js';
-import { getAppNow, getDifferenceInMinutes } from "../utils/timeManager.js";
+import { getAppNow, getDifferenceInMinutes, generateUnscheduledShiftId } from "../utils/timeManager.js";
 
 export const evaluateUserAttendance = (userId: number): void => {
     logger.debug('[evaluateUserAttendance] Entry: userId=', userId);
@@ -54,7 +54,7 @@ export const evaluateUserAttendance = (userId: number): void => {
                         UPDATE attendance SET check_out = ? WHERE id = ?
                     `).run(activeScheduled.scheduled_end_time, activeScheduled.id);
 
-                    const unscheduledShiftId = `unscheduled_${activeScheduled.date.replace(/-/g, '')}_${new Date(now).getTime()}`;
+                    const unscheduledShiftId = generateUnscheduledShiftId(uid, now);
 
                     // Insert new active unscheduled attendance
                     db.prepare(`

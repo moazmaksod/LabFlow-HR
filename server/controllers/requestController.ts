@@ -73,10 +73,10 @@ export const getRequests = (req: AuthRequest, res: Response): void => {
                 JOIN users u ON r.user_id = u.id
                 LEFT JOIN attendance a ON r.attendance_id = a.id
                 LEFT JOIN shift_instances s ON (
-                    (a.shift_id IS NOT NULL AND a.shift_id = s.id AND a.shift_id NOT LIKE 'unscheduled_%')
+                    (a.shift_id IS NOT NULL AND a.shift_id = s.id AND a.shift_id NOT LIKE 'US_%')
                     OR
                     (
-                        (a.shift_id IS NULL OR a.shift_id LIKE 'unscheduled_%') 
+                        (a.shift_id IS NULL OR a.shift_id LIKE 'US_%') 
                         AND s.id = (
                             SELECT id FROM shift_instances 
                             WHERE user_id = r.user_id 
@@ -102,10 +102,10 @@ export const getRequests = (req: AuthRequest, res: Response): void => {
                 JOIN users u ON r.user_id = u.id
                 LEFT JOIN attendance a ON r.attendance_id = a.id
                 LEFT JOIN shift_instances s ON (
-                    (a.shift_id IS NOT NULL AND a.shift_id = s.id AND a.shift_id NOT LIKE 'unscheduled_%')
+                    (a.shift_id IS NOT NULL AND a.shift_id = s.id AND a.shift_id NOT LIKE 'US_%')
                     OR
                     (
-                        (a.shift_id IS NULL OR a.shift_id LIKE 'unscheduled_%') 
+                        (a.shift_id IS NULL OR a.shift_id LIKE 'US_%') 
                         AND s.id = (
                             SELECT id FROM shift_instances 
                             WHERE user_id = r.user_id 
@@ -180,7 +180,7 @@ export const createAttendanceCorrection = (req: AuthRequest, res: Response): voi
                 const checkOut = new_clock_out || attendanceRecord.check_out;
 
                 let shiftInstance = null;
-                if (attendanceRecord.shift_id && !attendanceRecord.shift_id.startsWith('unscheduled_')) {
+                if (attendanceRecord.shift_id && !attendanceRecord.shift_id.startsWith('US_')) {
                     shiftInstance = db.prepare('SELECT * FROM shift_instances WHERE id = ?').get(attendanceRecord.shift_id) as any;
                 }
 
@@ -341,7 +341,7 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                             const gracePeriod = settingsRecord?.late_grace_period !== undefined ? settingsRecord.late_grace_period : 0;
 
                             let shiftInstance = null;
-                            if (fullOriginalAttendance.shift_id && !fullOriginalAttendance.shift_id.startsWith('unscheduled_')) {
+                            if (fullOriginalAttendance.shift_id && !fullOriginalAttendance.shift_id.startsWith('US_')) {
                                 shiftInstance = db.prepare('SELECT * FROM shift_instances WHERE id = ?').get(fullOriginalAttendance.shift_id) as any;
                             }
 
@@ -443,7 +443,7 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                                 const gracePeriod = settingsRecord?.late_grace_period !== undefined ? settingsRecord.late_grace_period : 0;
 
                                 let shiftInstance = null;
-                                if (fullOriginalAttendance.shift_id && !fullOriginalAttendance.shift_id.startsWith('unscheduled_')) {
+                                if (fullOriginalAttendance.shift_id && !fullOriginalAttendance.shift_id.startsWith('US_')) {
                                     shiftInstance = db.prepare('SELECT * FROM shift_instances WHERE id = ?').get(fullOriginalAttendance.shift_id) as any;
                                 }
 
@@ -544,7 +544,7 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                     try {
                         const parsedDetails = JSON.parse(requestRecord.details);
                         requestedMinutes = parsedDetails.requested_overtime_minutes || parsedDetails.raw_overtime_minutes || 0;
-                    } catch (e) {}
+                    } catch (e) { }
                 }
                 const minutes = status === 'approved' ? (approved_minutes !== undefined ? approved_minutes : requestedMinutes) : requestedMinutes;
                 const hours = isNaN(minutes) || minutes === null ? 0 : minutes / 60;
