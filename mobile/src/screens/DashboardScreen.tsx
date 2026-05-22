@@ -14,7 +14,7 @@ import LiveServerClock from '../components/LiveServerClock';
 import NetInfo from '@react-native-community/netinfo';
 import { useSettingsStore } from '../store/useSettingsStore';
 import * as Linking from 'expo-linking';
-import { getMobileNow, getSystemNow, getTimestamp } from '../lib/timeManager';
+import { getMobileNow, getSystemNow, getTimestamp, formatDisplayDate, formatDisplayTime } from '../lib/timeManager';
 
 
 export default function DashboardScreen() {
@@ -34,6 +34,8 @@ export default function DashboardScreen() {
     activeSession,
     setActiveSession
   } = useAttendanceStore();
+  const userTimezone = useSettingsStore((state) => state.userTimezone);
+  const isClockedIn = currentStatus === 'working' || currentStatus === 'away';
 
   useEffect(() => {
     // Initialize local SQLite database
@@ -466,6 +468,13 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
     }
   };
 
+  const isShiftInFuture = (shift: any) => {
+    if (!shift) return false;
+    const startMs = new Date(shift.start_utc).getTime();
+    const nowMs = new Date(getMobileNow()).getTime();
+    return nowMs < startMs;
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
       <View style={styles.header}>
@@ -484,6 +493,21 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
       </View>
 
       <LiveServerClock />
+
+      {userProfile && userProfile.current_shift && isShiftInFuture(userProfile.current_shift) && (
+        <View style={styles.nextShiftCard}>
+          <View style={styles.nextShiftHeader}>
+            <Clock size={16} color="#3b82f6" style={{ marginRight: 6 }} />
+            <Text style={styles.nextShiftLabel}>Next Scheduled Shift</Text>
+          </View>
+          <Text style={styles.nextShiftTime}>
+            {formatDisplayDate(userProfile.current_shift.start_utc, userTimezone, 'EEEE d MMM')}
+          </Text>
+          <Text style={styles.nextShiftHours}>
+            {formatDisplayTime(userProfile.current_shift.start_utc, userTimezone, 'HH:mm')} - {formatDisplayTime(userProfile.current_shift.end_utc, userTimezone, 'HH:mm')}
+          </Text>
+        </View>
+      )}
 
       {userProfile && (
         <SmartAttendanceCard
@@ -609,6 +633,42 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     borderWidth: 1,
     borderColor: '#e4e4e7',
+  },
+  nextShiftCard: {
+    backgroundColor: '#fff',
+    padding: 24,
+    borderRadius: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#e4e4e7',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  nextShiftHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  nextShiftLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#3b82f6',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  nextShiftTime: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#18181b',
+    marginBottom: 4,
+  },
+  nextShiftHours: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#71717a',
   },
   cardTitle: { fontSize: 16, fontWeight: '800', color: '#18181b', textTransform: 'uppercase', letterSpacing: 1 },
   cardText: { fontSize: 13, color: '#71717a', lineHeight: 18, marginBottom: 16 },

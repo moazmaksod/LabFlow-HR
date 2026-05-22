@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Play, Pause, AlertCircle } from 'lucide-react-native';
 import { useAttendanceStore } from '../store/useAttendanceStore';
-import { formatDisplayDate, formatTimeString, formatDuration, getMobileNow } from '../lib/timeManager';
+import { formatDisplayDate, formatDisplayTime, formatTimeString, formatDuration, getMobileNow } from '../lib/timeManager';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -39,7 +39,10 @@ export default function SmartAttendanceCard({
   const user = useAuthStore((state) => state.user);
   const userTimezone = useSettingsStore((state) => state.userTimezone);
 
-  const formatShiftTime = (timeStr: string) => {
+  const formatShiftTime = (timeStr: string, utcTimeStr?: string) => {
+    if (utcTimeStr) {
+      return formatDisplayTime(utcTimeStr, userTimezone, 'HH:mm');
+    }
     return formatTimeString(timeStr, userTimezone);
   };
 
@@ -73,22 +76,39 @@ export default function SmartAttendanceCard({
     return () => clearInterval(interval);
   }, [serverTimeOffset, lastLocalSyncTime]);
 
-  const todayShift = currentShift;
   const isClockedIn = currentStatus === 'working' || currentStatus === 'away';
   const isUnscheduledSession = activeSession?.status === 'unscheduled';
 
+  const runningShift = (() => {
+    if (!currentShift) return null;
+    const startMs = new Date(currentShift.start_utc).getTime();
+    const endMs = new Date(currentShift.end_utc).getTime();
+    const nowMs = now.getTime();
+    const isWithinTime = nowMs >= startMs && nowMs <= endMs;
+    const isClockedIntoShift = isClockedIn && activeSession?.shift_id && !activeSession.shift_id.startsWith('US_');
+    return (isWithinTime || isClockedIntoShift) ? currentShift : null;
+  })();
+
+  const todayShift = runningShift;
+
   if (!todayShift) {
-    let headerTitle = isClockedIn ? 'Active Shift' : 'No Shift';
+    let headerTitle = isClockedIn ? 'Active Shift' : 'Attendance';
     return (
       <View style={styles.container}>
         <View style={styles.timelineCard}>
           <View style={styles.timelineHeader}>
             <View>
               <Text style={styles.timelineTitle}>{headerTitle}</Text>
-              <Text style={styles.timelineSubtitle}>Enjoy your day off!</Text>
+              {isClockedIn && (
+                <Text style={styles.timelineSubtitle}>Unscheduled</Text>
+              )}
             </View>
-            <View style={[styles.statusBadge, styles.statusNone]}>
-              <Text style={[styles.statusText, styles.statusTextNone]}>Off Duty</Text>
+            <View style={[styles.statusBadge, currentStatus === 'working' ? styles.statusWorking : currentStatus === 'away' ? styles.statusAway : styles.statusNone]}>
+              {currentStatus === 'working' && <Play size={12} color="#10b981" style={{ marginRight: 4 }} />}
+              {currentStatus === 'away' && <Pause size={12} color="#f59e0b" style={{ marginRight: 4 }} />}
+              <Text style={[styles.statusText, currentStatus === 'working' ? styles.statusTextWorking : currentStatus === 'away' ? styles.statusTextAway : styles.statusTextNone]}>
+                {currentStatus === 'working' ? 'Working' : currentStatus === 'away' ? 'Away' : 'Off Duty'}
+              </Text>
             </View>
           </View>
           <View style={styles.buttonRow}>
@@ -153,7 +173,7 @@ export default function SmartAttendanceCard({
   const totalShiftMins = (shiftEndMs - shiftStartMs) / 60000;
   const shiftDate = new Date(shiftStartMs);
 
-  let headerTitle = isClockedIn ? 'Active Shift' : 'Next Shift';
+  let headerTitle = isClockedIn ? 'Active Shift' : 'Attendance';
 
   // --- 2. حساب الاستراحات (الرقم الإجمالي للعدادات) ---
   const baseBreakMins = consumedBreakMinutes;
@@ -263,7 +283,7 @@ export default function SmartAttendanceCard({
               {headerTitle}
             </Text>
             <Text style={styles.timelineSubtitle}>
-              {formatDisplayDate(shiftDate, userTimezone, 'EEEE d MMM')} {'\n'} {formatShiftTime(todayShift.start)} - {formatShiftTime(todayShift.end)}
+              {formatDisplayDate(shiftDate, userTimezone, 'EEEE d MMM')} {'\n'} {formatShiftTime(todayShift.start, todayShift.start_utc)} - {formatShiftTime(todayShift.end, todayShift.end_utc)}
             </Text>
           </View>
           <View style={[styles.statusBadge, currentStatus === 'working' ? styles.statusWorking : currentStatus === 'away' ? styles.statusAway : styles.statusNone]}>
@@ -315,12 +335,12 @@ export default function SmartAttendanceCard({
             {/* Timeline Labels */}
             <View style={[styles.timelineLabels, { position: 'relative', height: 20 }]}>
               {timelineStartMs < shiftStartMs && (
-                <Text style={[styles.timelineLabelText, { position: 'absolute', left: 0 }]}>{formatShiftTime(new Date(timelineStartMs).toTimeString().substring(0, 5))}</Text>
+                <Text style={[styles.timelineLabelText, { position: 'absolute', left: 0 }]}>{formatDisplayTime(timelineStartMs, userTimezone, 'HH:mm')}</Text>
               )}
-              <Text style={[styles.timelineLabelText, { position: 'absolute', left: `${startMarkerPct}%`, transform: [{ translateX: -15 }] }]}>{formatShiftTime(todayShift.start)}</Text>
-              <Text style={[styles.timelineLabelText, { position: 'absolute', left: `${endMarkerPct}%`, transform: [{ translateX: -15 }] }]}>{formatShiftTime(todayShift.end)}</Text>
+              <Text style={[styles.timelineLabelText, { position: 'absolute', left: `${startMarkerPct}%`, transform: [{ translateX: -15 }] }]}>{formatShiftTime(todayShift.start, todayShift.start_utc)}</Text>
+              <Text style={[styles.timelineLabelText, { position: 'absolute', left: `${endMarkerPct}%`, transform: [{ translateX: -15 }] }]}>{formatShiftTime(todayShift.end, todayShift.end_utc)}</Text>
               {timelineEndMs > shiftEndMs && (
-                <Text style={[styles.timelineLabelText, { position: 'absolute', right: 0 }]}>{formatShiftTime(new Date(timelineEndMs).toTimeString().substring(0, 5))}</Text>
+                <Text style={[styles.timelineLabelText, { position: 'absolute', right: 0 }]}>{formatDisplayTime(timelineEndMs, userTimezone, 'HH:mm')}</Text>
               )}
             </View>
 
@@ -367,7 +387,7 @@ export default function SmartAttendanceCard({
         {currentStatus === 'away' && currentShift && (
           <View style={styles.breakInfoContainer}>
             <Text style={styles.breakWarningText}>
-              Your break will end automatically at {formatShiftTime(currentShift.end_time || currentShift.end)}.
+              Your break will end automatically at {formatShiftTime(currentShift.end_time || currentShift.end, currentShift.end_utc)}.
             </Text>
           </View>
         )}
