@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/axios';
-import { CheckCircle, XCircle, UserCheck, Search, Filter, MoreVertical, Circle } from 'lucide-react';
+import { CheckCircle, XCircle, UserCheck, Search, Filter, MoreVertical, Circle, ChevronDown, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import EmployeeDetail from './EmployeeDetail';
 
@@ -27,8 +27,10 @@ export default function EmployeeList() {
   const [selectedJobId, setSelectedJobId] = useState<string>('');
   const [viewingEmployeeId, setViewingEmployeeId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [workingStatusFilter, setWorkingStatusFilter] = useState('');
+  const [employmentStatusFilter, setEmploymentStatusFilter] = useState('');
 
-  const { data: users, isLoading: usersLoading } = useQuery<User[]>({
+  const { data: users, isLoading: usersLoading, refetch, isFetching: usersFetching } = useQuery<User[]>({
     queryKey: ['users'],
     queryFn: async () => {
       const res = await api.get('/users');
@@ -65,11 +67,24 @@ export default function EmployeeList() {
     updateRoleMutation.mutate({ id: userId, role: 'employee', job_id: Number(selectedJobId) });
   };
 
-  const filteredUsers = users?.filter(user => 
-    user.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.job_title?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredUsers = users?.filter(user => {
+    const matchesSearch = 
+      user.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.job_title?.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesWorkingStatus = !workingStatusFilter || (
+      workingStatusFilter === 'off' 
+        ? (user.current_status !== 'working' && user.current_status !== 'away')
+        : user.current_status === workingStatusFilter
+    );
+
+    const matchesEmploymentStatus = !employmentStatusFilter || (
+      (user.status || 'inactive') === employmentStatusFilter
+    );
+
+    return matchesSearch && matchesWorkingStatus && matchesEmploymentStatus;
+  });
 
   return (
     <div className="relative h-full flex flex-col space-y-6">
@@ -78,25 +93,75 @@ export default function EmployeeList() {
           <h2 className="text-2xl font-bold tracking-tight">Employee Management</h2>
           <p className="text-muted-foreground text-sm">Manage your workforce, schedules, and roles.</p>
         </div>
-        
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <div className="relative flex-1 sm:w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input 
-              type="text" 
-              placeholder="Search employees..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-background border border-border rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
-            />
+      </div>
+
+      {/* Filters */}
+      <div className="bg-card border border-border rounded-xl p-4 shadow-sm flex flex-col md:flex-row gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <input 
+            type="text" 
+            placeholder="Search employees..." 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 bg-background border border-border rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+          />
+        </div>
+        <div className="flex flex-wrap md:flex-nowrap gap-4 items-center">
+          <div className="relative">
+            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <select
+              id="working-status-filter"
+              aria-label="Working Status"
+              value={workingStatusFilter}
+              onChange={(e) => setWorkingStatusFilter(e.target.value)}
+              className="pl-9 pr-8 py-2 bg-background border border-border rounded-lg text-sm appearance-none outline-none focus:ring-2 focus:ring-primary/20 min-w-[150px] w-full md:w-auto"
+            >
+              <option value="">All Working Statuses</option>
+              <option value="working">Working</option>
+              <option value="away">Away</option>
+              <option value="off">Off</option>
+            </select>
+            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
           </div>
+
+          <div className="relative">
+            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <select
+              id="employment-status-filter"
+              aria-label="Employment Status"
+              value={employmentStatusFilter}
+              onChange={(e) => setEmploymentStatusFilter(e.target.value)}
+              className="pl-9 pr-8 py-2 bg-background border border-border rounded-lg text-sm appearance-none outline-none focus:ring-2 focus:ring-primary/20 min-w-[180px] w-full md:w-auto"
+            >
+              <option value="">All Employment Statuses</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="suspended">Suspended</option>
+            </select>
+            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+          </div>
+
           <button
-            className="p-2 border border-border rounded-lg hover:bg-muted transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50"
-            aria-label="Filter employees"
-            title="Filter employees"
+            onClick={() => refetch()}
+            disabled={usersFetching}
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 h-[38px] cursor-pointer w-full md:w-auto"
           >
-            <Filter className="w-4 h-4" />
+            <RefreshCw className={`w-4 h-4 ${usersFetching ? 'animate-spin' : ''}`} />
+            Search
           </button>
+
+          {(workingStatusFilter || employmentStatusFilter) && (
+            <button
+              onClick={() => {
+                setWorkingStatusFilter('');
+                setEmploymentStatusFilter('');
+              }}
+              className="px-3 py-2 text-xs font-bold text-rose-500 hover:text-rose-600 hover:bg-rose-50/50 dark:hover:bg-rose-950/20 rounded-lg transition-colors whitespace-nowrap"
+            >
+              Clear Filters
+            </button>
+          )}
         </div>
       </div>
 
@@ -115,6 +180,7 @@ export default function EmployeeList() {
                   <th className="px-6 py-4 font-semibold border-b border-border">Name</th>
                   <th className="px-6 py-4 font-semibold border-b border-border">Email</th>
                   <th className="px-6 py-4 font-semibold border-b border-border">Role</th>
+                  <th className="px-6 py-4 font-semibold border-b border-border">Employment Status</th>
                   <th className="px-6 py-4 font-semibold border-b border-border">Job Title</th>
                   <th className="px-6 py-4 font-semibold border-b border-border text-right">Actions</th>
                 </tr>
@@ -171,14 +237,16 @@ export default function EmployeeList() {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground">{user.job_title || '-'}</span>
-                        {user.status === 'active' ? (
-                          <CheckCircle className="w-3 h-3 text-green-500" />
-                        ) : user.status === 'suspended' ? (
-                          <XCircle className="w-3 h-3 text-rose-500" />
-                        ) : null}
-                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                        user.status === 'active' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400' :
+                        user.status === 'suspended' ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400' :
+                        'bg-slate-100 text-slate-700 dark:bg-slate-500/20 dark:text-slate-400'
+                      }`}>
+                        {user.status || 'inactive'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-muted-foreground">{user.job_title || '-'}</span>
                     </td>
                     <td className="px-6 py-4 text-right">
                       {user.role === 'pending' ? (
@@ -233,7 +301,7 @@ export default function EmployeeList() {
                 ))}
                 {filteredUsers?.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
+                    <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
                       No employees found matching your search.
                     </td>
                   </tr>

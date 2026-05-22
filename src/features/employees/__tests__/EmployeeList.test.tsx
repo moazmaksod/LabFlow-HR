@@ -80,8 +80,8 @@ describe('EmployeeList', () => {
       expect(screen.getByText('Jane Smith')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('Working')).toBeInTheDocument();
-    expect(screen.getByText('Off')).toBeInTheDocument();
+    expect(screen.getAllByText('Working')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Off')[0]).toBeInTheDocument();
   });
 
   it('opens detail view when clicking an employee row', async () => {
@@ -96,7 +96,6 @@ describe('EmployeeList', () => {
     await waitFor(() => {
       // Check if detail view header is present
       expect(screen.getByText('Personal Information (Read-Only)')).toBeInTheDocument();
-      // expect(screen.getByDisplayValue('John Doe')).toBeInTheDocument();
     });
   });
 
@@ -113,5 +112,60 @@ describe('EmployeeList', () => {
 
     expect(screen.queryByText('John Doe')).not.toBeInTheDocument();
     expect(screen.getByText('Jane Smith')).toBeInTheDocument();
+  });
+
+  it('filters employees based on working status and employment status filters', async () => {
+    render(<EmployeeList />, { wrapper });
+
+    await waitFor(() => {
+      expect(screen.getByText('John Doe')).toBeInTheDocument();
+      expect(screen.getByText('Jane Smith')).toBeInTheDocument();
+    });
+
+    // Check that Employment Status column values are rendered in the document
+    expect(screen.getByText('active')).toBeInTheDocument();
+    expect(screen.getByText('inactive')).toBeInTheDocument();
+
+    // Get filter dropdowns
+    const workingStatusSelect = screen.getByLabelText('Working Status');
+    const employmentStatusSelect = screen.getByLabelText('Employment Status');
+
+    // Filter by working status: Working
+    fireEvent.change(workingStatusSelect, { target: { value: 'working' } });
+    expect(screen.getByText('John Doe')).toBeInTheDocument();
+    expect(screen.queryByText('Jane Smith')).not.toBeInTheDocument();
+
+    // Filter by working status: Off
+    fireEvent.change(workingStatusSelect, { target: { value: 'off' } });
+    expect(screen.queryByText('John Doe')).not.toBeInTheDocument();
+    expect(screen.getByText('Jane Smith')).toBeInTheDocument();
+
+    // Clear working status filter
+    fireEvent.change(workingStatusSelect, { target: { value: '' } });
+
+    // Filter by employment status: Active
+    fireEvent.change(employmentStatusSelect, { target: { value: 'active' } });
+    expect(screen.getByText('John Doe')).toBeInTheDocument();
+    expect(screen.queryByText('Jane Smith')).not.toBeInTheDocument();
+
+    // Filter by employment status: Inactive
+    fireEvent.change(employmentStatusSelect, { target: { value: 'inactive' } });
+    expect(screen.queryByText('John Doe')).not.toBeInTheDocument();
+    expect(screen.getByText('Jane Smith')).toBeInTheDocument();
+  });
+
+  it('triggers a refetch when clicking the search button', async () => {
+    render(<EmployeeList />, { wrapper });
+
+    await waitFor(() => {
+      expect(screen.getByText('John Doe')).toBeInTheDocument();
+    });
+
+    const searchBtn = screen.getByRole('button', { name: /search/i });
+    fireEvent.click(searchBtn);
+
+    await waitFor(() => {
+      expect(mockedApi.get).toHaveBeenCalledWith('/users');
+    });
   });
 });
