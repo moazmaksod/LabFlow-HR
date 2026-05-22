@@ -6,6 +6,8 @@ import api from '../lib/axios';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { saveOfflineRequest } from '../lib/db';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { formatDisplayDate, formatDisplayTime } from '../lib/timeManager';
 
 interface RequestItem {
   id: number;
@@ -24,6 +26,7 @@ interface RequestItem {
 
 export default function RequestsScreen() {
   const { user } = useAuthStore();
+  const userTimezone = useSettingsStore((state) => state.userTimezone);
   const [requests, setRequests] = useState<RequestItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -140,14 +143,12 @@ export default function RequestsScreen() {
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    return formatDisplayDate(dateString, userTimezone, 'EEE, MMM d');
   };
 
   const formatTime = (timeString?: string) => {
     if (!timeString) return '';
-    const date = new Date(timeString);
-    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    return formatDisplayTime(timeString, userTimezone, 'HH:mm');
   };
 
   const getStatusColor = (status: string) => {

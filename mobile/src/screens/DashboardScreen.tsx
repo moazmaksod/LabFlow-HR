@@ -14,6 +14,7 @@ import LiveServerClock from '../components/LiveServerClock';
 import NetInfo from '@react-native-community/netinfo';
 import { useSettingsStore } from '../store/useSettingsStore';
 import * as Linking from 'expo-linking';
+import { getMobileNow, getSystemNow, getTimestamp } from '../lib/timeManager';
 
 
 export default function DashboardScreen() {
@@ -69,8 +70,8 @@ export default function DashboardScreen() {
         let consumed = 0;
         if (session.breaks && Array.isArray(session.breaks)) {
           session.breaks.forEach((b: any) => {
-            const start = new Date(b.start_time).getTime();
-            const end = b.end_time ? new Date(b.end_time).getTime() : new Date().getTime();
+            const start = getTimestamp(b.start_time);
+            const end = b.end_time ? getTimestamp(b.end_time) : getTimestamp(getSystemNow());
             consumed += (end - start) / (1000 * 60);
           });
         }
@@ -190,17 +191,18 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
       const { latitude, longitude } = location.coords;
 
 
-      // 3. Calculate True Time using server offset
+      // 3. Calculate True Time and detect device clock tampering
+      const timestamp = getMobileNow();
       const localNow = Date.now();
       const { serverTimeOffset, lastLocalSyncTime } = useNetworkStore.getState();
+      const monotonicTime = getTimestamp(timestamp);
+      const expectedOsTime = localNow + serverTimeOffset;
 
-      if (localNow < lastLocalSyncTime) {
-        Alert.alert('Security Alert', 'Device clock tampering detected. Time appears to have moved backwards.');
+      if (Math.abs(expectedOsTime - monotonicTime) > 60000 || localNow < lastLocalSyncTime) {
+        Alert.alert('Security Alert', 'Device clock tampering detected.');
         setLoading(false);
         return;
       }
-
-      const timestamp = new Date(localNow + serverTimeOffset).toISOString();
 
       // Optimistic Update if offline
       if (!isConnected) {
@@ -281,14 +283,14 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
     let totalDailyMinutes = 0;
     if (userProfile?.today_shifts) {
       userProfile.today_shifts.forEach((shift: any) => {
-        const start = new Date(shift.start_time).getTime();
-        const end = new Date(shift.end_time).getTime();
+        const start = getTimestamp(shift.start_time);
+        const end = getTimestamp(shift.end_time);
         totalDailyMinutes += (end - start) / 60000;
       });
     } else if (userProfile?.current_shift) {
       // Fallback if we only have current_shift, though it might be incomplete
-      const start = new Date(userProfile.current_shift.start_time || userProfile.current_shift.start).getTime();
-      const end = new Date(userProfile.current_shift.end_time || userProfile.current_shift.end).getTime();
+      const start = getTimestamp(userProfile.current_shift.start_time || userProfile.current_shift.start);
+      const end = getTimestamp(userProfile.current_shift.end_time || userProfile.current_shift.end);
       totalDailyMinutes += (end - start) / 60000;
     }
 
@@ -308,19 +310,20 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
           try {
             const deviceId = await getUniqueDeviceId();
 
-      // 3. Calculate True Time using server offset
+      // 3. Calculate True Time and detect device clock tampering
+      const timestamp = getMobileNow();
       const localNow = Date.now();
       console.debug('[DashboardScreen.handleStepAway] localNow=', localNow);
       const { serverTimeOffset, lastLocalSyncTime } = useNetworkStore.getState();
+      const monotonicTime = getTimestamp(timestamp);
+      const expectedOsTime = localNow + serverTimeOffset;
 
-      if (localNow < lastLocalSyncTime) {
-      console.debug('[DashboardScreen.handleStepAway] Tampering Check: localNow=', localNow, 'lastLocalSyncTime=', lastLocalSyncTime);
-        Alert.alert('Security Alert', 'Device clock tampering detected. Time appears to have moved backwards.');
+      if (Math.abs(expectedOsTime - monotonicTime) > 60000 || localNow < lastLocalSyncTime) {
+        console.debug('[DashboardScreen.handleStepAway] Tampering Check Failed: expectedOsTime=', expectedOsTime, 'monotonicTime=', monotonicTime);
+        Alert.alert('Security Alert', 'Device clock tampering detected.');
         setLoading(false);
         return;
       }
-
-      const timestamp = new Date(localNow + serverTimeOffset).toISOString();
       console.debug('[DashboardScreen.handleStepAway] timestamp=', timestamp, 'serverTimeOffset=', serverTimeOffset);
 
             // Optimistic Update if offline
@@ -353,19 +356,20 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
             if (!error.response) {
               const deviceId = await getUniqueDeviceId();
 
-      // 3. Calculate True Time using server offset
+      // 3. Calculate True Time and detect device clock tampering
+      const timestamp = getMobileNow();
       const localNow = Date.now();
       console.debug('[DashboardScreen.handleStepAway] localNow=', localNow);
       const { serverTimeOffset, lastLocalSyncTime } = useNetworkStore.getState();
+      const monotonicTime = getTimestamp(timestamp);
+      const expectedOsTime = localNow + serverTimeOffset;
 
-      if (localNow < lastLocalSyncTime) {
-      console.debug('[DashboardScreen.handleStepAway] Tampering Check: localNow=', localNow, 'lastLocalSyncTime=', lastLocalSyncTime);
-        Alert.alert('Security Alert', 'Device clock tampering detected. Time appears to have moved backwards.');
+      if (Math.abs(expectedOsTime - monotonicTime) > 60000 || localNow < lastLocalSyncTime) {
+        console.debug('[DashboardScreen.handleStepAway] Tampering Check Failed: expectedOsTime=', expectedOsTime, 'monotonicTime=', monotonicTime);
+        Alert.alert('Security Alert', 'Device clock tampering detected.');
         setLoading(false);
         return;
       }
-
-      const timestamp = new Date(localNow + serverTimeOffset).toISOString();
       console.debug('[DashboardScreen.handleStepAway] timestamp=', timestamp, 'serverTimeOffset=', serverTimeOffset);
               saveOfflineRequest('POST', '/attendance/step-away', { timestamp, deviceId });
               Alert.alert('Offline Mode', 'Network error. Your request was saved locally and will be synced later.');
@@ -388,17 +392,18 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
     try {
       const deviceId = await getUniqueDeviceId();
 
-      // 3. Calculate True Time using server offset
+      // 3. Calculate True Time and detect device clock tampering
+      const timestamp = getMobileNow();
       const localNow = Date.now();
       const { serverTimeOffset, lastLocalSyncTime } = useNetworkStore.getState();
+      const monotonicTime = getTimestamp(timestamp);
+      const expectedOsTime = localNow + serverTimeOffset;
 
-      if (localNow < lastLocalSyncTime) {
-        Alert.alert('Security Alert', 'Device clock tampering detected. Time appears to have moved backwards.');
+      if (Math.abs(expectedOsTime - monotonicTime) > 60000 || localNow < lastLocalSyncTime) {
+        Alert.alert('Security Alert', 'Device clock tampering detected.');
         setLoading(false);
         return;
       }
-
-      const timestamp = new Date(localNow + serverTimeOffset).toISOString();
 
       // Optimistic Update if offline
       if (!isConnected) {
@@ -420,17 +425,18 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
       if (!error.response) {
         const deviceId = await getUniqueDeviceId();
 
-      // 3. Calculate True Time using server offset
+      // 3. Calculate True Time and detect device clock tampering
+      const timestamp = getMobileNow();
       const localNow = Date.now();
       const { serverTimeOffset, lastLocalSyncTime } = useNetworkStore.getState();
+      const monotonicTime = getTimestamp(timestamp);
+      const expectedOsTime = localNow + serverTimeOffset;
 
-      if (localNow < lastLocalSyncTime) {
-        Alert.alert('Security Alert', 'Device clock tampering detected. Time appears to have moved backwards.');
+      if (Math.abs(expectedOsTime - monotonicTime) > 60000 || localNow < lastLocalSyncTime) {
+        Alert.alert('Security Alert', 'Device clock tampering detected.');
         setLoading(false);
         return;
       }
-
-      const timestamp = new Date(localNow + serverTimeOffset).toISOString();
         saveOfflineRequest('POST', '/attendance/resume-work', { timestamp, deviceId });
         Alert.alert('Offline Mode', 'Network error. Your request was saved locally and will be synced later.');
         setStatus('working');
@@ -444,25 +450,7 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
     }
   };
 
-  const calculateTenure = (hireDate: string | null) => {
-    if (!hireDate) return 'Not set';
-    const start = new Date(hireDate);
-    const now = new Date();
 
-    let years = now.getFullYear() - start.getFullYear();
-    let months = now.getMonth() - start.getMonth();
-
-    if (months < 0) {
-      years--;
-      months += 12;
-    }
-
-    const parts = [];
-    if (years > 0) parts.push(`${years} year${years > 1 ? 's' : ''}`);
-    if (months > 0) parts.push(`${months} month${months > 1 ? 's' : ''}`);
-
-    return parts.length > 0 ? parts.join(', ') : 'Less than a month';
-  };
 
   const formatSchedule = (scheduleStr: string | null) => {
     if (!scheduleStr) return 'Not set';

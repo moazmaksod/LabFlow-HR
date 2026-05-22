@@ -1,6 +1,9 @@
 import { useNetworkStore } from '../store/useNetworkStore';
+import { formatInTimeZone, toDate } from 'date-fns-tz';
+import { format } from 'date-fns';
 
 export { timezones, simplifiedTimezones } from './timezones.data';
+
 let initTimeRef = Date.now();
 let initPerfRef = global.performance ? global.performance.now() : Date.now();
 let currentOffset = 0;
@@ -26,90 +29,120 @@ export const getMobileNow = (): string => {
     return now.toISOString();
 };
 
-/**
- * Resolves the timezone to use for displaying dates and times.
- * Hierarchy: User Choice -> Device Default -> UTC.
- */
-export const resolveTimezone = (userChoice?: string | null): string => {
-    if (userChoice) return userChoice;
+export const getSystemNow = getMobileNow;
+
+export enum DateFormats {
+    AUDIT_LOG = 'MMM dd, HH:mm',
+    PAYROLL_VIEW = 'yyyy-MM-dd HH:mm',
+    ANALYTICS_CHART = 'MMM dd',
+    NATIVE_DATE_INPUT = 'yyyy-MM-dd'
+}
+
+export const getDeviceTimezone = (): string => {
+    try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    } catch (e) {
+        return 'UTC';
+    }
+};
+
+export const is12HourSystem = (): boolean => {
+    try {
+        return Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions().hour12 || false;
+    } catch (e) {
+        return false; // Fallback to 24h
+    }
+};
+
+export const resolveTimezone = (userPreference?: string | null): string => {
+    if (userPreference) {
+        return userPreference;
+    }
+    return getDeviceTimezone();
+};
+
+export const calculateHoursBetween = (startTime: string | null, endTime?: string): number => {
+    if (!startTime) return 0;
+    const end = endTime ? getTimestamp(endTime) : new Date(getSystemNow()).getTime();
+    const start = getTimestamp(startTime);
+    const diff = end - start;
+    return diff > 0 ? diff / (1000 * 60 * 60) : 0;
+};
+
+export const formatDuration = (totalMins: number): string => {
+    if (!totalMins || totalMins < 0) return '00:00';
+    const hours = Math.floor(totalMins / 60);
+    const mins = Math.floor(totalMins % 60);
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+};
+
+export const getTimestamp = (isoString: string): number => {
+    if (!isoString) return 0;
+    const normalized = isoString.replace(' ', 'T');
+    const finalString = normalized.includes(':') && !normalized.endsWith('Z')
+        ? `${normalized}Z`
+        : normalized;
+    return new Date(finalString).getTime();
+};
+
+export const formatDisplayTime = (
+    dateString: Date | string | number | null | undefined,
+    userPreference?: string | null,
+    formatString: string = 'MMM dd, HH:mm'
+): string => {
+    if (!dateString) return '-';
+
+    const resolvedTimezone = resolveTimezone(userPreference);
+
+    // Dynamically respect system 12h/24h preference
+    let finalFormatString = formatString;
+    if (finalFormatString.includes('HH:mm')) {
+        finalFormatString = finalFormatString.replace('HH:mm', is12HourSystem() ? 'hh:mm a' : 'HH:mm');
+    }
 
     try {
-        const deviceTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        if (deviceTz) return deviceTz;
+        let dateToFormat: Date;
+        if (dateString instanceof Date) {
+            dateToFormat = dateString;
+        } else if (typeof dateString === 'number') {
+            dateToFormat = new Date(dateString);
+        } else {
+            const trimmed = dateString.trim();
+            const hasTimezone = trimmed.includes('Z') || /[+-]\d{2}:?\d{2}$/.test(trimmed);
+            if (hasTimezone) {
+                dateToFormat = new Date(trimmed);
+            } else {
+                const isoString = trimmed.includes('T') ? trimmed : trimmed.replace(' ', 'T');
+                const finalString = isoString.includes(':') ? `${isoString}Z` : isoString;
+                dateToFormat = new Date(finalString);
+            }
+        }
+
+        if (isNaN(dateToFormat.getTime())) return '-';
+        return formatInTimeZone(dateToFormat, resolvedTimezone, finalFormatString);
     } catch (e) {
-        console.warn('Failed to resolve device timezone, falling back to UTC', e);
+        console.error(`Error formatting date string: ${dateString}`, e);
+        return '-';
     }
-
-    return 'UTC';
 };
 
-const formatterCache = new Map<string, Intl.DateTimeFormat>();
-
-const getCachedFormatter = (options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat => {
-    const key = JSON.stringify(options, Object.keys(options).sort());
-    let formatter = formatterCache.get(key);
-    if (!formatter) {
-        formatter = new Intl.DateTimeFormat(undefined, options);
-        formatterCache.set(key, formatter);
-    }
-    return formatter;
-};
-
-/**
- * Formats a Date object or ISO string to a display time string.
- */
-export const formatDisplayTime = (
-    dateInput: Date | string | number | null | undefined,
-    userTimezone?: string | null,
-    options?: Intl.DateTimeFormatOptions
-): string => {
-    if (!dateInput) return '--:--';
-
-    const date = new Date(dateInput);
-    if (isNaN(date.getTime())) return '--:--';
-
-    const tz = resolveTimezone(userTimezone);
-    const defaultOptions: Intl.DateTimeFormatOptions = {
-        timeZone: tz,
-        hour: '2-digit',
-        minute: '2-digit'
-    };
-    const finalOptions = { ...defaultOptions, ...options };
-    return getCachedFormatter(finalOptions).format(date);
-};
-
-/**
- * Formats a Date object or ISO string to a display date string.
- */
 export const formatDisplayDate = (
-    dateInput: Date | string | number | null | undefined,
-    userTimezone?: string | null,
-    options?: Intl.DateTimeFormatOptions
+    dateString: Date | string | number | null | undefined,
+    userPreference?: string | null,
+    formatString: string = 'EEE, MMM d'
 ): string => {
-    if (!dateInput) return '--/--/----';
-
-    const date = new Date(dateInput);
-    if (isNaN(date.getTime())) return '--/--/----';
-
-    const tz = resolveTimezone(userTimezone);
-    const defaultOptions: Intl.DateTimeFormatOptions = {
-        timeZone: tz,
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric'
-    };
-    const finalOptions = { ...defaultOptions, ...options };
-    return getCachedFormatter(finalOptions).format(date);
+    if (!dateString) return '-';
+    // Normalize input to date string
+    const normalizedString = dateString instanceof Date 
+        ? dateString.toISOString() 
+        : (typeof dateString === 'number' ? new Date(dateString).toISOString() : dateString);
+    return formatDisplayTime(normalizedString, userPreference, formatString);
 };
 
-/**
- * Formats a raw 'HH:mm' time string safely using a fixed Unix Epoch base (new Date(0))
- * to eliminate date boundary shifts and daylight saving (DST) edge cases.
- */
 export const formatTimeString = (
     timeStr: string | null | undefined,
-    userTimezone?: string | null,
-    options?: Intl.DateTimeFormatOptions
+    userPreference?: string | null,
+    formatString: string = 'HH:mm'
 ): string => {
     if (!timeStr) return '--:--';
 
@@ -121,9 +154,121 @@ export const formatTimeString = (
     utcDate.setUTCHours(h, m, 0, 0);
 
     // Enforce 'UTC' timeline parsing to lock the extracted hours/minutes exactly as parsed
-    return formatDisplayTime(utcDate, userTimezone, {
-        timeZone: 'UTC',
-        ...options
-    });
+    let finalFormatString = formatString;
+    if (finalFormatString.includes('HH:mm')) {
+        finalFormatString = finalFormatString.replace('HH:mm', is12HourSystem() ? 'hh:mm a' : 'HH:mm');
+    }
+
+    return formatInTimeZone(utcDate, 'UTC', finalFormatString);
 };
 
+export const formatForDateInput = (dateString: string | null, userPreference?: string | null): string => {
+    if (!dateString) return '';
+    return formatDisplayTime(dateString, userPreference, DateFormats.NATIVE_DATE_INPUT);
+};
+
+export const parseFromDateInput = (dateString: string, userPreference?: string | null): string => {
+    if (!dateString) return '';
+
+    if (dateString.includes('T')) {
+        return new Date(dateString).toISOString();
+    }
+    if (dateString.includes('GMT') || dateString.includes('Time')) {
+        return new Date(dateString).toISOString();
+    }
+
+    const resolvedTimezone = resolveTimezone(userPreference);
+    try {
+        const date = toDate(`${dateString}T00:00:00`, { timeZone: resolvedTimezone });
+        return date.toISOString();
+    } catch (e) {
+        console.error(`Error parsing date input: ${dateString}`, e);
+        return '';
+    }
+};
+
+export const formatTimeOnlyToLocal = (utcTimeStr: string, userPreference?: string | null): string => {
+    if (!utcTimeStr) return '';
+    try {
+        const resolvedTimezone = resolveTimezone(userPreference);
+        const todayStr = new Date().toISOString().split('T')[0];
+        const date = new Date(`${todayStr}T${utcTimeStr}:00Z`);
+        const finalFormatString = is12HourSystem() ? 'hh:mm a' : 'HH:mm';
+        return formatInTimeZone(date, resolvedTimezone, finalFormatString);
+    } catch (e) {
+        console.error(`Error formatting time only: ${utcTimeStr}`, e);
+        return utcTimeStr;
+    }
+};
+
+export const parseTimeOnlyToUTC = (localTimeStr: string, userPreference?: string | null): string => {
+    if (!localTimeStr) return '';
+    try {
+        const resolvedTimezone = resolveTimezone(userPreference);
+        const now = new Date();
+        const localDateStr = formatInTimeZone(now, resolvedTimezone, 'yyyy-MM-dd');
+        const date = toDate(`${localDateStr}T${localTimeStr}:00`, { timeZone: resolvedTimezone });
+        return formatInTimeZone(date, 'UTC', 'HH:mm');
+    } catch (e) {
+        console.error(`Error parsing time only: ${localTimeStr}`, e);
+        return localTimeStr;
+    }
+};
+
+export const getLocalDateParts = (timezone?: string | null): { month: number; year: number } => {
+    const resolvedTimezone = resolveTimezone(timezone);
+    const now = new Date(getSystemNow());
+
+    try {
+        const monthStr = formatInTimeZone(now, resolvedTimezone, 'M');
+        const yearStr = formatInTimeZone(now, resolvedTimezone, 'yyyy');
+        return {
+            month: parseInt(monthStr, 10),
+            year: parseInt(yearStr, 10)
+        };
+    } catch (e) {
+        return {
+            month: now.getUTCMonth() + 1,
+            year: now.getUTCFullYear()
+        };
+    }
+};
+
+let cachedLocalizedMonths: { value: number; label: string }[] | null = null;
+
+export const getLocalizedMonths = (): { value: number; label: string }[] => {
+    if (cachedLocalizedMonths) {
+        return cachedLocalizedMonths;
+    }
+    const formatter = new Intl.DateTimeFormat(undefined, { month: 'long' });
+
+    cachedLocalizedMonths = Array.from({ length: 12 }, (_, i) => ({
+        value: i + 1,
+        label: formatter.format(new Date(2000, i, 1))
+    }));
+    return cachedLocalizedMonths;
+};
+
+export const parseAndFormat = (dateString: string | null, timezone?: string | null): string => {
+    return formatDisplayTime(dateString, timezone, 'MMM d, HH:mm');
+};
+
+export const calculateTenure = (hireDate: string | null): string => {
+    if (!hireDate) return 'Not set';
+    const start = new Date(hireDate);
+    const now = new Date();
+
+    let years = now.getFullYear() - start.getFullYear();
+    let months = now.getMonth() - start.getMonth();
+
+    if (months < 0) {
+        years--;
+        months += 12;
+    }
+
+    const parts = [];
+    if (years > 0) parts.push(`${years} year${years > 1 ? 's' : ''}`);
+    if (months > 0) parts.push(`${months} month${months > 1 ? 's' : ''}`);
+
+    return parts.length > 0 ? parts.join(', ') : 'Less than a month';
+};

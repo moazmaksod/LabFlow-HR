@@ -5,13 +5,16 @@ import api from '../lib/axios';
 
 interface SettingsState {
   settings: any | null;
+  userTimezone: string | null;
   fetchSettings: () => Promise<void>;
+  setUserTimezone: (tz: string | null) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
       settings: null,
+      userTimezone: null,
       fetchSettings: async () => {
         try {
           const response = await api.get('/settings');
@@ -20,6 +23,7 @@ export const useSettingsStore = create<SettingsState>()(
           console.error('Failed to fetch settings:', error);
         }
       },
+      setUserTimezone: (tz) => set({ userTimezone: tz }),
     }),
     {
       name: 'labflow-settings-state',

@@ -2,35 +2,34 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Globe } from 'lucide-react-native';
 import { useNetworkStore } from '../store/useNetworkStore';
-import { useAuthStore } from '../store/useAuthStore';
-import { getMobileNow, resolveTimezone, formatDisplayTime, formatDisplayDate } from '../lib/timeManager';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { getMobileNow, resolveTimezone, formatDisplayTime, formatDisplayDate, is12HourSystem } from '../lib/timeManager';
 
 export default function LiveServerClock() {
-  const user = useAuthStore((state) => state.user);
+  const userTimezone = useSettingsStore((state) => state.userTimezone);
   const serverTimeOffset = useNetworkStore((state) => state.serverTimeOffset); // just to trigger re-renders if it changes
 
   const [displayTime, setDisplayTime] = useState("");
   const [displayDate, setDisplayDate] = useState("");
 
-  const displayTimezone = resolveTimezone(user?.display_timezone);
+  const displayTimezone = resolveTimezone(userTimezone);
 
   useEffect(() => {
     const updateDisplay = () => {
       const nowIso = getMobileNow();
 
-      // Configuration option hashes (Deterministic Cache Keys inside timeManager)
-      const timeOptions: Intl.DateTimeFormatOptions = { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true };
-      const dateOptions: Intl.DateTimeFormatOptions = { weekday: "long", day: "numeric", month: "short" };
+      const timeFormat = is12HourSystem() ? 'hh:mm:ss a' : 'HH:mm:ss';
+      const dateFormat = 'EEEE, MMM d';
 
       // 1. Primary formatting attempt using server-synchronized monotonic time
-      let timeStr = formatDisplayTime(nowIso, user?.display_timezone, timeOptions);
-      let dateStr = formatDisplayDate(nowIso, user?.display_timezone, dateOptions);
+      let timeStr = formatDisplayTime(nowIso, userTimezone, timeFormat);
+      let dateStr = formatDisplayDate(nowIso, userTimezone, dateFormat);
 
       // 2. Defensive Check: If baseline strings return default failure placeholders, shift atomic sync to local fallback
-      if (timeStr === '--:--' || dateStr === '--/--/----') {
+      if (timeStr === '-' || dateStr === '-') {
         const localFallback = new Date();
-        timeStr = formatDisplayTime(localFallback, user?.display_timezone, timeOptions);
-        dateStr = formatDisplayDate(localFallback, user?.display_timezone, dateOptions);
+        timeStr = formatDisplayTime(localFallback, userTimezone, timeFormat);
+        dateStr = formatDisplayDate(localFallback, userTimezone, dateFormat);
       }
 
       // 3. Safely commit sanitized strings to high-frequency state hooks
@@ -44,7 +43,7 @@ export default function LiveServerClock() {
     const interval = setInterval(updateDisplay, 1000);
 
     return () => clearInterval(interval);
-  }, [displayTimezone, serverTimeOffset]);
+  }, [displayTimezone, serverTimeOffset, userTimezone]);
 
   return (
     <View style={styles.container}>

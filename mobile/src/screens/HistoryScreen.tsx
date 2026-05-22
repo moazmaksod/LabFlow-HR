@@ -7,6 +7,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { formatStatusLabel } from '../lib/utils';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { useAuthStore } from '../store/useAuthStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { formatDisplayTime, formatDisplayDate } from '../lib/timeManager';
 import { saveOfflineRequest } from '../lib/db';
 
@@ -28,6 +29,7 @@ interface AttendanceLog {
 
 export default function HistoryScreen() {
   const user = useAuthStore((state) => state.user);
+  const userTimezone = useSettingsStore((state) => state.userTimezone);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -78,11 +80,11 @@ export default function HistoryScreen() {
 
   const formatTime = (isoString: string | null) => {
     if (!isoString) return '--:--';
-    return formatDisplayTime(isoString, user?.display_timezone, { hour: '2-digit', minute: '2-digit' });
+    return formatDisplayTime(isoString, userTimezone, 'HH:mm');
   };
 
   const formatDate = (dateString: string) => {
-    return formatDisplayDate(dateString, user?.display_timezone, { weekday: 'short', month: 'short', day: 'numeric' });
+    return formatDisplayDate(dateString, userTimezone, 'EEE, MMM d');
   };
 
   const handleCheckInChange = (event: any, date?: Date) => {

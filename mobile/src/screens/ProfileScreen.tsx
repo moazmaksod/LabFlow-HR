@@ -4,8 +4,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from '@react-navigation/native';
 import { User, Camera, Save, LogOut, Mail, UserCircle, Lock, Info, DollarSign, Calendar, Clock, Shield, LayoutDashboard, MapPin, Landmark, HeartHandshake, Phone, FileText, Globe } from 'lucide-react-native';
 import { Picker } from '@react-native-picker/picker';
-import { simplifiedTimezones, formatDisplayTime, formatTimeString } from '../lib/timeManager';
+import { simplifiedTimezones, formatDisplayTime, formatTimeOnlyToLocal, calculateTenure } from '../lib/timeManager';
 import api from '../lib/axios';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { useAttendanceStore } from '../store/useAttendanceStore';
@@ -22,6 +23,7 @@ const BASE_URL = API_URL.replace('/api', '');
 export default function ProfileScreen() {
   const { user, logout, login } = useAuthStore();
   const { userProfile, setUserProfile } = useAttendanceStore();
+  const { userTimezone, setUserTimezone } = useSettingsStore();
   const [avatar, setAvatar] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
@@ -65,6 +67,7 @@ export default function ProfileScreen() {
       const data = response.data;
       setUserProfile(data);
       setAvatar(data.profile_picture_url || null);
+      setUserTimezone(data.display_timezone || null);
     } catch (error: any) {
       if (!error.isNetworkError) {
         console.error('Error fetching profile:', error);
@@ -92,8 +95,9 @@ export default function ProfileScreen() {
         display_timezone: userProfile.display_timezone || '',
       });
       setAvatar(userProfile.profile_picture_url || null);
+      setUserTimezone(userProfile.display_timezone || null);
     }
-  }, [userProfile, user, reset]);
+  }, [userProfile, user, reset, setUserTimezone]);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -179,6 +183,7 @@ export default function ProfileScreen() {
       const response = await api.put('/users/profile', finalData);
 
       setUserProfile(response.data);
+      setUserTimezone(response.data.display_timezone || null);
       if (user) {
         login({ ...user, name: response.data.name }, useAuthStore.getState().token!);
       }
@@ -195,29 +200,9 @@ export default function ProfileScreen() {
   }, onInvalid);
 
 
-  const calculateTenure = (hireDate: string | null) => {
-    if (!hireDate) return 'Not set';
-    const start = new Date(hireDate);
-    const now = new Date();
-
-    let years = now.getFullYear() - start.getFullYear();
-    let months = now.getMonth() - start.getMonth();
-
-    if (months < 0) {
-      years--;
-      months += 12;
-    }
-
-    const parts = [];
-    if (years > 0) parts.push(`${years} year${years > 1 ? 's' : ''}`);
-    if (months > 0) parts.push(`${months} month${months > 1 ? 's' : ''}`);
-
-    return parts.length > 0 ? parts.join(', ') : 'Less than a month';
-  };
-
   const formatTime = (timeStr: string) => {
     if (!timeStr) return '';
-    return formatTimeString(timeStr, userProfile?.display_timezone || user?.display_timezone, { hour: '2-digit', minute: '2-digit' });
+    return formatTimeOnlyToLocal(timeStr, userTimezone);
   };
 
   const renderScheduleTable = (scheduleStr: string | null) => {

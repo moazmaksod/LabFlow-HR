@@ -6,6 +6,7 @@ import api from '../lib/axios';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { formatDisplayDate } from '../lib/timeManager';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 interface PayrollRecord {
   id: number;
@@ -29,6 +30,7 @@ interface PayrollTransaction {
 
 export default function PayslipScreen() {
   const user = useAuthStore((state) => state.user);
+  const userTimezone = useSettingsStore((state) => state.userTimezone);
   const [payrolls, setPayrolls] = useState<PayrollRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -92,11 +94,11 @@ export default function PayslipScreen() {
   };
 
   const formatDate = (dateString: string) => {
-    return formatDisplayDate(dateString, user?.display_timezone, { month: 'short', year: 'numeric' });
+    return formatDisplayDate(dateString, userTimezone, 'MMM yyyy');
   };
 
   const formatFullDate = (dateString: string) => {
-    return formatDisplayDate(dateString, user?.display_timezone, { month: 'short', day: 'numeric', year: 'numeric' });
+    return formatDisplayDate(dateString, userTimezone, 'MMM d, yyyy');
   };
 
   const renderPayrollItem = ({ item }: { item: PayrollRecord }) => (

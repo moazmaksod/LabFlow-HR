@@ -2,10 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Play, Pause, AlertCircle } from 'lucide-react-native';
 import { useAttendanceStore } from '../store/useAttendanceStore';
-import { formatDisplayDate, formatTimeString } from '../lib/timeManager';
+import { formatDisplayDate, formatTimeString, formatDuration, getMobileNow } from '../lib/timeManager';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNetworkStore } from '../store/useNetworkStore';
-import { formatDuration } from '../lib/utils';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 interface SmartAttendanceCardProps {
   currentShift: any | null;
@@ -37,9 +37,10 @@ export default function SmartAttendanceCard({
   lunchBreakMinutes
 }: SmartAttendanceCardProps) {
   const user = useAuthStore((state) => state.user);
+  const userTimezone = useSettingsStore((state) => state.userTimezone);
 
   const formatShiftTime = (timeStr: string) => {
-    return formatTimeString(timeStr, user?.display_timezone);
+    return formatTimeString(timeStr, userTimezone);
   };
 
   // console.debug('[SmartAttendanceCard] Entry props:', {currentStatus, consumedBreakMinutes, lunchBreakMinutes});
@@ -47,27 +48,27 @@ export default function SmartAttendanceCard({
   const serverTimeOffset = useNetworkStore((state) => state.serverTimeOffset);
   const lastLocalSyncTime = useNetworkStore((state) => state.lastLocalSyncTime);
 
-  const shadowTimeRef = useRef(Date.now() + serverTimeOffset);
-  const [now, setNow] = useState(new Date(shadowTimeRef.current));
+  const [now, setNow] = useState(new Date(getMobileNow()));
   const [isTampered, setIsTampered] = useState(false);
 
   useEffect(() => {
-    // Re-sync shadow ref when dependency updates (e.g. app wakes up and syncs)
-    shadowTimeRef.current = Date.now() + serverTimeOffset;
-
-    const interval = setInterval(() => {
-      // A) The Shadow Tick
-      shadowTimeRef.current += 1000;
-      setNow(new Date(shadowTimeRef.current));
+    const updateTime = () => {
+      const nowIso = getMobileNow();
+      const nowObj = new Date(nowIso);
+      setNow(nowObj);
 
       // B) The Drift Check
       const expectedOsTime = Date.now() + serverTimeOffset;
-      if (Math.abs(expectedOsTime - shadowTimeRef.current) > 60000 || Date.now() < lastLocalSyncTime) {
+      const monotonicTime = nowObj.getTime();
+      if (Math.abs(expectedOsTime - monotonicTime) > 60000 || Date.now() < lastLocalSyncTime) {
         setIsTampered(true);
       } else {
         setIsTampered(false);
       }
-    }, 1000);
+    };
+
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
 
     return () => clearInterval(interval);
   }, [serverTimeOffset, lastLocalSyncTime]);
@@ -262,7 +263,7 @@ export default function SmartAttendanceCard({
               {headerTitle}
             </Text>
             <Text style={styles.timelineSubtitle}>
-              {formatDisplayDate(shiftDate, user?.display_timezone, { weekday: 'long', day: 'numeric', month: 'short' }).replace(/,/g, '')} {'\n'} {formatShiftTime(todayShift.start)} - {formatShiftTime(todayShift.end)}
+              {formatDisplayDate(shiftDate, userTimezone, 'EEEE d MMM')} {'\n'} {formatShiftTime(todayShift.start)} - {formatShiftTime(todayShift.end)}
             </Text>
           </View>
           <View style={[styles.statusBadge, currentStatus === 'working' ? styles.statusWorking : currentStatus === 'away' ? styles.statusAway : styles.statusNone]}>
