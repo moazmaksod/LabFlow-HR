@@ -220,4 +220,51 @@ describe('Attendance API - Schedule Driven Architecture', () => {
     // expect(attendance.check_in).toBe(expectedHistoricalTime);
     // expect(attendance.date).toBe('2023-10-26'); // Validated by timezone conversion!
   });
+
+  it('5. Heartbeat Early Stop Auto-Close Test', async () => {
+    const hash = await bcrypt.hash('password123', 10);
+    const empInsert4 = db.prepare(`INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)`).run('Heartbeat Employee', 'employee_hb@test.com', hash, 'employee');
+    const employeeId4 = empInsert4.lastInsertRowid;
+
+    const weekly_schedule = JSON.stringify({ friday: [{ start: "08:00", end: "16:00" }] });
+    db.prepare(`INSERT INTO profiles (user_id, status, job_id, weekly_schedule, device_id) VALUES (?, ?, ?, ?, ?)`).run(employeeId4, 'active', 1, weekly_schedule, 'test-device-hb');
+    
+    db.prepare(`INSERT INTO shift_instances (user_id, start_time, end_time, logical_date, status) VALUES (?, ?, ?, ?, 'Scheduled')`)
+      .run(employeeId4, '2023-10-27T08:00:00Z', '2023-10-27T16:00:00Z', '2023-10-27');
+
+    const shiftInstanceResult = db.prepare(`SELECT id FROM shift_instances WHERE user_id = ? AND logical_date = '2023-10-27'`).get(employeeId4) as any;
+    const shiftIdStr = shiftInstanceResult.id.toString();
+
+    db.prepare(`
+        INSERT INTO attendance (user_id, check_in, check_out, date, check_in_lat, check_in_lng, status, current_status, shift_id)
+        VALUES (?, ?, NULL, ?, 37.7749, -122.4194, 'on_time', 'working', ?)
+    `).run(employeeId4, '2023-10-27T08:00:00Z', '2023-10-27', shiftIdStr);
+
+    const insertHeartbeat = db.prepare(`
+        INSERT INTO attendance_heartbeats (user_id, timestamp, ssid, status)
+        VALUES (?, ?, ?, 'success')
+    `);
+    insertHeartbeat.run(employeeId4, '2023-10-27T08:30:00Z', 'Company-WiFi');
+    insertHeartbeat.run(employeeId4, '2023-10-27T09:00:00Z', 'Company-WiFi');
+    insertHeartbeat.run(employeeId4, '2023-10-27T09:30:00Z', 'Company-WiFi');
+    insertHeartbeat.run(employeeId4, '2023-10-27T10:00:00Z', 'Company-WiFi');
+
+    jest.useFakeTimers().setSystemTime(new Date('2023-10-27T16:05:00Z'));
+
+    const { evaluateUserAttendance } = await import('../../services/attendanceEvaluationService.js');
+    evaluateUserAttendance(Number(employeeId4));
+
+    const attendanceRecord = db.prepare('SELECT * FROM attendance WHERE user_id = ?').get(employeeId4) as any;
+    expect(attendanceRecord).toBeDefined();
+    expect(attendanceRecord.check_out).toBe('2023-10-27T10:15:00.000Z');
+    expect(attendanceRecord.status).toBe('early_out');
+
+    const shiftInstanceRecord = db.prepare('SELECT * FROM shift_instances WHERE user_id = ? AND logical_date = ?').get(employeeId4, '2023-10-27') as any;
+    expect(shiftInstanceRecord.status).toBe('Completed');
+
+    const requestRecord = db.prepare('SELECT * FROM requests WHERE user_id = ? AND type = ?').get(employeeId4, 'early_leave_approval') as any;
+    expect(requestRecord).toBeDefined();
+    expect(requestRecord.attendance_id).toBe(attendanceRecord.id);
+    expect(requestRecord.status).toBe('pending');
+  });
 });

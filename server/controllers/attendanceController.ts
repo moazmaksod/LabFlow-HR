@@ -942,3 +942,51 @@ export const resumeWork = (req: AuthRequest, res: Response): void => {
         res.status(500).json({ error: 'Internal server error' });
     }
 };
+
+let insertHeartbeatStmt: any = null;
+const getInsertHeartbeatStmt = () => {
+    if (!insertHeartbeatStmt) {
+        insertHeartbeatStmt = db.prepare(`
+            INSERT INTO attendance_heartbeats (user_id, timestamp, ssid, status)
+            VALUES (?, ?, ?, ?)
+        `);
+    }
+    return insertHeartbeatStmt;
+};
+
+export const heartbeatAttendance = (req: AuthRequest, res: Response): void => {
+    try {
+        const userId = req.user!.id;
+        const { timestamp, currentSsid } = req.body;
+
+        if (!timestamp) {
+            res.status(400).json({ error: 'Missing timestamp' });
+            return;
+        }
+
+        // Fetch company settings to validate SSID
+        let settings = getSettingsCache();
+        if (!settings) {
+            settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+            if (settings) {
+                setSettingsCache(settings);
+            }
+        }
+
+        let status = 'success';
+        if (settings && settings.wifi_validation_toggle) {
+            const companySsid = settings.company_wifi_ssid;
+            if (companySsid && currentSsid !== companySsid) {
+                status = 'failed';
+            }
+        }
+
+        // Store heartbeat log in database
+        getInsertHeartbeatStmt().run(userId, timestamp, currentSsid || null, status);
+
+        res.json({ status: 'ok', heartbeatStatus: status });
+    } catch (error) {
+        logger.error('Error logging attendance heartbeat:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};

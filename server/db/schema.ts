@@ -222,6 +222,17 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS attendance_heartbeats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    timestamp DATETIME NOT NULL,
+    ssid TEXT,
+    status TEXT CHECK(status IN ('success', 'failed')) DEFAULT 'success',
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_attendance_heartbeats_user_id_timestamp ON attendance_heartbeats(user_id, timestamp);
+
 -- Performance Indexes for Foreign Keys
 CREATE INDEX IF NOT EXISTS idx_profiles_user_id ON profiles(user_id);
 CREATE INDEX IF NOT EXISTS idx_profiles_job_id ON profiles(job_id);

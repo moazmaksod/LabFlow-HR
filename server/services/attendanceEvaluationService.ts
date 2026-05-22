@@ -2,6 +2,19 @@ import db from '../db/index.js';
 import logger from '../utils/logger.js';
 import { getAppNow, getDifferenceInMinutes, generateUnscheduledShiftId } from "../utils/timeManager.js";
 
+let findLastHeartbeatStmt: any = null;
+const getFindLastHeartbeatStmt = () => {
+    if (!findLastHeartbeatStmt) {
+        findLastHeartbeatStmt = db.prepare(`
+            SELECT timestamp FROM attendance_heartbeats
+            WHERE user_id = ? AND status = 'success' AND timestamp >= ? AND timestamp <= ?
+            ORDER BY timestamp DESC
+            LIMIT 1
+        `);
+    }
+    return findLastHeartbeatStmt;
+};
+
 export const evaluateUserAttendance = (userId: number): void => {
     logger.debug('[evaluateUserAttendance] Entry: userId=', userId);
     try {
@@ -9,6 +22,9 @@ export const evaluateUserAttendance = (userId: number): void => {
             logger.debug('[evaluateUserAttendance] Transaction Entry: uid=', uid);
             const now = getAppNow();
             logger.debug('[evaluateUserAttendance] now=', now);
+
+            const settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+            const gracePeriod = settings?.late_grace_period !== undefined ? settings.late_grace_period : 0;
 
             // Scenario B: Scheduled Shift extending into Overtime
             const activeScheduled = db.prepare(`
@@ -22,50 +38,102 @@ export const evaluateUserAttendance = (userId: number): void => {
 
             if (activeScheduled) {
                 logger.debug('[evaluateUserAttendance] activeScheduled Branch Entry');
-                // Check if this is the final shift of the day
-                const futureShiftsToday = db.prepare(`
-                    SELECT id FROM shift_instances
-                    WHERE user_id = ? AND logical_date = ? AND start_time >= ? AND status = 'Scheduled'
-                    LIMIT 1
-                `).get(uid, activeScheduled.logical_date, activeScheduled.scheduled_end_time) as any;
-                const isFinalShift = !futureShiftsToday;
 
-                if (activeScheduled.current_status === 'away' && isFinalShift) {
-                    logger.debug('[evaluateUserAttendance] activeScheduled is final shift and away. Auto-terminating break.');
-                    // Auto-Terminate Stepaway and Clock-out
+                // Check heartbeats to detect if employee left early
+                const lastHeartbeat = getFindLastHeartbeatStmt().get(uid, activeScheduled.check_in, activeScheduled.scheduled_end_time) as any;
+
+                let lastSuccessfulHeartbeatMs: number;
+                if (lastHeartbeat) {
+                    lastSuccessfulHeartbeatMs = new Date(lastHeartbeat.timestamp).getTime();
+                } else {
+                    lastSuccessfulHeartbeatMs = new Date(activeScheduled.check_in).getTime();
+                }
+
+                const effectiveCheckOutMs = lastSuccessfulHeartbeatMs + 15 * 60 * 1000;
+                const scheduledEndMs = new Date(activeScheduled.scheduled_end_time).getTime();
+
+                if (effectiveCheckOutMs < scheduledEndMs) {
+                    logger.debug('[evaluateUserAttendance] Heartbeats stopped early. Auto-closing shift.');
+
+                    const effectiveCheckOutISO = new Date(effectiveCheckOutMs).toISOString();
+
+                    let attendanceStatus = activeScheduled.status;
+                    const earlyMinutes = getDifferenceInMinutes(effectiveCheckOutISO, activeScheduled.scheduled_end_time);
+                    if (earlyMinutes > gracePeriod) {
+                        attendanceStatus = attendanceStatus === 'on_time' ? 'early_out' : attendanceStatus;
+                    }
+
+                    // Auto-Close Session
                     db.prepare(`
-                        UPDATE attendance SET check_out = ?, check_out_lat = ?, check_out_lng = ? WHERE id = ?
-                    `).run(activeScheduled.scheduled_end_time, activeScheduled.check_in_lat, activeScheduled.check_in_lng, activeScheduled.id);
+                        UPDATE attendance 
+                        SET check_out = ?, check_out_lat = ?, check_out_lng = ?, status = ?
+                        WHERE id = ?
+                    `).run(
+                        effectiveCheckOutISO, 
+                        activeScheduled.check_in_lat, 
+                        activeScheduled.check_in_lng, 
+                        attendanceStatus,
+                        activeScheduled.id
+                    );
 
-                    // End the active step_away interruption
+                    // End the active step_away interruption if any
                     db.prepare(`
                         UPDATE shift_interruptions
                         SET end_time = ?
                         WHERE attendance_id = ? AND type = 'step_away' AND end_time IS NULL
-                    `).run(activeScheduled.scheduled_end_time, activeScheduled.id);
-
-                    db.prepare(`
-                        UPDATE shift_instances SET status = 'Completed' WHERE id = ?
-                    `).run(activeScheduled.shift_instance_id);
-                } else {
-                    logger.debug('[evaluateUserAttendance] activeScheduled is NOT final shift and away. Ending scheduled and creating unscheduled.');
-                    // End scheduled attendance
-                    db.prepare(`
-                        UPDATE attendance SET check_out = ?, check_out_lat = ?, check_out_lng = ? WHERE id = ?
-                    `).run(activeScheduled.scheduled_end_time, activeScheduled.check_in_lat, activeScheduled.check_in_lng, activeScheduled.id);
-
-                    const unscheduledShiftId = generateUnscheduledShiftId(uid, now);
-
-                    // Insert new active unscheduled attendance
-                    db.prepare(`
-                        INSERT INTO attendance (user_id, check_in, check_out, date, check_in_lat, check_in_lng, status, current_status, shift_id)
-                        VALUES (?, ?, NULL, ?, ?, ?, 'unscheduled', 'working', ?)
-                    `).run(uid, activeScheduled.scheduled_end_time, activeScheduled.date, activeScheduled.check_in_lat, activeScheduled.check_in_lng, unscheduledShiftId);
+                    `).run(effectiveCheckOutISO, activeScheduled.id);
 
                     // Update shift instance status
                     db.prepare(`
                         UPDATE shift_instances SET status = 'Completed' WHERE id = ?
                     `).run(activeScheduled.shift_instance_id);
+
+                } else {
+                    // Check if this is the final shift of the day
+                    const futureShiftsToday = db.prepare(`
+                        SELECT id FROM shift_instances
+                        WHERE user_id = ? AND logical_date = ? AND start_time >= ? AND status = 'Scheduled'
+                        LIMIT 1
+                    `).get(uid, activeScheduled.logical_date, activeScheduled.scheduled_end_time) as any;
+                    const isFinalShift = !futureShiftsToday;
+
+                    if (activeScheduled.current_status === 'away' && isFinalShift) {
+                        logger.debug('[evaluateUserAttendance] activeScheduled is final shift and away. Auto-terminating break.');
+                        // Auto-Terminate Stepaway and Clock-out
+                        db.prepare(`
+                            UPDATE attendance SET check_out = ?, check_out_lat = ?, check_out_lng = ? WHERE id = ?
+                        `).run(activeScheduled.scheduled_end_time, activeScheduled.check_in_lat, activeScheduled.check_in_lng, activeScheduled.id);
+
+                        // End the active step_away interruption
+                        db.prepare(`
+                            UPDATE shift_interruptions
+                            SET end_time = ?
+                            WHERE attendance_id = ? AND type = 'step_away' AND end_time IS NULL
+                        `).run(activeScheduled.scheduled_end_time, activeScheduled.id);
+
+                        db.prepare(`
+                            UPDATE shift_instances SET status = 'Completed' WHERE id = ?
+                        `).run(activeScheduled.shift_instance_id);
+                    } else {
+                        logger.debug('[evaluateUserAttendance] activeScheduled is NOT final shift and away. Ending scheduled and creating unscheduled.');
+                        // End scheduled attendance
+                        db.prepare(`
+                            UPDATE attendance SET check_out = ?, check_out_lat = ?, check_out_lng = ? WHERE id = ?
+                        `).run(activeScheduled.scheduled_end_time, activeScheduled.check_in_lat, activeScheduled.check_in_lng, activeScheduled.id);
+
+                        const unscheduledShiftId = generateUnscheduledShiftId(uid, now);
+
+                        // Insert new active unscheduled attendance
+                        db.prepare(`
+                            INSERT INTO attendance (user_id, check_in, check_out, date, check_in_lat, check_in_lng, status, current_status, shift_id)
+                            VALUES (?, ?, NULL, ?, ?, ?, 'unscheduled', 'working', ?)
+                        `).run(uid, activeScheduled.scheduled_end_time, activeScheduled.date, activeScheduled.check_in_lat, activeScheduled.check_in_lng, unscheduledShiftId);
+
+                        // Update shift instance status
+                        db.prepare(`
+                            UPDATE shift_instances SET status = 'Completed' WHERE id = ?
+                        `).run(activeScheduled.shift_instance_id);
+                    }
                 }
             }
 
@@ -114,9 +182,6 @@ export const evaluateUserAttendance = (userId: number): void => {
             }
 
             // Scenario C: JIT Early Leave Evaluation (Only after shift end_time has passed)
-            let settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
-            const gracePeriod = settings?.late_grace_period !== undefined ? settings.late_grace_period : 0;
-
             const earlyLeaveSessions = db.prepare(`
                 SELECT a.*, s.end_time as scheduled_end_time, s.id as shift_instance_id
                 FROM attendance a
