@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/axios';
 import { useAuthStore } from '../../store/useAuthStore';
 import { formatDisplayTime, getWebNow as getSystemNow, calculateHoursBetween, getTimestamp, formatDuration } from '../../lib/timeManager';
-import { CheckCircle, XCircle, Clock, FileText, X, AlertCircle } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, FileText, X, AlertCircle, RefreshCw } from 'lucide-react';
 
 interface RequestLog {
   id: number;
@@ -34,8 +34,16 @@ export default function RequestManagement() {
   const [filterStatus, setFilterStatus] = useState('pending');
   const [filterEmployee, setFilterEmployee] = useState('');
   const [filterType, setFilterType] = useState('all');
-  const [filterStartDate, setFilterStartDate] = useState('');
-  const [filterEndDate, setFilterEndDate] = useState('');
+  const [filterStartDate, setFilterStartDate] = useState(() => {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: user?.display_timezone || 'UTC'
+    }).format(new Date(getSystemNow()));
+  });
+  const [filterEndDate, setFilterEndDate] = useState(() => {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: user?.display_timezone || 'UTC'
+    }).format(new Date(getSystemNow()));
+  });
   const [selectedRequest, setSelectedRequest] = useState<RequestLog | null>(null);
   const [managerNote, setManagerNote] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -98,7 +106,7 @@ export default function RequestManagement() {
     return isNaN(mins) ? 0 : mins;
   };
 
-  const { data: requests, isLoading } = useQuery<RequestLog[]>({
+  const { data: requests, isLoading, refetch, isFetching } = useQuery<RequestLog[]>({
     queryKey: ['requests'],
     queryFn: async () => {
       const res = await api.get('/requests');
@@ -391,7 +399,7 @@ export default function RequestManagement() {
             </div>
           </div>
         )}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
           <div className="flex flex-col">
             <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1">Employee</label>
             <input
@@ -449,6 +457,16 @@ export default function RequestManagement() {
               <option value="rejected">Rejected</option>
               <option value="all">All</option>
             </select>
+          </div>
+          <div className="flex flex-col">
+            <button
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="px-4 py-1.5 bg-primary text-primary-foreground text-sm font-semibold rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 h-[34px] cursor-pointer"
+            >
+              <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
+              Search
+            </button>
           </div>
         </div>
       </div>

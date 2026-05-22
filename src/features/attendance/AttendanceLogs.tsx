@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../lib/axios';
-import { Search, Filter, Calendar as CalendarIcon } from 'lucide-react';
+import { Search, Filter, Calendar as CalendarIcon, RefreshCw } from 'lucide-react';
 import { formatStatusLabel } from '../../lib/utils';
 import { useAuthStore } from '../../store/useAuthStore';
-import { formatDisplayTime } from '../../lib/timeManager';
+import { formatDisplayTime, getWebNow } from '../../lib/timeManager';
 
 interface AttendanceLog {
   id: number;
@@ -23,11 +23,20 @@ interface AttendanceLog {
 
 export default function AttendanceLogs() {
   const user = useAuthStore(state => state.user);
-  const [filterDate, setFilterDate] = useState('');
+  const [filterStartDate, setFilterStartDate] = useState(() => {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: user?.display_timezone || 'UTC'
+    }).format(new Date(getWebNow()));
+  });
+  const [filterEndDate, setFilterEndDate] = useState(() => {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: user?.display_timezone || 'UTC'
+    }).format(new Date(getWebNow()));
+  });
   const [filterStatus, setFilterStatus] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const { data: logs, isLoading } = useQuery<AttendanceLog[]>({
+  const { data: logs, isLoading, refetch, isFetching } = useQuery<AttendanceLog[]>({
     queryKey: ['attendance-logs'],
     queryFn: async () => {
       const res = await api.get('/attendance');
@@ -38,13 +47,14 @@ export default function AttendanceLogs() {
   const formatTime = (isoString: string | null) => formatDisplayTime(isoString, user?.display_timezone, 'HH:mm');
 
   const filteredLogs = logs?.filter(log => {
-    const matchesDate = filterDate ? log.date === filterDate : true;
+    if (filterStartDate && log.date < filterStartDate) return false;
+    if (filterEndDate && log.date > filterEndDate) return false;
     const matchesStatus = filterStatus ? log.status === filterStatus : true;
     const matchesSearch = searchQuery 
       ? log.user_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
         (log.job_title && log.job_title.toLowerCase().includes(searchQuery.toLowerCase()))
       : true;
-    return matchesDate && matchesStatus && matchesSearch;
+    return matchesStatus && matchesSearch;
   });
 
   return (
@@ -65,15 +75,30 @@ export default function AttendanceLogs() {
             className="w-full pl-9 pr-4 py-2 bg-background border border-border rounded-lg text-sm"
           />
         </div>
-        <div className="flex gap-4">
-          <div className="relative">
-            <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input 
-              type="date" 
-              value={filterDate}
-              onChange={(e) => setFilterDate(e.target.value)}
-              className="pl-9 pr-4 py-2 bg-background border border-border rounded-lg text-sm"
-            />
+        <div className="flex flex-wrap md:flex-nowrap gap-4 items-center">
+          <div className="relative flex items-center gap-2">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">From:</span>
+            <div className="relative">
+              <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input 
+                type="date" 
+                value={filterStartDate}
+                onChange={(e) => setFilterStartDate(e.target.value)}
+                className="pl-9 pr-4 py-2 bg-background border border-border rounded-lg text-sm"
+              />
+            </div>
+          </div>
+          <div className="relative flex items-center gap-2">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">To:</span>
+            <div className="relative">
+              <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input 
+                type="date" 
+                value={filterEndDate}
+                onChange={(e) => setFilterEndDate(e.target.value)}
+                className="pl-9 pr-4 py-2 bg-background border border-border rounded-lg text-sm"
+              />
+            </div>
           </div>
           <div className="relative">
             <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -91,6 +116,14 @@ export default function AttendanceLogs() {
               <option value="unscheduled">Unscheduled</option>
             </select>
           </div>
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 h-[38px] cursor-pointer"
+          >
+            <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
+            Search
+          </button>
         </div>
       </div>
 
