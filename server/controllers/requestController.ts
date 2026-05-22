@@ -67,6 +67,7 @@ export const getRequests = (req: AuthRequest, res: Response): void => {
 
             requests = db.prepare(`
                 SELECT r.*, u.name as user_name, a.date as attendance_date, a.check_in as original_check_in, a.check_out as original_check_out, 
+                       a.shift_id as attendance_shift_id,
                        si.start_time as interruption_start_time, si.end_time as interruption_end_time,
                        s.id as shift_instance_id, s.start_time as shift_start_time, s.end_time as shift_end_time, s.logical_date as shift_logical_date
                 FROM requests r
@@ -96,6 +97,7 @@ export const getRequests = (req: AuthRequest, res: Response): void => {
         } else {
             requests = db.prepare(`
                 SELECT r.*, u.name as user_name, a.date as attendance_date, a.check_in as original_check_in, a.check_out as original_check_out, 
+                       a.shift_id as attendance_shift_id,
                        si.start_time as interruption_start_time, si.end_time as interruption_end_time,
                        s.id as shift_instance_id, s.start_time as shift_start_time, s.end_time as shift_end_time, s.logical_date as shift_logical_date
                 FROM requests r

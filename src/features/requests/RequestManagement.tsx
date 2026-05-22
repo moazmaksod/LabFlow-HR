@@ -20,6 +20,8 @@ interface RequestLog {
   shift_start_time?: string | null;
   shift_end_time?: string | null;
   shift_logical_date?: string | null;
+  attendance_shift_id?: string | null;
+  attendance_date?: string | null;
   status: string;
   created_at: string;
   details?: string;
@@ -723,7 +725,24 @@ export default function RequestManagement() {
                         {/* Related Shift Section */}
                         <div className="pt-2 border-t border-border">
                           <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">Related Shift</label>
-                          {selectedRequest.shift_instance_id ? (
+                          {selectedRequest.attendance_shift_id?.startsWith('US_') ? (
+                            <div className="bg-amber-500/5 dark:bg-amber-500/10 p-3 rounded-lg border border-amber-500/20 space-y-1.5 text-sm">
+                              <div className="flex justify-between">
+                                <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">Shift Type:</span>
+                                <span className="font-bold text-amber-700 dark:text-amber-300">Unscheduled Shift</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-xs text-muted-foreground">Shift ID:</span>
+                                <span className="font-mono text-xs text-muted-foreground">{selectedRequest.attendance_shift_id}</span>
+                              </div>
+                              {selectedRequest.attendance_date && (
+                                <div className="flex justify-between">
+                                  <span className="text-xs text-muted-foreground">Logical Date:</span>
+                                  <span className="font-medium">{selectedRequest.attendance_date}</span>
+                                </div>
+                              )}
+                            </div>
+                          ) : selectedRequest.shift_instance_id ? (
                             <div className="bg-muted/30 p-3 rounded-lg border border-border space-y-1.5 text-sm">
                               <div className="flex justify-between">
                                 <span className="text-xs text-muted-foreground">Shift ID:</span>
