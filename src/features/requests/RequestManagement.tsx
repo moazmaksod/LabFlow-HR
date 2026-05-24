@@ -24,7 +24,10 @@ interface RequestLog {
   attendance_date?: string | null;
   status: string;
   created_at: string;
-  details?: string;
+  value?: number;
+  paid_minutes?: number;
+  penalty_minutes?: number;
+  approved_overtime_minutes?: number;
   manager_note?: string;
 }
 
@@ -79,21 +82,56 @@ export default function RequestManagement() {
     if (req.type === 'permission_to_leave' || req.type === 'shift_interruption_review') {
       return getDurationMins(req.interruption_start_time, req.interruption_end_time);
     }
-    let details: any = {};
-    try {
-      details = JSON.parse(req.details || '{}');
-    } catch {}
-    
-    if (req.type === 'early_leave_approval') {
-      return details.missing_minutes || details.early_leave_minutes || 0;
+    if (req.type === 'early_leave_approval' || req.type === 'late_in_approval' || req.type === 'attendance_correction') {
+      if (req.value && req.value > 0) return req.value;
+      if (req.type === 'late_in_approval' && req.original_check_in && req.shift_start_time) {
+        return getDurationMins(req.shift_start_time, req.original_check_in);
+      }
     }
-    if (req.type === 'late_in_approval') {
-      const mins = details.missing_minutes || details.late_in_minutes || 0;
-      if (mins > 0) return mins;
-      return getDurationMins(req.shift_start_time, req.original_check_in);
-    }
-    return 0;
+    return req.value || 0;
   };
+
+  const getMaxDurationMins = (req: RequestLog): number => {
+    let maxMins = req.value || 0;
+    if (req.type === 'permission_to_leave' || req.type === 'shift_interruption_review') {
+      if (req.interruption_start_time && req.interruption_end_time) {
+        return getDurationMins(req.interruption_start_time, req.interruption_end_time);
+      }
+    }
+    if (req.type === 'late_in_approval' && !maxMins) {
+      if (req.original_check_in && req.shift_start_time) {
+        return getDurationMins(req.shift_start_time, req.original_check_in);
+      }
+    }
+    if (req.type === 'early_leave_approval' && !maxMins) {
+      if (req.original_check_out && req.shift_end_time) {
+        return getDurationMins(req.original_check_out, req.shift_end_time);
+      }
+    }
+    if (req.type === 'overtime_approval' && !maxMins) {
+      if (req.original_check_in && req.original_check_out) {
+        if (req.shift_start_time && req.shift_end_time && !req.attendance_shift_id?.startsWith('US_')) {
+          const startScheduled = new Date(req.shift_start_time);
+          const endScheduled = new Date(req.shift_end_time);
+          const checkInTime = new Date(req.original_check_in);
+          const checkOutTime = new Date(req.original_check_out);
+          let ot = 0;
+          if (checkInTime < startScheduled) {
+            ot += getDurationMins(req.original_check_in, req.shift_start_time);
+          }
+          if (checkOutTime > endScheduled) {
+            ot += getDurationMins(req.shift_end_time, req.original_check_out);
+          }
+          return ot;
+        } else {
+          return getDurationMins(req.original_check_in, req.original_check_out);
+        }
+      }
+    }
+    return maxMins;
+  };
+
+
 
   const parseHHMMToMinutes = (val: string): number => {
     const parts = val.split(':');
@@ -115,8 +153,8 @@ export default function RequestManagement() {
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, status, manager_note, approved_minutes, is_paid_permission, paid_permission_minutes, penalty_hours }: { id: number, status: string, manager_note?: string, approved_minutes?: number, is_paid_permission?: boolean, paid_permission_minutes?: number, penalty_hours?: number }) => {
-      const res = await api.put(`/requests/${id}/status`, { status, manager_note, approved_minutes, is_paid_permission, paid_permission_minutes, penalty_hours });
+    mutationFn: async ({ id, status, manager_note, approved_minutes, paid_minutes, penalty_minutes }: { id: number, status: string, manager_note?: string, approved_minutes?: number, paid_minutes?: number, penalty_minutes?: number }) => {
+      const res = await api.put(`/requests/${id}/status`, { status, manager_note, approved_minutes, paid_minutes, penalty_minutes });
       return res.data;
     },
     onSuccess: () => {
@@ -174,27 +212,11 @@ export default function RequestManagement() {
     setIsRejecting(false);
     setError(null);
 
-    let initialMins = 0;
-    if (req.type === 'overtime_approval') {
-      try {
-        const details = JSON.parse(req.details || '{}');
-        initialMins = details.requested_overtime_minutes || details.raw_overtime_minutes || 0;
-      } catch (e) {}
-    } else if (req.type === 'permission_to_leave' || req.type === 'shift_interruption_review') {
+    let initialMins = req.value || 0;
+    if ((req.type === 'permission_to_leave' || req.type === 'shift_interruption_review') && !initialMins) {
       initialMins = getDurationMins(req.interruption_start_time, req.interruption_end_time);
-    } else if (req.type === 'early_leave_approval') {
-      try {
-        const details = JSON.parse(req.details || '{}');
-        initialMins = details.missing_minutes || details.early_leave_minutes || 0;
-      } catch (e) {}
-    } else if (req.type === 'late_in_approval') {
-      try {
-        const details = JSON.parse(req.details || '{}');
-        initialMins = details.missing_minutes || details.late_in_minutes || 0;
-      } catch (e) {}
-      if (!initialMins && req.original_check_in && req.shift_start_time) {
-        initialMins = getDurationMins(req.shift_start_time, req.original_check_in);
-      }
+    } else if (req.type === 'late_in_approval' && !initialMins && req.original_check_in && req.shift_start_time) {
+      initialMins = getDurationMins(req.shift_start_time, req.original_check_in);
     }
     setAcceptedDurationHHMM(formatDuration(initialMins));
   };
@@ -217,9 +239,17 @@ export default function RequestManagement() {
       return;
     }
     const needsDuration = ['permission_to_leave', 'shift_interruption_review', 'overtime_approval', 'early_leave_approval', 'late_in_approval'].includes(selectedRequest.type || '');
-    if (needsDuration && !/^\d+:[0-5]\d$/.test(acceptedDurationHHMM)) {
-      setError("Accepted duration must be in HH:MM format (e.g., 01:30, 00:45).");
-      return;
+    if (needsDuration) {
+      if (!/^\d+:[0-5]\d$/.test(acceptedDurationHHMM)) {
+        setError("Accepted duration must be in HH:MM format (e.g., 01:30, 00:45).");
+        return;
+      }
+      const maxMins = getMaxDurationMins(selectedRequest);
+      const inputMins = parseHHMMToMinutes(acceptedDurationHHMM);
+      if (inputMins > maxMins) {
+        setError(`Approved duration (${acceptedDurationHHMM}) cannot exceed the maximum allowed period of ${formatDuration(maxMins)}.`);
+        return;
+      }
     }
     setError(null);
     setConfirmActionType('approve');
@@ -250,20 +280,18 @@ export default function RequestManagement() {
       status: 'approved',
       manager_note: managerNote,
       approved_minutes: isOvertime ? durationMinutes : undefined,
-      is_paid_permission: !isOvertime,
-      paid_permission_minutes: !isOvertime ? durationMinutes : 0
+      paid_minutes: !isOvertime ? durationMinutes : 0
     });
   };
 
   const executeReject = () => {
     if (!selectedRequest) return;
-    const penaltyMins = applyPenalty ? parseHHMMToMinutes(penaltyDurationHHMM) : 0;
-    const calculatedPenaltyHours = penaltyMins / 60;
+    const penaltyMinutes = applyPenalty ? parseHHMMToMinutes(penaltyDurationHHMM) : 0;
     updateStatusMutation.mutate({
       id: selectedRequest.id,
       status: 'rejected',
       manager_note: managerNote,
-      penalty_hours: calculatedPenaltyHours
+      penalty_minutes: penaltyMinutes
     });
   };
 
@@ -278,35 +306,22 @@ export default function RequestManagement() {
       const req = requests?.find(r => r.id === id);
       let payload: any = { id: id as number, status: 'approved', manager_note: bulkManagerNote };
 
-      if (req?.type === 'overtime_approval' && req.details) {
-        try {
-          const details = JSON.parse(req.details);
-          payload.approved_minutes = details.requested_overtime_minutes || details.raw_overtime_minutes || 0;
-        } catch (e) {}
-      } else if ((req?.type === 'early_leave_approval' || req?.type === 'attendance_correction') && req.details) {
-        try {
-          const details = JSON.parse(req.details);
-          const missing = details.missing_minutes || details.early_leave_minutes || 0;
-          if (missing > 0) {
-              payload.is_paid_permission = true;
-              payload.paid_permission_minutes = missing;
-          }
-        } catch (e) {}
+      if (req?.type === 'overtime_approval') {
+        payload.approved_minutes = req.value || 0;
+      } else if (req?.type === 'early_leave_approval' || req?.type === 'attendance_correction') {
+        const missing = req.value || 0;
+        if (missing > 0) {
+            payload.paid_minutes = missing;
+        }
       } else if (req?.type === 'permission_to_leave' || req?.type === 'shift_interruption_review') {
-        const duration = getDurationMins(req.interruption_start_time, req.interruption_end_time);
-        payload.is_paid_permission = true;
-        payload.paid_permission_minutes = duration;
+        const duration = req.value || getDurationMins(req.interruption_start_time, req.interruption_end_time);
+        payload.paid_minutes = duration;
       } else if (req?.type === 'late_in_approval') {
-        let missing = 0;
-        try {
-          const details = JSON.parse(req.details || '{}');
-          missing = details.missing_minutes || details.late_in_minutes || 0;
-        } catch (e) {}
+        let missing = req.value || 0;
         if (!missing && req.original_check_in && req.shift_start_time) {
           missing = getDurationMins(req.shift_start_time, req.original_check_in);
         }
-        payload.is_paid_permission = true;
-        payload.paid_permission_minutes = missing;
+        payload.paid_minutes = missing;
       }
       await updateStatusMutation.mutateAsync(payload);
     }
@@ -322,15 +337,7 @@ export default function RequestManagement() {
     }
     setBulkError(null);
     for (const id of Array.from(selectedRequestIds)) {
-      const req = requests?.find(r => r.id === id);
       let payload: any = { id: id as number, status: 'rejected', manager_note: bulkManagerNote };
-
-      if (req?.type === 'overtime_approval' && req.details) {
-        try {
-          const details = JSON.parse(req.details);
-          payload.approved_minutes = details.requested_overtime_minutes || details.raw_overtime_minutes || 0;
-        } catch (e) {}
-      }
       await updateStatusMutation.mutateAsync(payload);
     }
     setSelectedRequestIds(new Set());
@@ -627,62 +634,124 @@ export default function RequestManagement() {
                     </div>
 
                     {confirmActionType === 'approve' ? (
-                      <div className="bg-emerald-500/5 border border-emerald-500/20 p-3 rounded-lg space-y-1 mt-2">
-                        <div className="text-xs font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">
-                          Payroll Credit Impact
-                        </div>
-                        <p className="text-[11px] text-muted-foreground">
-                          This request will be marked as approved. The specified paid duration will be credited to the employee.
-                        </p>
-                        <div className="flex justify-between items-center pt-1">
-                          <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">Paid Credit Duration:</span>
-                          <span className="font-mono font-black text-emerald-600 dark:text-emerald-400 text-base">
-                            {acceptedDurationHHMM}
-                          </span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-3 mt-2">
-                        <div className="bg-rose-500/5 border border-rose-500/20 p-3 rounded-lg space-y-1">
-                          <div className="text-xs font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest">
-                            Payroll Absence Impact
+                      selectedRequest.type === 'attendance_correction' ? (
+                        <div className="bg-emerald-500/5 border border-emerald-500/20 p-3 rounded-lg space-y-2 mt-2">
+                          <div className="text-xs font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">
+                            Attendance Correction Summary
                           </div>
                           <p className="text-[11px] text-muted-foreground">
-                            This request will be rejected. The corresponding duration will remain unpaid.
+                            This request will be marked as approved. The shift check-in and check-out times will be updated to the proposed times.
+                          </p>
+                          <div className="space-y-1 text-xs">
+                            <div className="flex justify-between items-center">
+                              <span className="text-muted-foreground">New Clock In:</span>
+                              <span className="font-mono font-semibold text-foreground">
+                                {formatTime(selectedRequest.requested_check_in || null)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-muted-foreground">New Clock Out:</span>
+                              <span className="font-mono font-semibold text-foreground">
+                                {formatTime(selectedRequest.requested_check_out || null)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center border-t border-emerald-500/10 pt-1.5 mt-1">
+                              <span className="font-bold text-emerald-800 dark:text-emerald-300">New Duration:</span>
+                              <span className="font-mono font-black text-emerald-600 dark:text-emerald-400 text-base">
+                                {formatDuration(getDurationMins(selectedRequest.requested_check_in, selectedRequest.requested_check_out))}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-emerald-500/5 border border-emerald-500/20 p-3 rounded-lg space-y-1 mt-2">
+                          <div className="text-xs font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">
+                            Payroll Credit Impact
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">
+                            This request will be marked as approved. The specified paid duration will be credited to the employee.
                           </p>
                           <div className="flex justify-between items-center pt-1">
-                            <span className="text-xs font-bold text-rose-800 dark:text-rose-300">Unpaid Duration:</span>
-                            <span className="font-mono font-black text-rose-600 dark:text-rose-400 text-base">
-                              {formatDuration(getUnapprovedAbsenceDurationMinutes(selectedRequest))}
+                            <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">Paid Credit Duration:</span>
+                            <span className="font-mono font-black text-emerald-600 dark:text-emerald-400 text-base">
+                              {acceptedDurationHHMM}
                             </span>
                           </div>
                         </div>
-
-                        <div className={`p-3 rounded-lg border space-y-1 ${
-                          applyPenalty 
-                            ? 'bg-amber-500/5 border-amber-500/20' 
-                            : 'bg-muted/30 border-border/50'
-                        }`}>
-                          <div className={`text-xs font-black uppercase tracking-widest ${
-                            applyPenalty ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'
-                          }`}>
-                            Extra Disciplinary Penalty
+                      )
+                    ) : (
+                      selectedRequest.type === 'attendance_correction' ? (
+                        <div className="bg-rose-500/5 border border-rose-500/20 p-3 rounded-lg space-y-2 mt-2">
+                          <div className="text-xs font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest">
+                            Attendance Correction Rejection
                           </div>
                           <p className="text-[11px] text-muted-foreground">
-                            {applyPenalty 
-                              ? 'An additional disciplinary deduction will be applied directly to the payroll ledger.'
-                              : 'No extra disciplinary penalty will be applied.'}
+                            This request will be rejected. Nothing will change and the existing check-in/out times and duration will remain as is.
                           </p>
-                          <div className="flex justify-between items-center pt-1">
-                            <span className="text-xs font-bold text-muted-foreground">Extra Penalty Duration:</span>
-                            <span className={`font-mono font-black text-base ${
+                          <div className="space-y-1 text-xs">
+                            <div className="flex justify-between items-center">
+                              <span className="text-muted-foreground">Existing Clock In:</span>
+                              <span className="font-mono font-semibold text-foreground">
+                                {formatTime(selectedRequest.original_check_in || null)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-muted-foreground">Existing Clock Out:</span>
+                              <span className="font-mono font-semibold text-foreground">
+                                {formatTime(selectedRequest.original_check_out || null)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center border-t border-rose-500/10 pt-1.5 mt-1">
+                              <span className="font-bold text-rose-800 dark:text-rose-300">Existing Shift Duration:</span>
+                              <span className="font-mono font-black text-rose-600 dark:text-rose-400 text-base">
+                                {formatDuration(getDurationMins(selectedRequest.original_check_in, selectedRequest.original_check_out))}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-3 mt-2">
+                          <div className="bg-rose-500/5 border border-rose-500/20 p-3 rounded-lg space-y-1">
+                            <div className="text-xs font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest">
+                              Payroll Absence Impact
+                            </div>
+                            <p className="text-[11px] text-muted-foreground">
+                              This request will be rejected. The corresponding duration will remain unpaid.
+                            </p>
+                            <div className="flex justify-between items-center pt-1">
+                              <span className="text-xs font-bold text-rose-800 dark:text-rose-300">Unpaid Duration:</span>
+                              <span className="font-mono font-black text-rose-600 dark:text-rose-400 text-base">
+                                {formatDuration(getUnapprovedAbsenceDurationMinutes(selectedRequest))}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className={`p-3 rounded-lg border space-y-1 ${
+                            applyPenalty 
+                              ? 'bg-amber-500/5 border-amber-500/20' 
+                              : 'bg-muted/30 border-border/50'
+                          }`}>
+                            <div className={`text-xs font-black uppercase tracking-widest ${
                               applyPenalty ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'
                             }`}>
-                              {applyPenalty ? penaltyDurationHHMM : 'None (00:00)'}
-                            </span>
+                              Extra Disciplinary Penalty
+                            </div>
+                            <p className="text-[11px] text-muted-foreground">
+                              {applyPenalty 
+                                ? 'An additional disciplinary deduction will be applied directly to the payroll ledger.'
+                                : 'No extra disciplinary penalty will be applied.'}
+                            </p>
+                            <div className="flex justify-between items-center pt-1">
+                              <span className="text-xs font-bold text-muted-foreground">Extra Penalty Duration:</span>
+                              <span className={`font-mono font-black text-base ${
+                                applyPenalty ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'
+                              }`}>
+                                {applyPenalty ? penaltyDurationHHMM : 'None (00:00)'}
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      )
                     )}
 
                     <div className="pt-2">
@@ -720,13 +789,16 @@ export default function RequestManagement() {
               <>
                 <div className="p-6 overflow-y-auto flex-1 space-y-4">
                   {(() => {
-                    const parsedDetails = (() => {
-                      try {
-                        return JSON.parse(selectedRequest.details || '{}');
-                      } catch {
-                        return {};
-                      }
-                    })();
+                    const parsedDetails = {
+                      new_clock_in: selectedRequest.requested_check_in,
+                      new_clock_out: selectedRequest.requested_check_out,
+                      missing_minutes: selectedRequest.value,
+                      early_leave_minutes: selectedRequest.value,
+                      late_in_minutes: selectedRequest.value,
+                      approved_minutes: selectedRequest.approved_overtime_minutes,
+                      paid_permission_minutes: selectedRequest.paid_minutes,
+                      penalty_hours: (selectedRequest.penalty_minutes || 0) / 60
+                    };
                     
                     return (
                       <>

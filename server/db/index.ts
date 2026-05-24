@@ -219,28 +219,43 @@ export function initDb() {
     if (!requestColumns.some(c => c.name === 'type')) {
       db.exec("ALTER TABLE requests ADD COLUMN type TEXT;");
     }
-    if (!requestColumns.some(c => c.name === 'reference_id')) {
-      db.exec("ALTER TABLE requests ADD COLUMN reference_id INTEGER;");
-    }
-    if (!requestColumns.some(c => c.name === 'details')) {
-      db.exec("ALTER TABLE requests ADD COLUMN details TEXT;");
+    if (requestColumns.some(c => c.name === 'reference_id')) {
+      db.exec("ALTER TABLE requests RENAME COLUMN reference_id TO shift_interruption_id;");
+    } else if (!requestColumns.some(c => c.name === 'shift_interruption_id')) {
+      db.exec("ALTER TABLE requests ADD COLUMN shift_interruption_id INTEGER;");
     }
     if (!requestColumns.some(c => c.name === 'manager_note')) {
       db.exec("ALTER TABLE requests ADD COLUMN manager_note TEXT;");
     }
-    if (!requestColumns.some(c => c.name === 'is_paid_permission')) {
-      db.exec("ALTER TABLE requests ADD COLUMN is_paid_permission BOOLEAN DEFAULT 0;");
+    if (requestColumns.some(c => c.name === 'details')) {
+      db.exec("ALTER TABLE requests RENAME COLUMN details TO value;");
+    } else if (!requestColumns.some(c => c.name === 'value')) {
+      db.exec("ALTER TABLE requests ADD COLUMN value INTEGER DEFAULT 0;");
     }
-    if (!requestColumns.some(c => c.name === 'paid_permission_minutes')) {
-      db.exec("ALTER TABLE requests ADD COLUMN paid_permission_minutes INTEGER DEFAULT 0;");
+    if (requestColumns.some(c => c.name === 'paid_permission_minutes')) {
+      db.exec("ALTER TABLE requests RENAME COLUMN paid_permission_minutes TO paid_minutes;");
+    } else if (!requestColumns.some(c => c.name === 'paid_minutes')) {
+      db.exec("ALTER TABLE requests ADD COLUMN paid_minutes INTEGER DEFAULT 0;");
+    }
+    if (!requestColumns.some(c => c.name === 'penalty_minutes')) {
+      db.exec("ALTER TABLE requests ADD COLUMN penalty_minutes INTEGER DEFAULT 0;");
+    }
+    if (requestColumns.some(c => c.name === 'is_paid_permission')) {
+      db.exec("ALTER TABLE requests DROP COLUMN is_paid_permission;");
     }
 
     const finalAttendanceColumns = db.prepare("PRAGMA table_info(attendance)").all() as any[];
-    if (!finalAttendanceColumns.some(c => c.name === 'is_paid_permission')) {
-      db.exec("ALTER TABLE attendance ADD COLUMN is_paid_permission BOOLEAN DEFAULT 0;");
+    if (finalAttendanceColumns.some(c => c.name === 'approved_overtime_minutes')) {
+      db.exec("ALTER TABLE attendance DROP COLUMN approved_overtime_minutes;");
     }
-    if (!finalAttendanceColumns.some(c => c.name === 'paid_permission_minutes')) {
-      db.exec("ALTER TABLE attendance ADD COLUMN paid_permission_minutes INTEGER DEFAULT 0;");
+    if (finalAttendanceColumns.some(c => c.name === 'paid_minutes')) {
+      db.exec("ALTER TABLE attendance DROP COLUMN paid_minutes;");
+    }
+    if (finalAttendanceColumns.some(c => c.name === 'paid_permission_minutes')) {
+      db.exec("ALTER TABLE attendance DROP COLUMN paid_permission_minutes;");
+    }
+    if (finalAttendanceColumns.some(c => c.name === 'is_paid_permission')) {
+      db.exec("ALTER TABLE attendance DROP COLUMN is_paid_permission;");
     }
     if (!finalAttendanceColumns.find(c => c.name === 'shift_id')) {
       db.exec("ALTER TABLE attendance ADD COLUMN shift_id TEXT;");
@@ -269,9 +284,6 @@ export function initDb() {
             check_in_lng REAL,
             check_out_lat REAL,
             check_out_lng REAL,
-            approved_overtime_minutes INTEGER DEFAULT 0,
-            is_paid_permission BOOLEAN DEFAULT 0,
-            paid_permission_minutes INTEGER DEFAULT 0,
             shift_id TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -281,7 +293,6 @@ export function initDb() {
         INSERT INTO attendance_new (
           id, user_id, check_in, check_out, date, status, current_status,
           check_in_lat, check_in_lng, check_out_lat, check_out_lng,
-          approved_overtime_minutes, is_paid_permission, paid_permission_minutes,
           shift_id, created_at, updated_at
         )
         SELECT 
@@ -289,7 +300,6 @@ export function initDb() {
           location_lat, location_lng, 
           CASE WHEN check_out IS NOT NULL THEN location_lat ELSE NULL END,
           CASE WHEN check_out IS NOT NULL THEN location_lng ELSE NULL END,
-          approved_overtime_minutes, is_paid_permission, paid_permission_minutes,
           shift_id, created_at, updated_at
         FROM attendance;
 

@@ -135,7 +135,7 @@ describe('Attendance Interruptions API', () => {
         const reqRecord = db.prepare('SELECT * FROM requests WHERE user_id = ? AND type = ?').get(employeeId, 'permission_to_leave') as any;
         expect(reqRecord).toBeDefined();
         expect(reqRecord.status).toBe('pending');
-        expect(reqRecord.reference_id).toBe(interruption.id);
+        expect(reqRecord.shift_interruption_id).toBe(interruption.id);
     });
 
     it('should auto_approve when stepping away with break balance > 0', async () => {

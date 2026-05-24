@@ -72,14 +72,17 @@ const calculateUserPayrollSlow = (user: any, start_date: string, end_date: strin
 
     // Fetch Attendance Logs for the period
     const logs = db.prepare(`
-        SELECT * FROM attendance
-        WHERE user_id = ? AND date BETWEEN ? AND ?
-        ORDER BY date ASC
+        SELECT a.*,
+          COALESCE((SELECT SUM(r.paid_minutes) FROM requests r WHERE r.attendance_id = a.id AND r.status = 'approved' AND r.type != 'overtime_approval'), 0) as paid_minutes,
+          COALESCE((SELECT SUM(r.paid_minutes) FROM requests r WHERE r.attendance_id = a.id AND r.status = 'approved' AND r.type = 'overtime_approval'), 0) as approved_overtime_minutes
+        FROM attendance a
+        WHERE a.user_id = ? AND a.date BETWEEN ? AND ?
+        ORDER BY a.date ASC
     `).all(user.id, start_date, end_date) as any[];
 
     let totalExpectedMinutes = 0;
     let totalActualWorkedMinutes = 0;
-    let totalPaidPermissionMinutes = 0;
+    let totalPaidMinutes = 0;
     let totalMissingMinutes = 0;
     let totalApprovedOvertimeMinutes = 0;
 
@@ -134,7 +137,7 @@ const calculateUserPayrollSlow = (user: any, start_date: string, end_date: strin
         } else {
             totalActualWorkedMinutes += workedMinutes;
             totalMissingMinutes += Math.max(0, expectedForDay - workedMinutes);
-            totalPaidPermissionMinutes += log.paid_permission_minutes || 0;
+            totalPaidMinutes += log.paid_minutes || 0;
         }
     });
 
@@ -157,7 +160,7 @@ const calculateUserPayrollSlow = (user: any, start_date: string, end_date: strin
         }
     }
 
-    const unpaidMinutes = Math.max(0, totalMissingMinutes - totalPaidPermissionMinutes);
+    const unpaidMinutes = Math.max(0, totalMissingMinutes - totalPaidMinutes);
     const netWorkedMinutes = Math.max(0, totalActualWorkedMinutes - unpaidMinutes);
     const finalNetSalary = (netWorkedMinutes / 60) * hourlyRate;
 
@@ -171,7 +174,7 @@ const calculateUserPayrollSlow = (user: any, start_date: string, end_date: strin
         time_metrics: {
             expected_hours: Number((totalExpectedMinutes / 60).toFixed(2)),
             actual_worked_hours: Number((totalActualWorkedMinutes / 60).toFixed(2)),
-            paid_permission_hours: Number((totalPaidPermissionMinutes / 60).toFixed(2)),
+            paid_hours: Number((totalPaidMinutes / 60).toFixed(2)),
             missing_unpaid_minutes: Math.round(unpaidMinutes),
             approved_overtime_minutes: totalApprovedOvertimeMinutes
         },
@@ -190,14 +193,17 @@ const calculateUserPayrollFast = (user: any, start_date: string, end_date: strin
 
     // Fetch Attendance Logs for the period
     const logs = db.prepare(`
-        SELECT * FROM attendance
-        WHERE user_id = ? AND date BETWEEN ? AND ?
-        ORDER BY date ASC
+        SELECT a.*,
+          COALESCE((SELECT SUM(r.paid_minutes) FROM requests r WHERE r.attendance_id = a.id AND r.status = 'approved' AND r.type != 'overtime_approval'), 0) as paid_minutes,
+          COALESCE((SELECT SUM(r.paid_minutes) FROM requests r WHERE r.attendance_id = a.id AND r.status = 'approved' AND r.type = 'overtime_approval'), 0) as approved_overtime_minutes
+        FROM attendance a
+        WHERE a.user_id = ? AND a.date BETWEEN ? AND ?
+        ORDER BY a.date ASC
     `).all(user.id, start_date, end_date) as any[];
 
     let totalExpectedMinutes = 0;
     let totalActualWorkedMinutes = 0;
-    let totalPaidPermissionMinutes = 0;
+    let totalPaidMinutes = 0;
     let totalMissingMinutes = 0;
     let totalApprovedOvertimeMinutes = 0;
 
@@ -252,7 +258,7 @@ const calculateUserPayrollFast = (user: any, start_date: string, end_date: strin
         } else {
             totalActualWorkedMinutes += workedMinutes;
             totalMissingMinutes += Math.max(0, expectedForDay - workedMinutes);
-            totalPaidPermissionMinutes += log.paid_permission_minutes || 0;
+            totalPaidMinutes += log.paid_minutes || 0;
         }
     });
 
@@ -270,7 +276,7 @@ const calculateUserPayrollFast = (user: any, start_date: string, end_date: strin
         }
     }
 
-    const unpaidMinutes = Math.max(0, totalMissingMinutes - totalPaidPermissionMinutes);
+    const unpaidMinutes = Math.max(0, totalMissingMinutes - totalPaidMinutes);
     const netWorkedMinutes = Math.max(0, totalActualWorkedMinutes - unpaidMinutes);
     const finalNetSalary = (netWorkedMinutes / 60) * hourlyRate;
 
@@ -284,7 +290,7 @@ const calculateUserPayrollFast = (user: any, start_date: string, end_date: strin
         time_metrics: {
             expected_hours: Number((totalExpectedMinutes / 60).toFixed(2)),
             actual_worked_hours: Number((totalActualWorkedMinutes / 60).toFixed(2)),
-            paid_permission_hours: Number((totalPaidPermissionMinutes / 60).toFixed(2)),
+            paid_hours: Number((totalPaidMinutes / 60).toFixed(2)),
             missing_unpaid_minutes: Math.round(unpaidMinutes),
             approved_overtime_minutes: totalApprovedOvertimeMinutes
         },

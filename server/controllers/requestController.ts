@@ -11,7 +11,7 @@ import { getDifferenceInMinutes } from '../utils/timeManager.js';
 export const createRequest = (req: AuthRequest, res: Response): void => {
     try {
         const userId = req.user!.id;
-        const { reason, requested_check_in, requested_check_out, attendance_id, type } = req.body;
+        const { reason, requested_check_in, requested_check_out, attendance_id, type, value } = req.body;
 
         if (!reason) {
             res.status(400).json({ error: 'Reason is required' });
@@ -33,11 +33,11 @@ export const createRequest = (req: AuthRequest, res: Response): void => {
         }
 
         const insert = db.prepare(`
-            INSERT INTO requests (user_id, attendance_id, requested_check_in, requested_check_out, type, reason, status)
-            VALUES (?, ?, ?, ?, ?, ?, 'pending')
+            INSERT INTO requests (user_id, attendance_id, requested_check_in, requested_check_out, type, reason, value, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
         `);
 
-        const info = insert.run(userId, attendance_id || null, requested_check_in || null, requested_check_out || null, requestType, reason);
+        const info = insert.run(userId, attendance_id || null, requested_check_in || null, requested_check_out || null, requestType, reason, value || 0);
         const newReq = db.prepare('SELECT * FROM requests WHERE id = ?').get(info.lastInsertRowid);
 
         logAudit('requests', info.lastInsertRowid as number, 'CREATE', userId, null, newReq);
@@ -68,6 +68,7 @@ export const getRequests = (req: AuthRequest, res: Response): void => {
             requests = db.prepare(`
                 SELECT r.*, u.name as user_name, a.date as attendance_date, a.check_in as original_check_in, a.check_out as original_check_out, 
                        a.shift_id as attendance_shift_id,
+                       (SELECT COALESCE(SUM(r2.paid_minutes), 0) FROM requests r2 WHERE r2.attendance_id = a.id AND r2.status = 'approved' AND r2.type = 'overtime_approval') as approved_overtime_minutes,
                        si.start_time as interruption_start_time, si.end_time as interruption_end_time,
                        s.id as shift_instance_id, s.start_time as shift_start_time, s.end_time as shift_end_time, s.logical_date as shift_logical_date
                 FROM requests r
@@ -91,13 +92,14 @@ export const getRequests = (req: AuthRequest, res: Response): void => {
                         )
                     )
                 )
-                LEFT JOIN shift_interruptions si ON r.reference_id = si.id AND r.type IN ('permission_to_leave', 'shift_interruption_review')
+                LEFT JOIN shift_interruptions si ON r.shift_interruption_id = si.id AND r.type IN ('permission_to_leave', 'shift_interruption_review')
                 ORDER BY r.created_at DESC
             `).all();
         } else {
             requests = db.prepare(`
                 SELECT r.*, u.name as user_name, a.date as attendance_date, a.check_in as original_check_in, a.check_out as original_check_out, 
                        a.shift_id as attendance_shift_id,
+                       (SELECT COALESCE(SUM(r2.paid_minutes), 0) FROM requests r2 WHERE r2.attendance_id = a.id AND r2.status = 'approved' AND r2.type = 'overtime_approval') as approved_overtime_minutes,
                        si.start_time as interruption_start_time, si.end_time as interruption_end_time,
                        s.id as shift_instance_id, s.start_time as shift_start_time, s.end_time as shift_end_time, s.logical_date as shift_logical_date
                 FROM requests r
@@ -121,7 +123,7 @@ export const getRequests = (req: AuthRequest, res: Response): void => {
                         )
                     )
                 )
-                LEFT JOIN shift_interruptions si ON r.reference_id = si.id AND r.type IN ('permission_to_leave', 'shift_interruption_review')
+                LEFT JOIN shift_interruptions si ON r.shift_interruption_id = si.id AND r.type IN ('permission_to_leave', 'shift_interruption_review')
                 WHERE r.user_id = ?
                 ORDER BY r.created_at DESC
             `).all(user.id);
@@ -137,14 +139,14 @@ export const getRequests = (req: AuthRequest, res: Response): void => {
 export const createAttendanceCorrection = (req: AuthRequest, res: Response): void => {
     try {
         const userId = req.user!.id;
-        const { attendance_id, new_clock_in, new_clock_out, reason, breaks } = req.body;
+        const { attendance_id, new_clock_in, new_clock_out, reason } = req.body;
 
-        if (!attendance_id || !reason || (!new_clock_in && !new_clock_out && !breaks)) {
+        if (!attendance_id || !reason || (!new_clock_in && !new_clock_out)) {
             res.status(400).json({ error: 'Missing required fields' });
             return;
         }
 
-        const attendanceRecord = db.prepare('SELECT check_out FROM attendance WHERE id = ? AND user_id = ?').get(attendance_id, userId) as any;
+        const attendanceRecord = db.prepare('SELECT check_out, check_in, shift_id FROM attendance WHERE id = ? AND user_id = ?').get(attendance_id, userId) as any;
         if (!attendanceRecord) {
             res.status(404).json({ error: 'Attendance record not found' });
             return;
@@ -165,6 +167,37 @@ export const createAttendanceCorrection = (req: AuthRequest, res: Response): voi
             return;
         }
 
+        const checkIn = new_clock_in || attendanceRecord.check_in;
+        const checkOut = new_clock_out || attendanceRecord.check_out;
+        if (checkIn && checkOut && new Date(checkIn) > new Date(checkOut)) {
+            res.status(400).json({ error: 'Check-out time must be after check-in time.' });
+            return;
+        }
+
+        let shiftInstance = null;
+        if (attendanceRecord.shift_id && !attendanceRecord.shift_id.startsWith('US_')) {
+            shiftInstance = db.prepare('SELECT * FROM shift_instances WHERE id = ?').get(attendanceRecord.shift_id) as any;
+        }
+
+        if (shiftInstance) {
+            if (new_clock_in) {
+                const checkInTime = new Date(new_clock_in);
+                const startScheduled = new Date(shiftInstance.start_time);
+                if (checkInTime < startScheduled) {
+                    res.status(400).json({ error: 'Correction check-in time cannot be earlier than the scheduled shift start time.' });
+                    return;
+                }
+            }
+            if (new_clock_out) {
+                const checkOutTime = new Date(new_clock_out);
+                const endScheduled = new Date(shiftInstance.end_time);
+                if (checkOutTime > endScheduled) {
+                    res.status(400).json({ error: 'Correction check-out time cannot be later than the scheduled shift end time.' });
+                    return;
+                }
+            }
+        }
+
         const userProfile = db.prepare(`
             SELECT p.weekly_schedule
             FROM profiles p
@@ -178,14 +211,6 @@ export const createAttendanceCorrection = (req: AuthRequest, res: Response): voi
         let missingMinutes = 0;
         if (userProfile && userProfile.weekly_schedule) {
             try {
-                const checkIn = new_clock_in || attendanceRecord.check_in;
-                const checkOut = new_clock_out || attendanceRecord.check_out;
-
-                let shiftInstance = null;
-                if (attendanceRecord.shift_id && !attendanceRecord.shift_id.startsWith('US_')) {
-                    shiftInstance = db.prepare('SELECT * FROM shift_instances WHERE id = ?').get(attendanceRecord.shift_id) as any;
-                }
-
                 if (shiftInstance) {
                     if (checkIn) {
                         const startScheduled = new Date(shiftInstance.start_time);
@@ -213,14 +238,12 @@ export const createAttendanceCorrection = (req: AuthRequest, res: Response): voi
             }
         }
 
-        const details = JSON.stringify({ new_clock_in, new_clock_out, breaks, missing_minutes: missingMinutes });
-
         const insert = db.prepare(`
-            INSERT INTO requests (user_id, attendance_id, type, details, reason, status)
-            VALUES (?, ?, 'attendance_correction', ?, ?, 'pending')
+            INSERT INTO requests (user_id, attendance_id, type, requested_check_in, requested_check_out, reason, value, status)
+            VALUES (?, ?, 'attendance_correction', ?, ?, ?, ?, 'pending')
         `);
 
-        const info = insert.run(userId, attendance_id, details, reason);
+        const info = insert.run(userId, attendance_id, new_clock_in || null, new_clock_out || null, reason, missingMinutes);
         const newReq = db.prepare('SELECT * FROM requests WHERE id = ?').get(info.lastInsertRowid);
 
         res.status(201).json(newReq);
@@ -234,7 +257,7 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
     try {
         const actorId = (req as AuthRequest).user!.id;
         const { id } = req.params;
-        const { status, manager_note, approved_minutes, is_paid_permission, paid_permission_minutes, penalty_hours } = req.body;
+        const { status, manager_note, approved_minutes, paid_minutes, penalty_minutes } = req.body;
 
         if (!['approved', 'rejected'].includes(status)) {
             res.status(400).json({ error: 'Invalid status' });
@@ -263,59 +286,96 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
             oldAttendance = db.prepare('SELECT * FROM attendance WHERE id = ?').get(requestRecord.attendance_id) as any;
         }
         let oldInterruption = null;
-        if (requestRecord.type === 'permission_to_leave' && requestRecord.reference_id) {
-            oldInterruption = db.prepare('SELECT * FROM shift_interruptions WHERE id = ?').get(requestRecord.reference_id) as any;
+        if (requestRecord.type === 'permission_to_leave' && requestRecord.shift_interruption_id) {
+            oldInterruption = db.prepare('SELECT * FROM shift_interruptions WHERE id = ?').get(requestRecord.shift_interruption_id) as any;
+        }
+
+        if (status === 'approved') {
+            const finalPaidMinutes = requestRecord.type === 'overtime_approval'
+                ? (approved_minutes !== undefined ? approved_minutes : (requestRecord.value || 0))
+                : (paid_minutes || 0);
+
+            let maxDuration = requestRecord.value || 0;
+            if (requestRecord.type === 'late_in_approval' && !maxDuration) {
+                const att = db.prepare('SELECT check_in, shift_id FROM attendance WHERE id = ?').get(requestRecord.attendance_id) as any;
+                if (att && att.check_in && att.shift_id && !att.shift_id.startsWith('US_')) {
+                    const shift = db.prepare('SELECT start_time FROM shift_instances WHERE id = ?').get(att.shift_id) as any;
+                    if (shift) {
+                        maxDuration = getDifferenceInMinutes(new Date(shift.start_time), new Date(att.check_in));
+                    }
+                }
+            } else if (requestRecord.type === 'early_leave_approval' && !maxDuration) {
+                const att = db.prepare('SELECT check_out, shift_id FROM attendance WHERE id = ?').get(requestRecord.attendance_id) as any;
+                if (att && att.check_out && att.shift_id && !att.shift_id.startsWith('US_')) {
+                    const shift = db.prepare('SELECT end_time FROM shift_instances WHERE id = ?').get(att.shift_id) as any;
+                    if (shift) {
+                        maxDuration = getDifferenceInMinutes(new Date(att.check_out), new Date(shift.end_time));
+                    }
+                }
+            } else if ((requestRecord.type === 'permission_to_leave' || requestRecord.type === 'shift_interruption_review') && requestRecord.shift_interruption_id) {
+                const si = db.prepare('SELECT start_time, end_time FROM shift_interruptions WHERE id = ?').get(requestRecord.shift_interruption_id) as any;
+                if (si && si.start_time && si.end_time) {
+                    maxDuration = getDifferenceInMinutes(new Date(si.start_time), new Date(si.end_time));
+                }
+            } else if (requestRecord.type === 'overtime_approval' && !maxDuration && requestRecord.attendance_id) {
+                const att = db.prepare('SELECT check_in, check_out, shift_id FROM attendance WHERE id = ?').get(requestRecord.attendance_id) as any;
+                if (att && att.check_in && att.check_out) {
+                    if (att.shift_id && !att.shift_id.startsWith('US_')) {
+                        const shift = db.prepare('SELECT start_time, end_time FROM shift_instances WHERE id = ?').get(att.shift_id) as any;
+                        if (shift) {
+                            const startScheduled = new Date(shift.start_time);
+                            const endScheduled = new Date(shift.end_time);
+                            const checkInTime = new Date(att.check_in);
+                            const checkOutTime = new Date(att.check_out);
+                            let ot = 0;
+                            if (checkInTime < startScheduled) {
+                                ot += getDifferenceInMinutes(checkInTime, startScheduled);
+                            }
+                            if (checkOutTime > endScheduled) {
+                                ot += getDifferenceInMinutes(endScheduled, checkOutTime);
+                            }
+                            maxDuration = ot;
+                        }
+                    } else {
+                        maxDuration = getDifferenceInMinutes(new Date(att.check_in), new Date(att.check_out));
+                    }
+                }
+            }
+
+            const needsDuration = ['permission_to_leave', 'shift_interruption_review', 'overtime_approval', 'early_leave_approval', 'late_in_approval'].includes(requestRecord.type || '');
+            if (needsDuration && finalPaidMinutes > maxDuration) {
+                res.status(400).json({ error: `Approved minutes (${finalPaidMinutes}) cannot exceed the maximum allowed period of ${maxDuration} minutes.` });
+                return;
+            }
         }
 
         const transaction = db.transaction(() => {
-            // Update the request status, manager note and is_paid_permission
-            db.prepare('UPDATE requests SET status = ?, manager_note = ?, is_paid_permission = ?, paid_permission_minutes = ? WHERE id = ?').run(
+            const finalPaidMinutes = requestRecord.type === 'overtime_approval'
+                ? (approved_minutes !== undefined ? approved_minutes : (requestRecord.value || 0))
+                : (paid_minutes || 0);
+
+            // Update the request status, manager note, paid_minutes and penalty_minutes
+            db.prepare('UPDATE requests SET status = ?, manager_note = ?, paid_minutes = ?, penalty_minutes = ? WHERE id = ?').run(
                 status,
                 manager_note || null,
-                is_paid_permission ? 1 : 0,
-                paid_permission_minutes || 0,
+                finalPaidMinutes,
+                penalty_minutes || 0,
                 id
             );
 
             // If it's a permission_to_leave request, update shift_interruptions
-            if (requestRecord.type === 'permission_to_leave' && requestRecord.reference_id) {
+            if (requestRecord.type === 'permission_to_leave' && requestRecord.shift_interruption_id) {
                 const interruptionStatus = status === 'approved' ? 'manager_approved' : 'manager_rejected';
-                db.prepare('UPDATE shift_interruptions SET status = ? WHERE id = ?').run(interruptionStatus, requestRecord.reference_id);
+                db.prepare('UPDATE shift_interruptions SET status = ? WHERE id = ?').run(interruptionStatus, requestRecord.shift_interruption_id);
             }
 
             // If approved, handle specific request types
             if (status === 'approved') {
-                // Sync is_paid_permission and paid_permission_minutes to attendance if applicable
-                if (requestRecord.attendance_id) {
-                    db.prepare('UPDATE attendance SET is_paid_permission = ?, paid_permission_minutes = ? WHERE id = ?').run(
-                        is_paid_permission ? 1 : 0,
-                        paid_permission_minutes || 0,
-                        requestRecord.attendance_id
-                    );
-                }
+                if (requestRecord.type === 'attendance_correction') {
+                    const new_clock_in = requestRecord.requested_check_in;
+                    const new_clock_out = requestRecord.requested_check_out;
 
-                if (requestRecord.type === 'overtime_approval' && requestRecord.attendance_id) {
-                    // Update approved overtime minutes
-                    const minutesToApprove = approved_minutes !== undefined ? approved_minutes :
-                        (requestRecord.details ? JSON.parse(requestRecord.details).requested_overtime_minutes : 0);
-
-                    db.prepare('UPDATE attendance SET approved_overtime_minutes = ? WHERE id = ?').run(
-                        minutesToApprove,
-                        requestRecord.attendance_id
-                    );
-                } else if (requestRecord.type === 'attendance_correction' && requestRecord.details) {
-                    const details = JSON.parse(requestRecord.details);
-
-                    // Fetch original attendance to save it in the request details for auditing
                     const originalAttendance = db.prepare('SELECT check_in, check_out FROM attendance WHERE id = ?').get(requestRecord.attendance_id) as any;
-                    if (originalAttendance) {
-                        const updatedDetails = {
-                            ...details,
-                            original_check_in: originalAttendance.check_in,
-                            original_check_out: originalAttendance.check_out
-                        };
-                        db.prepare('UPDATE requests SET details = ? WHERE id = ?').run(JSON.stringify(updatedDetails), id);
-                    }
 
                     const updateQuery = `
                         UPDATE attendance
@@ -327,8 +387,8 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
 
                     // Recalculate status based on new check_in
                     let newStatus = 'on_time';
-                    const finalCheckIn = details.new_clock_in || (originalAttendance ? originalAttendance.check_in : null);
-
+                    const finalCheckIn = new_clock_in || (originalAttendance ? originalAttendance.check_in : null);
+                    const finalCheckOut = new_clock_out || (originalAttendance ? originalAttendance.check_out : null);
                     const fullOriginalAttendance = db.prepare('SELECT * FROM attendance WHERE id = ?').get(requestRecord.attendance_id) as any;
 
                     if (finalCheckIn && fullOriginalAttendance) {
@@ -356,6 +416,17 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                                         newStatus = 'late_in';
                                     }
                                 }
+
+                                if (newStatus === 'on_time' && finalCheckOut) {
+                                    const scheduledEndTime = new Date(shiftInstance.end_time);
+                                    const clockOutTime = new Date(finalCheckOut);
+                                    if (clockOutTime < scheduledEndTime) {
+                                        const outDiffMinutes = getDifferenceInMinutes(clockOutTime, scheduledEndTime);
+                                        if (outDiffMinutes > gracePeriod) {
+                                            newStatus = 'early_out';
+                                        }
+                                    }
+                                }
                             } else {
                                 newStatus = 'unscheduled';
                             }
@@ -363,49 +434,91 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                     }
 
                     db.prepare(updateQuery).run(
-                        details.new_clock_in || null,
-                        details.new_clock_out || null,
+                        new_clock_in || null,
+                        new_clock_out || null,
                         newStatus,
                         requestRecord.attendance_id
                     );
 
-                    // Update breaks if provided
-                    if (details.breaks && Array.isArray(details.breaks) && details.breaks.length > 0) {
-                        // Optimized via CASE statement: Benchmark showed Loop within Transaction is 1.031 ms vs CASE Statement is 20.904 ms at N=500.
-                        // While CASE statement is slower in better-sqlite3 due to statement compilation overhead vs cached prepared statement execution,
-                        // it resolves the N+1 query pattern.
-                        const validBreaks = details.breaks.filter((b: any) => b.id);
-                        if (validBreaks.length > 0) {
-                            let startCase = 'CASE id ';
-                            let endCase = 'CASE id ';
-                            const ids: any[] = [];
-                            const startParams: any[] = [];
-                            const endParams: any[] = [];
-                            const idParams: any[] = [];
+                    // Fetch other requests for this attendance
+                    const relatedRequests = db.prepare(`
+                        SELECT * FROM requests
+                        WHERE attendance_id = ? AND type IN ('overtime_approval', 'late_in_approval', 'early_leave_approval')
+                    `).all(requestRecord.attendance_id) as any[];
 
-                            for (const b of validBreaks) {
-                                startCase += 'WHEN ? THEN COALESCE(?, start_time) ';
-                                startParams.push(b.id, b.start_time || null);
+                    if (relatedRequests.length > 0) {
+                        const settingsRecord = db.prepare('SELECT late_grace_period FROM settings WHERE id = 1').get() as any;
+                        const gracePeriod = settingsRecord?.late_grace_period !== undefined ? settingsRecord.late_grace_period : 0;
 
-                                endCase += 'WHEN ? THEN COALESCE(?, end_time) ';
-                                endParams.push(b.id, b.end_time || null);
+                        let shiftInstance = null;
+                        if (fullOriginalAttendance.shift_id && !fullOriginalAttendance.shift_id.startsWith('US_')) {
+                            shiftInstance = db.prepare('SELECT * FROM shift_instances WHERE id = ?').get(fullOriginalAttendance.shift_id) as any;
+                        }
 
-                                ids.push(b.id);
-                                idParams.push('?');
+                        for (const relReq of relatedRequests) {
+                            if (relReq.type === 'late_in_approval') {
+                                let lateMins = 0;
+                                if (shiftInstance && finalCheckIn) {
+                                    const startScheduled = new Date(shiftInstance.start_time);
+                                    const clockInTime = new Date(finalCheckIn);
+                                    if (clockInTime > startScheduled) {
+                                        lateMins = getDifferenceInMinutes(startScheduled, clockInTime);
+                                    }
+                                }
+                                if (lateMins > gracePeriod) {
+                                    db.prepare("UPDATE requests SET status = 'pending', value = ?, paid_minutes = 0 WHERE id = ?").run(lateMins, relReq.id);
+                                    db.prepare("DELETE FROM payroll_transactions WHERE reference_id = ?").run(relReq.id);
+                                } else {
+                                    db.prepare("DELETE FROM payroll_transactions WHERE reference_id = ?").run(relReq.id);
+                                    db.prepare("DELETE FROM requests WHERE id = ?").run(relReq.id);
+                                }
+                            } else if (relReq.type === 'early_leave_approval') {
+                                let earlyMins = 0;
+                                if (shiftInstance && finalCheckOut) {
+                                    const endScheduled = new Date(shiftInstance.end_time);
+                                    const clockOutTime = new Date(finalCheckOut);
+                                    if (clockOutTime < endScheduled) {
+                                        earlyMins = getDifferenceInMinutes(clockOutTime, endScheduled);
+                                    }
+                                }
+                                if (earlyMins > gracePeriod) {
+                                    db.prepare("UPDATE requests SET status = 'pending', value = ?, paid_minutes = 0 WHERE id = ?").run(earlyMins, relReq.id);
+                                    db.prepare("DELETE FROM payroll_transactions WHERE reference_id = ?").run(relReq.id);
+                                } else {
+                                    db.prepare("DELETE FROM payroll_transactions WHERE reference_id = ?").run(relReq.id);
+                                    db.prepare("DELETE FROM requests WHERE id = ?").run(relReq.id);
+                                }
+                            } else if (relReq.type === 'overtime_approval') {
+                                let newOtMinutes = 0;
+                                if (shiftInstance) {
+                                    if (finalCheckIn) {
+                                        const startScheduled = new Date(shiftInstance.start_time);
+                                        const clockInTime = new Date(finalCheckIn);
+                                        if (clockInTime < startScheduled) {
+                                            newOtMinutes += getDifferenceInMinutes(clockInTime, startScheduled);
+                                        }
+                                    }
+                                    if (finalCheckOut) {
+                                        const endScheduled = new Date(shiftInstance.end_time);
+                                        const clockOutTime = new Date(finalCheckOut);
+                                        if (clockOutTime > endScheduled) {
+                                            newOtMinutes += getDifferenceInMinutes(endScheduled, clockOutTime);
+                                        }
+                                    }
+                                } else {
+                                    if (finalCheckIn && finalCheckOut) {
+                                        newOtMinutes = getDifferenceInMinutes(finalCheckIn, finalCheckOut);
+                                    }
+                                }
+
+                                if (newOtMinutes > 0) {
+                                    db.prepare("UPDATE requests SET status = 'pending', value = ?, paid_minutes = 0 WHERE id = ?").run(newOtMinutes, relReq.id);
+                                    db.prepare("DELETE FROM payroll_transactions WHERE reference_id = ?").run(relReq.id);
+                                } else {
+                                    db.prepare("DELETE FROM payroll_transactions WHERE reference_id = ?").run(relReq.id);
+                                    db.prepare("DELETE FROM requests WHERE id = ?").run(relReq.id);
+                                }
                             }
-
-                            startCase += 'END';
-                            endCase += 'END';
-
-                            const updateQuery = `
-                                UPDATE shift_interruptions
-                                SET start_time = ${startCase},
-                                    end_time = ${endCase}
-                                WHERE attendance_id = ? AND id IN (${idParams.join(', ')})
-                            `;
-
-                            const finalParams = [...startParams, ...endParams, requestRecord.attendance_id, ...ids];
-                            db.prepare(updateQuery).run(...finalParams);
                         }
                     }
                 } else if (requestRecord.type === 'early_leave_approval' && requestRecord.attendance_id) {
@@ -414,23 +527,12 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                     db.prepare("UPDATE attendance SET status = 'on_time' WHERE id = ? AND status = 'late_in'").run(requestRecord.attendance_id);
                 } else if (requestRecord.type === 'manual_clock' && (requestRecord.requested_check_in || requestRecord.requested_check_out)) {
                     if (requestRecord.attendance_id) {
-                        // Fetch original attendance to save it in the request details for auditing
                         const originalAttendance = db.prepare('SELECT check_in, check_out FROM attendance WHERE id = ?').get(requestRecord.attendance_id) as any;
-                        if (originalAttendance) {
-                            const details = requestRecord.details ? JSON.parse(requestRecord.details) : {};
-                            const updatedDetails = {
-                                ...details,
-                                original_check_in: originalAttendance.check_in,
-                                original_check_out: originalAttendance.check_out
-                            };
-                            db.prepare('UPDATE requests SET details = ? WHERE id = ?').run(JSON.stringify(updatedDetails), id);
-                        }
 
                         // Recalculate status based on new check_in
                         let newStatus = 'on_time';
                         const finalCheckIn = requestRecord.requested_check_in || (originalAttendance ? originalAttendance.check_in : null);
 
-                        // We need the full original attendance record to check its shift_id
                         const fullOriginalAttendance = db.prepare('SELECT * FROM attendance WHERE id = ?').get(requestRecord.attendance_id) as any;
 
                         if (finalCheckIn && fullOriginalAttendance) {
@@ -480,7 +582,6 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                         );
                     } else {
                         // Insert new attendance
-                        // Determine date from check_in or check_out
                         const timeString = requestRecord.requested_check_in || requestRecord.requested_check_out;
                         const date = new Date(timeString).toISOString().split('T')[0];
 
@@ -497,8 +598,6 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                             const gracePeriod = settingsRecord?.late_grace_period !== undefined ? settingsRecord.late_grace_period : 0;
 
                             if (userProfile) {
-                                // Since this is a CREATE NEW manual clock, there is no prior attendance record.
-                                // We MUST look up the intended shift instance by checking the window as originally intended.
                                 const shiftInstance = db.prepare(`
                                     SELECT * FROM shift_instances
                                     WHERE user_id = ? AND ? BETWEEN datetime(start_time, '-' || ? || ' minutes') AND end_time
@@ -541,13 +640,7 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
             const payrollId = getOrCreateDraftPayroll(requestRecord.user_id, dateStr, actorId);
 
             if (requestRecord.type === 'overtime_approval') {
-                let requestedMinutes = 0;
-                if (requestRecord.details) {
-                    try {
-                        const parsedDetails = JSON.parse(requestRecord.details);
-                        requestedMinutes = parsedDetails.requested_overtime_minutes || parsedDetails.raw_overtime_minutes || 0;
-                    } catch (e) { }
-                }
+                const requestedMinutes = requestRecord.value || 0;
                 const minutes = status === 'approved' ? (approved_minutes !== undefined ? approved_minutes : requestedMinutes) : requestedMinutes;
                 const hours = isNaN(minutes) || minutes === null ? 0 : minutes / 60;
                 const amount = status === 'approved' ? hours * (hourlyRate * 1.5) : 0; // Overtime is 1.5x
@@ -557,30 +650,34 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                     VALUES (?, ?, 'overtime', ?, ?, ?, ?)
                 `).run(payrollId, id, hours, amount, status === 'approved' ? 'applied' : 'rejected', manager_note);
             } else if (requestRecord.type === 'permission_to_leave') {
-                const minutes = paid_permission_minutes || 0;
-                const hours = minutes / 60;
+                const finalPaidMinutes = paid_minutes || 0;
+                const finalPaidHours = finalPaidMinutes / 60;
+                const totalHours = (requestRecord.value || 0) / 60;
+                const unpaidHours = Math.max(0, totalHours - finalPaidHours);
 
-                if (status === 'approved' && !is_paid_permission && hours > 0) {
-                    const amount = hours * hourlyRate;
+                if (status === 'approved' && unpaidHours > 0) {
+                    const amount = unpaidHours * hourlyRate;
                     db.prepare(`
                         INSERT INTO payroll_transactions (payroll_id, reference_id, type, hours, amount, status, manager_notes)
                         VALUES (?, ?, 'step_away_unpaid', ?, ?, 'applied', ?)
-                    `).run(payrollId, id, hours, amount, manager_note);
+                    `).run(payrollId, id, unpaidHours, amount, manager_note);
                 } else if (status === 'rejected') {
                     db.prepare(`
                         INSERT INTO payroll_transactions (payroll_id, reference_id, type, hours, amount, status, manager_notes)
                         VALUES (?, ?, 'step_away_unpaid', ?, 0, 'rejected', ?)
-                    `).run(payrollId, id, hours, manager_note);
+                    `).run(payrollId, id, totalHours, manager_note);
                 }
             }
 
             // Disciplinary Penalty Logic
-            if (status === 'rejected' && penalty_hours && penalty_hours > 0) {
-                const penaltyAmount = penalty_hours * hourlyRate;
+            const finalPenaltyMinutes = penalty_minutes !== undefined ? penalty_minutes : (requestRecord.penalty_minutes || 0);
+            if (status === 'rejected' && finalPenaltyMinutes > 0) {
+                const penaltyHours = finalPenaltyMinutes / 60;
+                const penaltyAmount = penaltyHours * hourlyRate;
                 db.prepare(`
                     INSERT INTO payroll_transactions (payroll_id, reference_id, type, hours, amount, status, manager_notes)
                     VALUES (?, ?, 'disciplinary_penalty', ?, ?, 'applied', ?)
-                `).run(payrollId, id, penalty_hours, penaltyAmount, manager_note);
+                `).run(payrollId, id, penaltyHours, penaltyAmount, manager_note);
             }
         });
 
@@ -603,9 +700,9 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
         }
 
         if (oldInterruption) {
-            const newInterruption = db.prepare('SELECT * FROM shift_interruptions WHERE id = ?').get(requestRecord.reference_id) as any;
+            const newInterruption = db.prepare('SELECT * FROM shift_interruptions WHERE id = ?').get(requestRecord.shift_interruption_id) as any;
             if (JSON.stringify(oldInterruption) !== JSON.stringify(newInterruption)) {
-                logAudit('shift_interruptions', requestRecord.reference_id, 'UPDATE', actorId, oldInterruption, newInterruption);
+                logAudit('shift_interruptions', requestRecord.shift_interruption_id, 'UPDATE', actorId, oldInterruption, newInterruption);
             }
         }
 

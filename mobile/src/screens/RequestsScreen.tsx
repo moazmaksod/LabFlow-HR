@@ -21,7 +21,7 @@ interface RequestItem {
   original_check_out?: string;
   requested_check_in?: string;
   requested_check_out?: string;
-  details?: string;
+  value?: number;
 }
 
 export default function RequestsScreen() {
@@ -80,13 +80,7 @@ export default function RequestsScreen() {
     setActionType(type);
     setManagerNote('');
     
-    let missing = 0;
-    if (request.type === 'early_leave_approval' || request.type === 'attendance_correction') {
-      try {
-        const details = JSON.parse(request.details || '{}');
-        missing = details.missing_minutes || details.early_leave_minutes || 0;
-      } catch (e) {}
-    }
+    let missing = request.value || 0;
     setMaxPaidMinutes(missing);
     setPaidPermissionMinutes(missing.toString());
     setIsPaidPermission(missing > 0);
@@ -107,8 +101,7 @@ export default function RequestsScreen() {
       const payload = {
         status: actionType,
         manager_note: managerNote,
-        is_paid_permission: isPaidPermission,
-        paid_permission_minutes: isPaidPermission ? parseInt(paidPermissionMinutes) || 0 : 0
+        paid_minutes: isPaidPermission ? parseInt(paidPermissionMinutes) || 0 : 0
       };
       await api.put(`/requests/${selectedRequest.id}/status`, payload);
       Alert.alert('Success', `Request has been ${actionType}.`);
@@ -119,8 +112,7 @@ export default function RequestsScreen() {
         saveOfflineRequest('PUT', `/requests/${selectedRequest.id}/status`, {
           status: actionType,
           manager_note: managerNote,
-          is_paid_permission: isPaidPermission,
-          paid_permission_minutes: isPaidPermission ? parseInt(paidPermissionMinutes) || 0 : 0
+          paid_minutes: isPaidPermission ? parseInt(paidPermissionMinutes) || 0 : 0
         });
         Alert.alert('Offline Mode', 'Network error. Your action was saved locally and will be synced later.');
         setModalVisible(false);

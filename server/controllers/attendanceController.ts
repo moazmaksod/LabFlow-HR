@@ -123,7 +123,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                     const interruptionId = info.lastInsertRowid;
 
                     db.prepare(`
-                        INSERT INTO requests (user_id, attendance_id, type, reference_id, reason, status)
+                        INSERT INTO requests (user_id, attendance_id, type, shift_interruption_id, reason, status)
                         VALUES (?, ?, 'shift_interruption_review', ?, 'Auto-resumed shift gap review', 'pending')
                     `).run(userId, existingAttendance.id, interruptionId);
                 });
@@ -178,14 +178,13 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             if (status === 'late_in') {
                 const lateMinutes = getDifferenceInMinutes(scheduledTime, clockInTime);
                 db.prepare(`
-                    INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
-                    VALUES (?, 'late_in_approval', ?, ?, ?, ?, 'pending')
+                    INSERT INTO requests (user_id, type, attendance_id, reason, value, status)
+                    VALUES (?, 'late_in_approval', ?, ?, ?, 'pending')
                 `).run(
                     userId,
                     newId,
-                    newId,
                     `Late check-in by ${lateMinutes} minutes.`,
-                    JSON.stringify({ late_in_minutes: lateMinutes, missing_minutes: lateMinutes })
+                    lateMinutes
                 );
             }
 
@@ -194,14 +193,13 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                 const requestedOtMinutes = maxOtMinutes > 0 ? Math.min(otMinutes, maxOtMinutes) : otMinutes;
 
                 db.prepare(`
-                    INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
-                    VALUES (?, 'overtime_approval', ?, ?, ?, ?, 'pending')
+                    INSERT INTO requests (user_id, type, attendance_id, reason, value, status)
+                    VALUES (?, 'overtime_approval', ?, ?, ?, 'pending')
                 `).run(
                     userId,
                     newId,
-                    newId,
                     `Early clock-in by ${otMinutes} minutes`,
-                    JSON.stringify({ raw_overtime_minutes: otMinutes, requested_overtime_minutes: requestedOtMinutes })
+                    requestedOtMinutes
                 );
             }
 
@@ -272,9 +270,9 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                 const otMins = getDifferenceInMinutes(checkInTime, checkOutTime);
                 if (otMins > 0) {
                     db.prepare(`
-                        INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
-                        VALUES (?, 'overtime_approval', ?, ?, 'Unscheduled Check-in', ?, 'pending')
-                    `).run(userId, activeSession.id, activeSession.id, JSON.stringify({ raw_overtime_minutes: otMins }));
+                        INSERT INTO requests (user_id, type, attendance_id, reason, value, status)
+                        VALUES (?, 'overtime_approval', ?, 'Unscheduled Check-in', ?, 'pending')
+                    `).run(userId, activeSession.id, otMins);
                 }
                 return;
             }
@@ -298,9 +296,9 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                 const otMins = getDifferenceInMinutes(checkInTime, checkOutTime);
                 if (otMins > 0) {
                     db.prepare(`
-                        INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
-                        VALUES (?, 'overtime_approval', ?, ?, 'Unscheduled Session', ?, 'pending')
-                    `).run(userId, activeSession.id, activeSession.id, JSON.stringify({ raw_overtime_minutes: otMins }));
+                        INSERT INTO requests (user_id, type, attendance_id, reason, value, status)
+                        VALUES (?, 'overtime_approval', ?, 'Unscheduled Session', ?, 'pending')
+                    `).run(userId, activeSession.id, otMins);
                 }
                 return;
             }
@@ -369,9 +367,9 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                     );
 
                     db.prepare(`
-                        INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
-                        VALUES (?, 'overtime_approval', ?, ?, 'Early Clock-in (Unscheduled)', ?, 'pending')
-                    `).run(userId, info.lastInsertRowid, info.lastInsertRowid, JSON.stringify({ raw_overtime_minutes: earlyMins, requested_overtime_minutes: earlyMins }));
+                        INSERT INTO requests (user_id, type, attendance_id, reason, value, status)
+                        VALUES (?, 'overtime_approval', ?, 'Early Clock-in (Unscheduled)', ?, 'pending')
+                    `).run(userId, info.lastInsertRowid, earlyMins);
                 }
             }
 
@@ -398,9 +396,9 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                     );
 
                     db.prepare(`
-                        INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
-                        VALUES (?, 'overtime_approval', ?, ?, 'Late Clock-out (Unscheduled)', ?, 'pending')
-                    `).run(userId, info.lastInsertRowid, info.lastInsertRowid, JSON.stringify({ raw_overtime_minutes: lateMins, requested_overtime_minutes: lateMins }));
+                        INSERT INTO requests (user_id, type, attendance_id, reason, value, status)
+                        VALUES (?, 'overtime_approval', ?, 'Late Clock-out (Unscheduled)', ?, 'pending')
+                    `).run(userId, info.lastInsertRowid, lateMins);
                 }
             }
         });
@@ -919,10 +917,11 @@ export const resumeWork = (req: AuthRequest, res: Response): void => {
 
             // If no break balance (status was pending_manager), create the request now that it is finalized
             if (activeInterruption.status === 'pending_manager') {
+                const duration = getDifferenceInMinutes(activeInterruption.start_time, timestamp);
                 const reqInsert = db.prepare(`
-                    INSERT INTO requests (user_id, attendance_id, type, reference_id, reason, status)
-                    VALUES (?, ?, 'permission_to_leave', ?, 'Step away with 0 break balance', 'pending')
-                `).run(userId, activeAttendance.id, activeInterruption.id);
+                    INSERT INTO requests (user_id, attendance_id, type, shift_interruption_id, reason, value, status)
+                    VALUES (?, ?, 'permission_to_leave', ?, 'Step away with 0 break balance', ?, 'pending')
+                `).run(userId, activeAttendance.id, activeInterruption.id, duration);
                 const newReq = db.prepare('SELECT * FROM requests WHERE id = ?').get(reqInsert.lastInsertRowid);
                 logAudit('requests', Number(reqInsert.lastInsertRowid), 'CREATE', userId, null, newReq);
             }

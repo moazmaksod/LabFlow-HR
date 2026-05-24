@@ -163,9 +163,9 @@ export const evaluateUserAttendance = (userId: number): void => {
 
                     if (otMinutes > 0) {
                         db.prepare(`
-                            INSERT INTO requests (user_id, attendance_id, type, reference_id, reason, details, status)
-                            VALUES (?, ?, 'overtime_approval', ?, 'Early Clock-in (Auto-Slice)', ?, 'pending')
-                        `).run(uid, activeUnscheduled.id, activeUnscheduled.id, JSON.stringify({ raw_overtime_minutes: otMinutes, requested_overtime_minutes: otMinutes }));
+                            INSERT INTO requests (user_id, attendance_id, type, reason, value, status)
+                            VALUES (?, ?, 'overtime_approval', 'Early Clock-in (Auto-Slice)', ?, 'pending')
+                        `).run(uid, activeUnscheduled.id, otMinutes);
                     }
 
                     // Update unscheduled to end at shift start time
@@ -198,14 +198,13 @@ export const evaluateUserAttendance = (userId: number): void => {
                     const earlyMinutes = getDifferenceInMinutes(checkOutTime, shiftEnd);
                     if (earlyMinutes > gracePeriod) {
                         db.prepare(`
-                            INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
-                            VALUES (?, 'early_leave_approval', ?, ?, ?, ?, 'pending')
+                            INSERT INTO requests (user_id, type, attendance_id, reason, value, status)
+                            VALUES (?, 'early_leave_approval', ?, ?, ?, 'pending')
                         `).run(
                             uid,
                             session.id,
-                            session.id,
                             `System detected early leave by ${earlyMinutes} minutes.`,
-                            JSON.stringify({ early_leave_minutes: earlyMinutes, missing_minutes: earlyMinutes })
+                            earlyMinutes
                         );
                     }
                 }

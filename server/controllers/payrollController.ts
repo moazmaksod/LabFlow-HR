@@ -10,24 +10,27 @@ const calculateUserPayroll = (user: any, start_date: string, end_date: string, p
 
     // Use prefetched logs or fetch Attendance Logs for the period
     const logs = prefetchedLogs || (db.prepare(`
-        SELECT * FROM attendance
-        WHERE user_id = ? AND date BETWEEN ? AND ?
-        ORDER BY date ASC
+        SELECT a.*,
+          COALESCE((SELECT SUM(r.paid_minutes) FROM requests r WHERE r.attendance_id = a.id AND r.status = 'approved' AND r.type != 'overtime_approval'), 0) as paid_minutes,
+          COALESCE((SELECT SUM(r.paid_minutes) FROM requests r WHERE r.attendance_id = a.id AND r.status = 'approved' AND r.type = 'overtime_approval'), 0) as approved_overtime_minutes
+        FROM attendance a
+        WHERE a.user_id = ? AND a.date BETWEEN ? AND ?
+        ORDER BY a.date ASC
     `).all(user.id, start_date, end_date) as any[]);
 
     let totalExpectedMinutes = 0;
     let totalActualWorkedMinutes = 0;
-    let totalPaidPermissionMinutes = 0;
+    let totalPaidMinutes = 0;
     let totalMissingMinutes = 0;
     let totalApprovedOvertimeMinutes = 0;
-
+ 
     const start = new Date(start_date as string);
     const end = new Date(end_date as string);
     const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-
+ 
     // Use prefetched breaks or fetch all breaks in one query
     const breaksMap = prefetchedBreaksMap || new Map<number, any[]>();
-
+ 
     if (!prefetchedBreaksMap) {
         const logIds = logs.map(l => l.id);
         if (logIds.length > 0) {
@@ -37,7 +40,7 @@ const calculateUserPayroll = (user: any, start_date: string, end_date: string, p
                 FROM shift_interruptions
                 WHERE attendance_id IN (${placeholders})
             `).all(...logIds) as any[];
-
+ 
             allBreaks.forEach(b => {
                 if (!breaksMap.has(b.attendance_id)) {
                     breaksMap.set(b.attendance_id, []);
@@ -46,19 +49,19 @@ const calculateUserPayroll = (user: any, start_date: string, end_date: string, p
             });
         }
     }
-
+ 
     // Calculate expected minutes for the whole period
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const dayName = days[d.getDay()];
         const dayShifts = schedule[dayName] || [];
-
+ 
         dayShifts.forEach((shift: any) => {
             const [startH, startM] = shift.start.split(':').map(Number);
             const [endH, endM] = shift.end.split(':').map(Number);
             totalExpectedMinutes += (endH * 60 + endM) - (startH * 60 + startM);
         });
     }
-
+ 
     logs.forEach(log => {
         const d = new Date(log.date);
         const dayName = days[d.getDay()];
@@ -69,13 +72,13 @@ const calculateUserPayroll = (user: any, start_date: string, end_date: string, p
             const [endH, endM] = shift.end.split(':').map(Number);
             expectedForDay += (endH * 60 + endM) - (startH * 60 + startM);
         });
-
+ 
         let workedMinutes = 0;
         if (log.check_in && log.check_out) {
             const checkIn = new Date(log.check_in);
             const checkOut = new Date(log.check_out);
             workedMinutes = (checkOut.getTime() - checkIn.getTime()) / (1000 * 60);
-
+ 
             const breaks = breaksMap.get(log.id) || [];
             breaks.forEach(b => {
                 if (b.start_time && b.end_time) {
@@ -83,19 +86,19 @@ const calculateUserPayroll = (user: any, start_date: string, end_date: string, p
                 }
             });
         }
-
+ 
         workedMinutes = Math.max(0, workedMinutes);
         totalApprovedOvertimeMinutes += log.approved_overtime_minutes || 0;
-
+ 
         if (log.status === 'absent') {
             totalMissingMinutes += expectedForDay;
         } else {
             totalActualWorkedMinutes += workedMinutes;
             totalMissingMinutes += Math.max(0, expectedForDay - workedMinutes);
-            totalPaidPermissionMinutes += log.paid_permission_minutes || 0;
+            totalPaidMinutes += log.paid_minutes || 0;
         }
     });
-
+ 
     // Add missing days that weren't in logs but had expected shifts
     const logDates = new Set(logs.map(l => l.date));
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
@@ -110,22 +113,22 @@ const calculateUserPayroll = (user: any, start_date: string, end_date: string, p
             });
         }
     }
-
-    const unpaidMinutes = Math.max(0, totalMissingMinutes - totalPaidPermissionMinutes);
+ 
+    const unpaidMinutes = Math.max(0, totalMissingMinutes - totalPaidMinutes);
     const netWorkedMinutes = Math.max(0, totalActualWorkedMinutes - unpaidMinutes);
     const finalNetSalary = (netWorkedMinutes / 60) * hourlyRate;
-
+ 
     const grossBasePay = (totalActualWorkedMinutes / 60) * hourlyRate;
     const totalDeductions = (unpaidMinutes / 60) * hourlyRate;
     const overtimeBonus = (totalApprovedOvertimeMinutes / 60) * (hourlyRate * 1.5);
     const netSalaryWithOvertime = finalNetSalary + overtimeBonus;
-
+ 
     return {
         user: { id: user.id, name: user.name, job_title: user.job_title, hourly_rate: hourlyRate },
         time_metrics: {
             expected_hours: Number((totalExpectedMinutes / 60).toFixed(2)),
             actual_worked_hours: Number((totalActualWorkedMinutes / 60).toFixed(2)),
-            paid_permission_hours: Number((totalPaidPermissionMinutes / 60).toFixed(2)),
+            paid_hours: Number((totalPaidMinutes / 60).toFixed(2)),
             missing_unpaid_minutes: Math.round(unpaidMinutes),
             approved_overtime_minutes: totalApprovedOvertimeMinutes
         },
@@ -199,9 +202,12 @@ export const getAllPayroll = (req: Request, res: Response): void => {
         const placeholders = userIds.map(() => '?').join(',');
 
         const allLogs = db.prepare(`
-            SELECT * FROM attendance
-            WHERE user_id IN (${placeholders}) AND date BETWEEN ? AND ?
-            ORDER BY date ASC
+            SELECT a.*,
+              COALESCE((SELECT SUM(r.paid_minutes) FROM requests r WHERE r.attendance_id = a.id AND r.status = 'approved' AND r.type != 'overtime_approval'), 0) as paid_minutes,
+              COALESCE((SELECT SUM(r.paid_minutes) FROM requests r WHERE r.attendance_id = a.id AND r.status = 'approved' AND r.type = 'overtime_approval'), 0) as approved_overtime_minutes
+            FROM attendance a
+            WHERE a.user_id IN (${placeholders}) AND a.date BETWEEN ? AND ?
+            ORDER BY a.date ASC
         `).all(...userIds, startDate, endDate) as any[];
 
         const logsMap = new Map<number, any[]>();

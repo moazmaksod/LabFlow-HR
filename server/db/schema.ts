@@ -74,9 +74,6 @@ CREATE TABLE IF NOT EXISTS attendance (
     check_in_lng REAL,
     check_out_lat REAL,
     check_out_lng REAL,
-    approved_overtime_minutes INTEGER DEFAULT 0,
-    is_paid_permission BOOLEAN DEFAULT 0,
-    paid_permission_minutes INTEGER DEFAULT 0,
     shift_id TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -90,12 +87,12 @@ CREATE TABLE IF NOT EXISTS requests (
     requested_check_in DATETIME,
     requested_check_out DATETIME,
     type TEXT, -- 'manual_clock', 'permission_to_leave', 'overtime_approval', 'early_leave_approval', 'attendance_correction'
-    reference_id INTEGER, -- points to shift_interruptions.id if type is 'permission_to_leave'
+    shift_interruption_id INTEGER, -- points to shift_interruptions.id if type is 'permission_to_leave' or 'shift_interruption_review'
     reason TEXT NOT NULL,
-    details TEXT,
+    value INTEGER DEFAULT 0,
+    penalty_minutes INTEGER DEFAULT 0,
     manager_note TEXT,
-    is_paid_permission BOOLEAN DEFAULT 0,
-    paid_permission_minutes INTEGER DEFAULT 0,
+    paid_minutes INTEGER DEFAULT 0,
     status TEXT NOT NULL CHECK(status IN ('pending', 'approved', 'rejected', 'canceled')) DEFAULT 'pending',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
