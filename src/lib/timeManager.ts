@@ -122,6 +122,31 @@ export const formatDisplayTime = (
     }
 };
 
+export const formatDisplayDate = (
+    dateString: string | null | undefined,
+    userPreference?: string | null
+): string => {
+    if (!dateString) return '-';
+    const resolvedTimezone = resolveTimezone(userPreference);
+    try {
+        let dateToFormat: Date;
+        const hasTimezone = dateString.includes('Z') || /[+-]\d{2}:?\d{2}$/.test(dateString.trim());
+        if (hasTimezone) {
+            dateToFormat = new Date(dateString);
+        } else {
+            const isoString = dateString.includes('T') ? dateString : dateString.replace(' ', 'T');
+            const finalString = isoString.includes(':') ? `${isoString}Z` : isoString;
+            dateToFormat = new Date(finalString);
+        }
+        return new Intl.DateTimeFormat('en-CA', {
+            timeZone: resolvedTimezone
+        }).format(dateToFormat);
+    } catch (e) {
+        console.error(`Error formatting date string: ${dateString}`, e);
+        return '-';
+    }
+};
+
 export const formatForDateInput = (dateString: string | null, userPreference?: string | null): string => {
     if (!dateString) return '';
     return formatDisplayTime(dateString, userPreference, DateFormats.NATIVE_DATE_INPUT);

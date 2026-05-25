@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useLocation } from 'react-router-dom';
 import api from '../../lib/axios';
 import { Search, Filter, Calendar as CalendarIcon, RefreshCw } from 'lucide-react';
 import { formatStatusLabel } from '../../lib/utils';
@@ -51,6 +52,7 @@ const getDisplayStatus = (log: AttendanceLog): string => {
 
 export default function AttendanceLogs() {
   const user = useAuthStore(state => state.user);
+  const location = useLocation();
   const [filterStartDate, setFilterStartDate] = useState(() => {
     return new Intl.DateTimeFormat('en-CA', {
       timeZone: user?.display_timezone || 'UTC'
@@ -61,7 +63,9 @@ export default function AttendanceLogs() {
       timeZone: user?.display_timezone || 'UTC'
     }).format(new Date(getWebNow()));
   });
-  const [filterStatus, setFilterStatus] = useState('');
+  const [filterStatus, setFilterStatus] = useState(() => {
+    return (location.state as any)?.filterStatus || '';
+  });
   const [searchQuery, setSearchQuery] = useState('');
 
   const { data: logs, isLoading, refetch, isFetching } = useQuery<AttendanceLog[]>({
