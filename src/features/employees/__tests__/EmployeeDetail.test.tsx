@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import EmployeeDetail from '../EmployeeDetail';
 import api from '../../../lib/axios';
+import { useAuthStore } from '../../../store/useAuthStore';
 
 // Mock axios
 jest.mock('../../../lib/axios');
@@ -65,6 +66,7 @@ describe('EmployeeDetail', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     window.alert = jest.fn(); // Mock alert
+    useAuthStore.setState({ user: { id: 2, name: 'Manager', role: 'manager', display_timezone: 'UTC' } as any });
     mockedApi.get.mockImplementation((url) => {
       if (url === `/users/1`) return Promise.resolve({ data: mockEmployee });
       if (url === '/jobs') return Promise.resolve({ data: mockJobs });

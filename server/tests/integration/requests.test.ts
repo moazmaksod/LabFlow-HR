@@ -201,8 +201,8 @@ describe('Requests API', () => {
     const checkInLate = '2026-05-24T09:45:00.000Z'; // 45 mins late
     const checkOutEarly = '2026-05-24T16:15:00.000Z'; // 45 mins early
     const attInsert = db.prepare(`
-      INSERT INTO attendance (user_id, check_in, check_out, date, status, shift_id)
-      VALUES (?, ?, ?, ?, 'late_in', ?)
+      INSERT INTO attendance (user_id, check_in, check_out, date, checkin_status, checkout_status, working_status, shift_id)
+      VALUES (?, ?, ?, ?, 'late_in', 'early_out', 'working', ?)
     `).run(employeeId, checkInLate, checkOutEarly, testDate, shiftId.toString());
     const attendanceId = attInsert.lastInsertRowid;
 
@@ -284,8 +284,8 @@ describe('Requests API', () => {
     const checkInLate = '2026-05-24T09:45:00.000Z';
     const checkOutTime = '2026-05-24T17:00:00.000Z';
     const attInsert = db.prepare(`
-      INSERT INTO attendance (user_id, check_in, check_out, date, status, shift_id)
-      VALUES (?, ?, ?, ?, 'late_in', ?)
+      INSERT INTO attendance (user_id, check_in, check_out, date, checkin_status, checkout_status, working_status, shift_id)
+      VALUES (?, ?, ?, ?, 'late_in', 'on_time', 'working', ?)
     `).run(employeeId, checkInLate, checkOutTime, testDate, shiftId.toString());
     const attendanceId = attInsert.lastInsertRowid;
 
@@ -345,8 +345,8 @@ describe('Requests API', () => {
     const checkInLate = '2026-05-24T09:45:00.000Z';
     const checkOutTime = '2026-05-24T17:00:00.000Z';
     const attInsert = db.prepare(`
-      INSERT INTO attendance (user_id, check_in, check_out, date, status, shift_id)
-      VALUES (?, ?, ?, ?, 'late_in', ?)
+      INSERT INTO attendance (user_id, check_in, check_out, date, checkin_status, checkout_status, working_status, shift_id)
+      VALUES (?, ?, ?, ?, 'late_in', 'on_time', 'working', ?)
     `).run(employeeId, checkInLate, checkOutTime, testDate, shiftId.toString());
     const attendanceId = attInsert.lastInsertRowid;
 
@@ -385,8 +385,8 @@ describe('Requests API', () => {
     const checkIn = '2026-05-25T09:15:00.000Z';
     const checkOut = '2026-05-25T16:45:00.000Z';
     const attInsert = db.prepare(`
-      INSERT INTO attendance (user_id, check_in, check_out, date, status, shift_id)
-      VALUES (?, ?, ?, ?, 'late_in', ?)
+      INSERT INTO attendance (user_id, check_in, check_out, date, checkin_status, checkout_status, working_status, shift_id)
+      VALUES (?, ?, ?, ?, 'late_in', 'on_time', 'working', ?)
     `).run(employeeId, checkIn, checkOut, testDate, shiftId.toString());
     const attendanceId = attInsert.lastInsertRowid;
 

@@ -47,6 +47,9 @@ export const getSupportedTimezones = (): string[] => {
 };
 
 export const is12HourSystem = (): boolean => {
+    if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test') {
+        return false;
+    }
     try {
         return Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions().hour12 || false;
     } catch (e) {

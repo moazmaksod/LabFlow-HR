@@ -30,7 +30,7 @@ const mockUsers = [
     job_id: 1,
     job_title: 'Software Engineer',
     is_clocked_in: 1,
-    current_status: 'working',
+    working_status: 'working',
   },
   {
     id: 2,
@@ -41,7 +41,7 @@ const mockUsers = [
     job_id: null,
     job_title: null,
     is_clocked_in: 0,
-    current_status: 'off',
+    working_status: 'off',
   }
 ];
 

@@ -88,8 +88,8 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                     db.prepare(`
                         UPDATE attendance
                         SET check_out = NULL,
-                            current_status = ?,
-                            status = CASE WHEN status = 'early_out' THEN 'on_time' ELSE status END
+                            working_status = ?,
+                            checkout_status = NULL
                         WHERE id = ?
                     `).run('working', existingAttendance.id);
 
@@ -169,8 +169,8 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
 
         const insertTransaction = db.transaction(() => {
             const insert = db.prepare(`
-                INSERT INTO attendance (user_id, check_in, date, check_in_lat, check_in_lng, status, shift_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO attendance (user_id, check_in, date, check_in_lat, check_in_lng, checkin_status, checkout_status, working_status, shift_id)
+                VALUES (?, ?, ?, ?, ?, ?, NULL, 'working', ?)
             `);
             const info = insert.run(userId, timestamp, logicalDate, lat, lng, status, shiftId);
             const newId = info.lastInsertRowid;
@@ -218,7 +218,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
         }
 
         // Handle edge case where user clocks out while still "away"
-        if (activeSession.current_status === 'away') {
+        if (activeSession.working_status === 'away') {
             const activeInterruption = db.prepare(`
                 SELECT * FROM shift_interruptions
                 WHERE attendance_id = ? AND end_time IS NULL
@@ -228,8 +228,8 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             if (activeInterruption) {
                 db.prepare('UPDATE shift_interruptions SET end_time = ? WHERE id = ?').run(timestamp, activeInterruption.id);
             }
-            db.prepare('UPDATE attendance SET current_status = ? WHERE id = ?').run('working', activeSession.id);
-            activeSession.current_status = 'working';
+            db.prepare('UPDATE attendance SET working_status = ? WHERE id = ?').run('working', activeSession.id);
+            activeSession.working_status = 'working';
         }
 
         const oldSession = { ...activeSession };
@@ -262,7 +262,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             if (!shiftStart || !shiftEnd || !shiftInstance) {
                 db.prepare(`
                     UPDATE attendance
-                    SET check_out = ?, check_out_lat = ?, check_out_lng = ?
+                    SET check_out = ?, check_out_lat = ?, check_out_lng = ?, checkout_status = 'unscheduled'
                     WHERE id = ?
                 `).run(timestamp, lat, lng, activeSession.id);
                 updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id);
@@ -288,7 +288,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             if (checkOutTime <= shiftStart || checkInTime >= shiftEnd) {
                 db.prepare(`
                     UPDATE attendance
-                    SET check_out = ?, check_out_lat = ?, check_out_lng = ?, status = 'unscheduled'
+                    SET check_out = ?, check_out_lat = ?, check_out_lng = ?, checkin_status = 'unscheduled', checkout_status = 'unscheduled'
                     WHERE id = ?
                 `).run(timestamp, lat, lng, activeSession.id);
                 updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id);
@@ -323,24 +323,25 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             // The official shift_id is just the shift_instances id
             const officialShiftId = shiftInstance.id.toString();
 
-            let officialStatus = activeSession.status;
-            if (officialStatus === 'unscheduled') {
+            let checkinStatus = activeSession.checkin_status;
+            if (checkinStatus === 'unscheduled') {
                 const diffMinutes = getDifferenceInMinutes(shiftStart, officialSegmentStart);
-                officialStatus = diffMinutes > gracePeriod ? 'late_in' : 'on_time';
+                checkinStatus = diffMinutes > gracePeriod ? 'late_in' : 'on_time';
             }
 
+            let checkoutStatus = 'on_time';
             if (checkOutTime < shiftEnd) {
                 const outDiffMinutes = getDifferenceInMinutes(checkOutTime, shiftEnd);
                 if (outDiffMinutes > gracePeriod) {
-                    officialStatus = officialStatus === 'on_time' ? 'early_out' : officialStatus;
+                    checkoutStatus = 'early_out';
                 }
             }
 
             db.prepare(`
                 UPDATE attendance
-                SET check_in = ?, check_out = ?, check_out_lat = ?, check_out_lng = ?, status = ?, shift_id = ?
+                SET check_in = ?, check_out = ?, check_out_lat = ?, check_out_lng = ?, checkin_status = ?, checkout_status = ?, shift_id = ?
                 WHERE id = ?
-            `).run(newCheckInStr, newCheckOutStr, lat, lng, officialStatus, officialShiftId, activeSession.id);
+            `).run(newCheckInStr, newCheckOutStr, lat, lng, checkinStatus, checkoutStatus, officialShiftId, activeSession.id);
 
             updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id);
 
@@ -350,8 +351,8 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                 if (earlyMins > 0) {
                     const earlyShiftId = generateUnscheduledShiftId(userId, earlySegmentStart);
                     const insertEarly = db.prepare(`
-                        INSERT INTO attendance (user_id, check_in, check_out, date, check_in_lat, check_in_lng, check_out_lat, check_out_lng, status, shift_id)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO attendance (user_id, check_in, check_out, date, check_in_lat, check_in_lng, check_out_lat, check_out_lng, checkin_status, checkout_status, working_status, shift_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'unscheduled', 'unscheduled', 'working', ?)
                     `);
                     const info = insertEarly.run(
                         userId,
@@ -362,7 +363,6 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                         activeSession.check_in_lng,
                         activeSession.check_in_lat,
                         activeSession.check_in_lng,
-                        'unscheduled',
                         earlyShiftId
                     );
 
@@ -379,8 +379,8 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                 if (lateMins > 0) {
                     const lateShiftId = generateUnscheduledShiftId(userId, lateSegmentStart);
                     const insertLate = db.prepare(`
-                        INSERT INTO attendance (user_id, check_in, check_out, date, check_in_lat, check_in_lng, check_out_lat, check_out_lng, status, shift_id)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO attendance (user_id, check_in, check_out, date, check_in_lat, check_in_lng, check_out_lat, check_out_lng, checkin_status, checkout_status, working_status, shift_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'unscheduled', 'unscheduled', 'working', ?)
                     `);
                     const info = insertLate.run(
                         userId,
@@ -391,7 +391,6 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                         lng,
                         lat,
                         lng,
-                        'unscheduled',
                         lateShiftId
                     );
 
@@ -688,7 +687,15 @@ export const getAttendanceLogs = (req: Request, res: Response): void => {
 
 export const getAttendanceStats = (req: Request, res: Response): void => {
     try {
-        const statusDist = db.prepare('SELECT status as name, COUNT(*) as value FROM attendance GROUP BY status').all();
+        const statusDist = db.prepare(`
+            SELECT status as name, SUM(value) as value
+            FROM (
+                SELECT checkin_status as status, COUNT(*) as value FROM attendance GROUP BY checkin_status
+                UNION ALL
+                SELECT checkout_status as status, COUNT(*) as value FROM attendance WHERE checkout_status IS NOT NULL GROUP BY checkout_status
+            )
+            GROUP BY status
+        `).all();
 
         const dailyHours = db.prepare(`
             SELECT date, ROUND(SUM((julianday(check_out) - julianday(check_in)) * 24), 2) as hours
@@ -703,9 +710,9 @@ export const getAttendanceStats = (req: Request, res: Response): void => {
 
         const todayStats = db.prepare(`
             SELECT
-                SUM(CASE WHEN status = 'on_time' THEN 1 ELSE 0 END) as present,
-                SUM(CASE WHEN status = 'late_in' THEN 1 ELSE 0 END) as late,
-                SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) as absent
+                SUM(CASE WHEN checkin_status = 'on_time' THEN 1 ELSE 0 END) as present,
+                SUM(CASE WHEN checkin_status = 'late_in' THEN 1 ELSE 0 END) as late,
+                0 as absent
             FROM attendance
             WHERE date = ?
         `).get(todayDateStr) as any;
@@ -756,13 +763,13 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
             return;
         }
 
-        if (activeAttendance.current_status === 'away') {
+        if (activeAttendance.working_status === 'away') {
             logger.debug('[stepAway] Already stepped away');
             res.status(400).json({ error: 'Already stepped away' });
             return;
         }
 
-        if (activeAttendance.status === 'unscheduled') {
+        if (activeAttendance.checkin_status === 'unscheduled') {
             logger.debug('[stepAway] Cannot step away during an unscheduled shift');
             res.status(400).json({ error: 'Cannot step away during an unscheduled shift' });
             return;
@@ -826,7 +833,7 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
             const oldAttendance = { ...activeAttendance };
 
             // Update attendance status
-            db.prepare('UPDATE attendance SET current_status = ? WHERE id = ?').run('away', activeAttendance.id);
+            db.prepare('UPDATE attendance SET working_status = ? WHERE id = ?').run('away', activeAttendance.id);
 
             // Insert shift interruption
             const insertInterruption = db.prepare(`
@@ -889,7 +896,7 @@ export const resumeWork = (req: AuthRequest, res: Response): void => {
             return;
         }
 
-        if (activeAttendance.current_status === 'working') {
+        if (activeAttendance.working_status === 'working') {
             res.status(400).json({ error: 'Already working' });
             return;
         }
@@ -913,7 +920,7 @@ export const resumeWork = (req: AuthRequest, res: Response): void => {
             db.prepare('UPDATE shift_interruptions SET end_time = ? WHERE id = ?').run(timestamp, activeInterruption.id);
 
             // Update attendance status
-            db.prepare('UPDATE attendance SET current_status = ? WHERE id = ?').run('working', activeAttendance.id);
+            db.prepare('UPDATE attendance SET working_status = ? WHERE id = ?').run('working', activeAttendance.id);
 
             // If no break balance (status was pending_manager), create the request now that it is finalized
             if (activeInterruption.status === 'pending_manager') {

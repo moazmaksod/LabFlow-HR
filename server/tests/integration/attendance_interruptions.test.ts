@@ -129,7 +129,7 @@ describe('Attendance Interruptions API', () => {
 
         // Verify attendance status is back to working
         const attendance = db.prepare('SELECT * FROM attendance WHERE user_id = ?').get(employeeId) as any;
-        expect(attendance.current_status).toBe('working');
+        expect(attendance.working_status).toBe('working');
 
         // Verify requests record is now created after resuming work
         const reqRecord = db.prepare('SELECT * FROM requests WHERE user_id = ? AND type = ?').get(employeeId, 'permission_to_leave') as any;
@@ -160,7 +160,7 @@ describe('Attendance Interruptions API', () => {
 
         // Clear previous interruption for clean test
         db.prepare('DELETE FROM shift_interruptions').run();
-        db.prepare('UPDATE attendance SET current_status = ? WHERE user_id = ?').run('working', employeeId);
+        db.prepare('UPDATE attendance SET working_status = ? WHERE user_id = ?').run('working', employeeId);
 
         const timestamp = new Date().toISOString();
 

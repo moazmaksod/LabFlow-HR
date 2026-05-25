@@ -13,13 +13,41 @@ interface AttendanceLog {
   date: string;
   check_in: string;
   check_out: string | null;
-  status: string;
+  checkin_status: string;
+  checkout_status: string | null;
+  working_status: string;
   check_in_lat: number | null;
   check_in_lng: number | null;
   check_out_lat: number | null;
   check_out_lng: number | null;
   breaks?: any[];
 }
+
+const determineOverallStatus = (checkinStatus: string, checkoutStatus: string | null): string => {
+  const inStatus = checkinStatus;
+  const outStatus = checkoutStatus || 'on_time';
+
+  if (inStatus === 'unscheduled' || outStatus === 'unscheduled') {
+    return 'unscheduled';
+  }
+  if (inStatus === 'on_time' && outStatus === 'on_time') {
+    return 'on_time';
+  }
+  if (inStatus === 'late_in' && outStatus === 'early_out') {
+    return 'incomplete';
+  }
+  if (inStatus === 'late_in') {
+    return 'late_in';
+  }
+  if (outStatus === 'early_out') {
+    return 'early_out';
+  }
+  return 'unknown';
+};
+
+const getDisplayStatus = (log: AttendanceLog): string => {
+  return determineOverallStatus(log.checkin_status, log.checkout_status);
+};
 
 export default function AttendanceLogs() {
   const user = useAuthStore(state => state.user);
@@ -49,7 +77,9 @@ export default function AttendanceLogs() {
   const filteredLogs = logs?.filter(log => {
     if (filterStartDate && log.date < filterStartDate) return false;
     if (filterEndDate && log.date > filterEndDate) return false;
-    const matchesStatus = filterStatus ? log.status === filterStatus : true;
+    const matchesStatus = filterStatus 
+      ? getDisplayStatus(log) === filterStatus
+      : true;
     const matchesSearch = searchQuery 
       ? log.user_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
         (log.job_title && log.job_title.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -108,11 +138,12 @@ export default function AttendanceLogs() {
               className="pl-9 pr-4 py-2 bg-background border border-border rounded-lg text-sm appearance-none"
             >
               <option value="">All Statuses</option>
+              <option value="working">Working</option>
+              <option value="away">Away</option>
               <option value="on_time">On Time</option>
               <option value="late_in">Late In</option>
               <option value="early_out">Early Out</option>
-              <option value="absent">Absent</option>
-              <option value="half_day">Half Day</option>
+              <option value="incomplete">Incomplete</option>
               <option value="unscheduled">Unscheduled</option>
             </select>
           </div>
@@ -147,43 +178,61 @@ export default function AttendanceLogs() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filteredLogs?.map((log) => (
-                  <tr key={log.id} className="hover:bg-muted/50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="font-medium">{log.user_name}</div>
-                      <div className="text-xs text-muted-foreground">{log.job_title || 'No Job Assigned'}</div>
-                    </td>
-                    <td className="px-6 py-4">{log.date}</td>
-                    <td className="px-6 py-4 font-mono">{formatTime(log.check_in)}</td>
-                    <td className="px-6 py-4 font-mono">{formatTime(log.check_out)}</td>
-                    <td className="px-6 py-4 font-mono text-xs">
-                      {log.breaks && log.breaks.length > 0 ? (
-                        <div className="space-y-1">
-                          {log.breaks.map((b: any, idx: number) => (
-                            <div key={idx} className="text-muted-foreground">
-                              {formatTime(b.start_time)} - {b.end_time ? formatTime(b.end_time) : 'Ongoing'}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        log.status === 'on_time' ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' :
-                        log.status === 'late_in' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400' :
-                        log.status === 'early_out' ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400' :
-                        log.status === 'absent' ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400' :
-                        log.status === 'half_day' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' :
-                        log.status === 'unscheduled' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
-                        'bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-400'
-                      }`}>
-                        {formatStatusLabel(log.status)}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                 {filteredLogs?.map((log) => {
+                   const displayStatus = getDisplayStatus(log);
+                   return (
+                     <tr key={log.id} className="hover:bg-muted/50 transition-colors">
+                       <td className="px-6 py-4">
+                         <div className="font-medium">{log.user_name}</div>
+                         <div className="text-xs text-muted-foreground">{log.job_title || 'No Job Assigned'}</div>
+                       </td>
+                       <td className="px-6 py-4">{log.date}</td>
+                       <td className={`px-6 py-4 font-mono font-semibold ${
+                         log.checkin_status === 'on_time' ? 'text-emerald-600 dark:text-emerald-400' :
+                         log.checkin_status === 'late_in' ? 'text-amber-500 dark:text-amber-400' :
+                         log.checkin_status === 'unscheduled' ? 'text-blue-500 dark:text-blue-400' :
+                         'text-foreground'
+                       }`}>
+                         {formatTime(log.check_in)}
+                       </td>
+                       <td className={`px-6 py-4 font-mono font-semibold ${
+                         log.check_out ? (
+                           log.checkout_status === 'on_time' ? 'text-emerald-600 dark:text-emerald-400' :
+                           log.checkout_status === 'early_out' ? 'text-orange-500 dark:text-orange-400' :
+                           log.checkout_status === 'unscheduled' ? 'text-blue-500 dark:text-blue-400' :
+                           'text-foreground'
+                         ) : 'text-muted-foreground'
+                       }`}>
+                         {formatTime(log.check_out)}
+                       </td>
+                       <td className="px-6 py-4 font-mono text-xs">
+                         {log.breaks && log.breaks.length > 0 ? (
+                           <div className="space-y-1">
+                             {log.breaks.map((b: any, idx: number) => (
+                               <div key={idx} className="text-muted-foreground">
+                                 {formatTime(b.start_time)} - {b.end_time ? formatTime(b.end_time) : 'Ongoing'}
+                               </div>
+                             ))}
+                           </div>
+                         ) : (
+                           <span className="text-muted-foreground">-</span>
+                         )}
+                       </td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold inline-block ${
+                            displayStatus === 'on_time' ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' :
+                            displayStatus === 'late_in' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400' :
+                            displayStatus === 'early_out' ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400' :
+                            displayStatus === 'incomplete' ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400' :
+                            displayStatus === 'unscheduled' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
+                            'bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-400'
+                          }`}>
+                            {formatStatusLabel(displayStatus)}
+                          </span>
+                        </td>
+                     </tr>
+                   );
+                 })}
               </tbody>
             </table>
           </div>

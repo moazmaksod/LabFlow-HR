@@ -132,13 +132,9 @@ const calculateUserPayrollSlow = (user: any, start_date: string, end_date: strin
         workedMinutes = Math.max(0, workedMinutes);
         totalApprovedOvertimeMinutes += log.approved_overtime_minutes || 0;
 
-        if (log.status === 'absent') {
-            totalMissingMinutes += expectedForDay;
-        } else {
-            totalActualWorkedMinutes += workedMinutes;
-            totalMissingMinutes += Math.max(0, expectedForDay - workedMinutes);
-            totalPaidMinutes += log.paid_minutes || 0;
-        }
+        totalActualWorkedMinutes += workedMinutes;
+        totalMissingMinutes += Math.max(0, expectedForDay - workedMinutes);
+        totalPaidMinutes += log.paid_minutes || 0;
     });
 
     // --- INTENTIONAL O(N) PERFORMANCE DEMONSTRATION ---
@@ -253,13 +249,9 @@ const calculateUserPayrollFast = (user: any, start_date: string, end_date: strin
         workedMinutes = Math.max(0, workedMinutes);
         totalApprovedOvertimeMinutes += log.approved_overtime_minutes || 0;
 
-        if (log.status === 'absent') {
-            totalMissingMinutes += expectedForDay;
-        } else {
-            totalActualWorkedMinutes += workedMinutes;
-            totalMissingMinutes += Math.max(0, expectedForDay - workedMinutes);
-            totalPaidMinutes += log.paid_minutes || 0;
-        }
+        totalActualWorkedMinutes += workedMinutes;
+        totalMissingMinutes += Math.max(0, expectedForDay - workedMinutes);
+        totalPaidMinutes += log.paid_minutes || 0;
     });
 
     const logDates = new Set(logs.map(l => l.date));

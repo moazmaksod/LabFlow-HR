@@ -69,7 +69,7 @@ describe('Attendance API - Schedule Driven Architecture', () => {
 
     expect(resCheckIn.status).toBe(201);
     expect(resCheckIn.body.date).toBe('2023-10-23'); // Logical Date should be Monday!
-    expect(resCheckIn.body.status).toBe('on_time'); // Inside 15 min grace period (22:15)
+    expect(resCheckIn.body.checkin_status).toBe('on_time'); // Inside 15 min grace period (22:15)
 
     // Check out at Tuesday 05:45 AM NY time -> 09:45 AM UTC
     jest.setSystemTime(new Date('2023-10-24T09:45:00Z'));
@@ -105,7 +105,7 @@ describe('Attendance API - Schedule Driven Architecture', () => {
 
     expect(resCheckIn.status).toBe(200); // Because it auto-resumed (re-entry)
     expect(resCheckIn.body.check_out).toBeNull();
-    expect(resCheckIn.body.current_status).toBe('working');
+    expect(resCheckIn.body.working_status).toBe('working');
 
     // Assert a shift interruption was created
     const interruptions = db.prepare('SELECT * FROM shift_interruptions WHERE attendance_id = ?').all(resCheckIn.body.id) as any[];
@@ -236,8 +236,8 @@ describe('Attendance API - Schedule Driven Architecture', () => {
     const shiftIdStr = shiftInstanceResult.id.toString();
 
     db.prepare(`
-        INSERT INTO attendance (user_id, check_in, check_out, date, check_in_lat, check_in_lng, status, current_status, shift_id)
-        VALUES (?, ?, NULL, ?, 37.7749, -122.4194, 'on_time', 'working', ?)
+        INSERT INTO attendance (user_id, check_in, check_out, date, check_in_lat, check_in_lng, checkin_status, checkout_status, working_status, shift_id)
+        VALUES (?, ?, NULL, ?, 37.7749, -122.4194, 'on_time', NULL, 'working', ?)
     `).run(employeeId4, '2023-10-27T08:00:00Z', '2023-10-27', shiftIdStr);
 
     const insertHeartbeat = db.prepare(`
@@ -257,7 +257,7 @@ describe('Attendance API - Schedule Driven Architecture', () => {
     const attendanceRecord = db.prepare('SELECT * FROM attendance WHERE user_id = ?').get(employeeId4) as any;
     expect(attendanceRecord).toBeDefined();
     expect(attendanceRecord.check_out).toBe('2023-10-27T10:15:00.000Z');
-    expect(attendanceRecord.status).toBe('early_out');
+    expect(attendanceRecord.checkout_status).toBe('early_out');
 
     const shiftInstanceRecord = db.prepare('SELECT * FROM shift_instances WHERE user_id = ? AND logical_date = ?').get(employeeId4, '2023-10-27') as any;
     expect(shiftInstanceRecord.status).toBe('Completed');

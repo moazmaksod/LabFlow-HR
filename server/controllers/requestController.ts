@@ -377,66 +377,71 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
 
                     const originalAttendance = db.prepare('SELECT check_in, check_out FROM attendance WHERE id = ?').get(requestRecord.attendance_id) as any;
 
-                    const updateQuery = `
-                        UPDATE attendance
-                        SET check_in = COALESCE(?, check_in),
-                            check_out = COALESCE(?, check_out),
-                            status = ?
-                        WHERE id = ?
-                    `;
-
-                    // Recalculate status based on new check_in
-                    let newStatus = 'on_time';
+                    let checkinStatus = 'on_time';
                     const finalCheckIn = new_clock_in || (originalAttendance ? originalAttendance.check_in : null);
                     const finalCheckOut = new_clock_out || (originalAttendance ? originalAttendance.check_out : null);
+                    let checkoutStatus = finalCheckOut ? 'on_time' : null;
                     const fullOriginalAttendance = db.prepare('SELECT * FROM attendance WHERE id = ?').get(requestRecord.attendance_id) as any;
-
+ 
                     if (finalCheckIn && fullOriginalAttendance) {
                         const userProfile = db.prepare(`
                             SELECT p.weekly_schedule
                             FROM profiles p
                             WHERE p.user_id = ?
                         `).get(requestRecord.user_id) as any;
-
+ 
                         if (userProfile) {
                             const settingsRecord = db.prepare('SELECT late_grace_period FROM settings WHERE id = 1').get() as any;
                             const gracePeriod = settingsRecord?.late_grace_period !== undefined ? settingsRecord.late_grace_period : 0;
-
+ 
                             let shiftInstance = null;
                             if (fullOriginalAttendance.shift_id && !fullOriginalAttendance.shift_id.startsWith('US_')) {
                                 shiftInstance = db.prepare('SELECT * FROM shift_instances WHERE id = ?').get(fullOriginalAttendance.shift_id) as any;
                             }
-
+ 
                             if (shiftInstance) {
                                 const scheduledTime = new Date(shiftInstance.start_time);
                                 const clockInTime = new Date(finalCheckIn);
                                 if (clockInTime > scheduledTime) {
                                     const diffMinutes = getDifferenceInMinutes(scheduledTime, clockInTime);
                                     if (diffMinutes > gracePeriod) {
-                                        newStatus = 'late_in';
+                                        checkinStatus = 'late_in';
                                     }
                                 }
-
-                                if (newStatus === 'on_time' && finalCheckOut) {
+ 
+                                if (finalCheckOut) {
                                     const scheduledEndTime = new Date(shiftInstance.end_time);
                                     const clockOutTime = new Date(finalCheckOut);
                                     if (clockOutTime < scheduledEndTime) {
                                         const outDiffMinutes = getDifferenceInMinutes(clockOutTime, scheduledEndTime);
                                         if (outDiffMinutes > gracePeriod) {
-                                            newStatus = 'early_out';
+                                            checkoutStatus = 'early_out';
                                         }
                                     }
                                 }
                             } else {
-                                newStatus = 'unscheduled';
+                                checkinStatus = 'unscheduled';
+                                if (finalCheckOut) {
+                                    checkoutStatus = 'unscheduled';
+                                }
                             }
                         }
                     }
-
+ 
+                    const updateQuery = `
+                        UPDATE attendance
+                        SET check_in = COALESCE(?, check_in),
+                            check_out = COALESCE(?, check_out),
+                            checkin_status = ?,
+                            checkout_status = ?
+                        WHERE id = ?
+                    `;
+ 
                     db.prepare(updateQuery).run(
                         new_clock_in || null,
                         new_clock_out || null,
-                        newStatus,
+                        checkinStatus,
+                        checkoutStatus,
                         requestRecord.attendance_id
                     );
 
@@ -522,112 +527,150 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                         }
                     }
                 } else if (requestRecord.type === 'early_leave_approval' && requestRecord.attendance_id) {
-                    db.prepare("UPDATE attendance SET status = 'on_time' WHERE id = ? AND status = 'early_out'").run(requestRecord.attendance_id);
+                    db.prepare("UPDATE attendance SET checkout_status = 'on_time' WHERE id = ? AND checkout_status = 'early_out'").run(requestRecord.attendance_id);
                 } else if (requestRecord.type === 'late_in_approval' && requestRecord.attendance_id) {
-                    db.prepare("UPDATE attendance SET status = 'on_time' WHERE id = ? AND status = 'late_in'").run(requestRecord.attendance_id);
+                    db.prepare("UPDATE attendance SET checkin_status = 'on_time' WHERE id = ? AND checkin_status = 'late_in'").run(requestRecord.attendance_id);
                 } else if (requestRecord.type === 'manual_clock' && (requestRecord.requested_check_in || requestRecord.requested_check_out)) {
                     if (requestRecord.attendance_id) {
-                        const originalAttendance = db.prepare('SELECT check_in, check_out FROM attendance WHERE id = ?').get(requestRecord.attendance_id) as any;
-
-                        // Recalculate status based on new check_in
-                        let newStatus = 'on_time';
+                        const originalAttendance = db.prepare('SELECT check_in, check_out, shift_id FROM attendance WHERE id = ?').get(requestRecord.attendance_id) as any;
+ 
+                        // Recalculate checkin_status and checkout_status
+                        let checkinStatus = 'on_time';
                         const finalCheckIn = requestRecord.requested_check_in || (originalAttendance ? originalAttendance.check_in : null);
-
+                        const finalCheckOut = requestRecord.requested_check_out || (originalAttendance ? originalAttendance.check_out : null);
+                        let checkoutStatus = finalCheckOut ? 'on_time' : null;
+ 
                         const fullOriginalAttendance = db.prepare('SELECT * FROM attendance WHERE id = ?').get(requestRecord.attendance_id) as any;
-
+ 
                         if (finalCheckIn && fullOriginalAttendance) {
                             const userProfile = db.prepare(`
                                 SELECT p.weekly_schedule
                                 FROM profiles p
                                 WHERE p.user_id = ?
                             `).get(requestRecord.user_id) as any;
-
+ 
                             if (userProfile) {
                                 const settingsRecord = db.prepare('SELECT late_grace_period FROM settings WHERE id = 1').get() as any;
                                 const gracePeriod = settingsRecord?.late_grace_period !== undefined ? settingsRecord.late_grace_period : 0;
-
+ 
                                 let shiftInstance = null;
                                 if (fullOriginalAttendance.shift_id && !fullOriginalAttendance.shift_id.startsWith('US_')) {
                                     shiftInstance = db.prepare('SELECT * FROM shift_instances WHERE id = ?').get(fullOriginalAttendance.shift_id) as any;
                                 }
-
+ 
                                 if (shiftInstance) {
                                     const scheduledTime = new Date(shiftInstance.start_time);
                                     const clockInTime = new Date(finalCheckIn);
                                     if (clockInTime > scheduledTime) {
                                         const diffMinutes = getDifferenceInMinutes(scheduledTime, clockInTime);
                                         if (diffMinutes > gracePeriod) {
-                                            newStatus = 'late_in';
+                                            checkinStatus = 'late_in';
+                                        }
+                                    }
+ 
+                                    if (finalCheckOut) {
+                                        const scheduledEndTime = new Date(shiftInstance.end_time);
+                                        const clockOutTime = new Date(finalCheckOut);
+                                        if (clockOutTime < scheduledEndTime) {
+                                            const outDiffMinutes = getDifferenceInMinutes(clockOutTime, scheduledEndTime);
+                                            if (outDiffMinutes > gracePeriod) {
+                                                checkoutStatus = 'early_out';
+                                            }
                                         }
                                     }
                                 } else {
-                                    newStatus = 'unscheduled';
+                                    checkinStatus = 'unscheduled';
+                                    if (finalCheckOut) {
+                                        checkoutStatus = 'unscheduled';
+                                    }
                                 }
                             }
                         }
-
+ 
                         // Update existing attendance
                         const updateQuery = `
                             UPDATE attendance
                             SET check_in = COALESCE(?, check_in),
                                 check_out = COALESCE(?, check_out),
-                                status = ?
+                                checkin_status = ?,
+                                checkout_status = ?
                             WHERE id = ?
                         `;
                         db.prepare(updateQuery).run(
                             requestRecord.requested_check_in,
                             requestRecord.requested_check_out,
-                            newStatus,
+                            checkinStatus,
+                            checkoutStatus,
                             requestRecord.attendance_id
                         );
                     } else {
                         // Insert new attendance
                         const timeString = requestRecord.requested_check_in || requestRecord.requested_check_out;
                         const date = new Date(timeString).toISOString().split('T')[0];
-
+ 
                         // Recalculate status based on check_in
-                        let newStatus = 'on_time';
+                        let checkinStatus = 'on_time';
+                        let checkoutStatus = requestRecord.requested_check_out ? 'on_time' : null;
+                        let shiftId = null;
+ 
                         if (requestRecord.requested_check_in) {
                             const userProfile = db.prepare(`
                                 SELECT p.weekly_schedule
                                 FROM profiles p
                                 WHERE p.user_id = ?
                             `).get(requestRecord.user_id) as any;
-
+ 
                             const settingsRecord = db.prepare('SELECT late_grace_period FROM settings WHERE id = 1').get() as any;
                             const gracePeriod = settingsRecord?.late_grace_period !== undefined ? settingsRecord.late_grace_period : 0;
-
+ 
                             if (userProfile) {
                                 const shiftInstance = db.prepare(`
                                     SELECT * FROM shift_instances
                                     WHERE user_id = ? AND ? BETWEEN datetime(start_time, '-' || ? || ' minutes') AND end_time
                                     ORDER BY start_time ASC LIMIT 1
                                 `).get(requestRecord.user_id, requestRecord.requested_check_in, gracePeriod) as any;
-
+ 
                                 if (shiftInstance) {
+                                    shiftId = shiftInstance.id.toString();
                                     const scheduledTime = new Date(shiftInstance.start_time);
                                     const clockInTime = new Date(requestRecord.requested_check_in);
                                     if (clockInTime > scheduledTime) {
                                         const diffMinutes = getDifferenceInMinutes(scheduledTime, clockInTime);
                                         if (diffMinutes > gracePeriod) {
-                                            newStatus = 'late_in';
+                                            checkinStatus = 'late_in';
+                                        }
+                                    }
+ 
+                                    if (requestRecord.requested_check_out) {
+                                        const scheduledEndTime = new Date(shiftInstance.end_time);
+                                        const clockOutTime = new Date(requestRecord.requested_check_out);
+                                        if (clockOutTime < scheduledEndTime) {
+                                            const outDiffMinutes = getDifferenceInMinutes(clockOutTime, scheduledEndTime);
+                                            if (outDiffMinutes > gracePeriod) {
+                                                checkoutStatus = 'early_out';
+                                            }
                                         }
                                     }
                                 } else {
-                                    newStatus = 'unscheduled';
+                                    checkinStatus = 'unscheduled';
+                                    if (requestRecord.requested_check_out) {
+                                        checkoutStatus = 'unscheduled';
+                                    }
                                 }
                             }
                         }
-
+ 
                         db.prepare(`
-                            INSERT INTO attendance (user_id, check_in, check_out, date, status)
-                            VALUES (?, ?, ?, ?, ?)
+                            INSERT INTO attendance (user_id, check_in, check_out, date, checkin_status, checkout_status, working_status, shift_id)
+                            VALUES (?, ?, ?, ?, ?, ?, 'working', ?)
                         `).run(
                             requestRecord.user_id,
                             requestRecord.requested_check_in,
                             requestRecord.requested_check_out,
                             date,
-                            newStatus
+                            checkinStatus,
+                            checkoutStatus,
+                            shiftId
                         );
                     }
                 }

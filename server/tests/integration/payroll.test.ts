@@ -73,8 +73,8 @@ describe('Payroll API', () => {
 
     // Mock attendance logs
     const insertAttendance = db.prepare(`
-      INSERT INTO attendance (user_id, check_in, check_out, date, status)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO attendance (user_id, check_in, check_out, date, checkin_status, checkout_status, working_status)
+      VALUES (?, ?, ?, ?, ?, 'on_time', 'working')
     `);
 
     // Day 1: 9 hours (08:00 to 17:00)

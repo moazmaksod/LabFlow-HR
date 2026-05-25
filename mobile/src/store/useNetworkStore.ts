@@ -153,7 +153,7 @@ export const useNetworkStore = create<NetworkState>()(
           const activeSession = logs.find((l: any) => l.date === today && !l.check_out);
           
           if (activeSession) {
-            attendanceStore.setStatus(activeSession.current_status || 'working');
+            attendanceStore.setStatus(activeSession.working_status || 'working');
             
             let consumed = 0;
             if (activeSession.breaks && Array.isArray(activeSession.breaks)) {

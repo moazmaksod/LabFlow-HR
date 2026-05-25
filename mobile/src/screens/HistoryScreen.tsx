@@ -16,7 +16,9 @@ interface AttendanceLog {
   date: string;
   check_in: string;
   check_out: string | null;
-  status: string;
+  checkin_status: string;
+  checkout_status: string | null;
+  working_status: string;
   check_in_lat: number | null;
   check_in_lng: number | null;
   check_out_lat: number | null;
@@ -26,6 +28,32 @@ interface AttendanceLog {
   breaks?: any[];
   requests?: any[];
 }
+
+const determineOverallStatus = (checkinStatus: string, checkoutStatus: string | null): string => {
+  const inStatus = checkinStatus;
+  const outStatus = checkoutStatus || 'on_time';
+
+  if (inStatus === 'unscheduled' || outStatus === 'unscheduled') {
+    return 'unscheduled';
+  }
+  if (inStatus === 'on_time' && outStatus === 'on_time') {
+    return 'on_time';
+  }
+  if (inStatus === 'late_in' && outStatus === 'early_out') {
+    return 'incomplete';
+  }
+  if (inStatus === 'late_in') {
+    return 'late_in';
+  }
+  if (outStatus === 'early_out') {
+    return 'early_out';
+  }
+  return 'unknown';
+};
+
+const getDisplayStatus = (log: AttendanceLog): string => {
+  return determineOverallStatus(log.checkin_status, log.checkout_status);
+};
 
 export default function HistoryScreen() {
   const user = useAuthStore((state) => state.user);
@@ -164,24 +192,31 @@ export default function HistoryScreen() {
             <Calendar size={16} color="#71717a" />
             <Text style={styles.dateText}>{formatDate(item.date)}</Text>
           </View>
-          <View style={[styles.statusBadge, 
-            item.status === 'on_time' ? styles.onTimeBadge : 
-            item.status === 'late_in' ? styles.lateInBadge : 
-            item.status === 'early_out' ? styles.earlyOutBadge : 
-            item.status === 'half_day' ? styles.halfDayBadge : 
-            item.status === 'unscheduled' ? styles.unscheduledBadge :
-            styles.absentBadge
-          ]}>
-            <Text style={[styles.statusText, 
-              item.status === 'on_time' ? styles.onTimeText : 
-              item.status === 'late_in' ? styles.lateInText : 
-              item.status === 'early_out' ? styles.earlyOutText : 
-              item.status === 'half_day' ? styles.halfDayText : 
-              item.status === 'unscheduled' ? styles.unscheduledText :
-              styles.absentText
-            ]}>
-              {formatStatusLabel(item.status)}
-            </Text>
+          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end', flex: 1 }}>
+            {(() => {
+              const displayStatus = getDisplayStatus(item);
+              return (
+                <View style={[styles.statusBadge, 
+                  displayStatus === 'on_time' ? styles.onTimeBadge : 
+                  displayStatus === 'late_in' ? styles.lateInBadge : 
+                  displayStatus === 'early_out' ? styles.earlyOutBadge : 
+                  displayStatus === 'incomplete' ? styles.incompleteBadge :
+                  displayStatus === 'unscheduled' ? styles.unscheduledBadge :
+                  styles.unknownBadge
+                ]}>
+                  <Text style={[styles.statusText, 
+                    displayStatus === 'on_time' ? styles.onTimeText : 
+                    displayStatus === 'late_in' ? styles.lateInText : 
+                    displayStatus === 'early_out' ? styles.earlyOutText : 
+                    displayStatus === 'incomplete' ? styles.incompleteText :
+                    displayStatus === 'unscheduled' ? styles.unscheduledText :
+                    styles.unknownText
+                  ]}>
+                    {formatStatusLabel(displayStatus)}
+                  </Text>
+                </View>
+              );
+            })()}
           </View>
         </View>
 
@@ -189,16 +224,50 @@ export default function HistoryScreen() {
           <View style={styles.timeColumn}>
             <Text style={styles.label}>Check In</Text>
             <View style={styles.timeRow}>
-              <Clock size={14} color="#10b981" />
-              <Text style={styles.timeValue}>{formatTime(item.check_in)}</Text>
+              <Clock 
+                size={14} 
+                color={
+                  item.checkin_status === 'on_time' ? '#10b981' :
+                  item.checkin_status === 'late_in' ? '#f59e0b' :
+                  item.checkin_status === 'unscheduled' ? '#3b82f6' :
+                  '#10b981'
+                } 
+              />
+              <Text style={[styles.timeValue, 
+                item.checkin_status === 'on_time' ? { color: '#059669' } : 
+                item.checkin_status === 'late_in' ? { color: '#d97706' } : 
+                item.checkin_status === 'unscheduled' ? { color: '#2563eb' } : 
+                styles.timeValue
+              ]}>
+                {formatTime(item.check_in)}
+              </Text>
             </View>
           </View>
 
           <View style={styles.timeColumn}>
             <Text style={styles.label}>Check Out</Text>
             <View style={styles.timeRow}>
-              <Clock size={14} color="#f59e0b" />
-              <Text style={styles.timeValue}>{formatTime(item.check_out)}</Text>
+              <Clock 
+                size={14} 
+                color={
+                  item.check_out ? (
+                    item.checkout_status === 'on_time' ? '#10b981' :
+                    item.checkout_status === 'early_out' ? '#f97316' : 
+                    item.checkout_status === 'unscheduled' ? '#3b82f6' :
+                    '#f59e0b'
+                  ) : '#71717a'
+                } 
+              />
+              <Text style={[styles.timeValue, 
+                item.check_out ? (
+                  item.checkout_status === 'on_time' ? { color: '#059669' } :
+                  item.checkout_status === 'early_out' ? { color: '#ea580c' } :
+                  item.checkout_status === 'unscheduled' ? { color: '#2563eb' } :
+                  styles.timeValue
+                ) : { color: '#71717a' }
+              ]}>
+                {formatTime(item.check_out)}
+              </Text>
             </View>
           </View>
         </View>
@@ -352,6 +421,10 @@ const styles = StyleSheet.create({
   halfDayBadge: { backgroundColor: '#f3e8ff' },
   unscheduledBadge: { backgroundColor: '#dbeafe' },
   absentBadge: { backgroundColor: '#fee2e2' },
+  incompleteBadge: { backgroundColor: '#fee2e2' },
+  incompleteText: { color: '#991b1b' },
+  unknownBadge: { backgroundColor: '#f4f4f5' },
+  unknownText: { color: '#71717a' },
   statusText: { fontSize: 10, fontWeight: 'bold' },
   onTimeText: { color: '#166534' },
   lateInText: { color: '#854d0e' },

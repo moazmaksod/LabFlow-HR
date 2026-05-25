@@ -70,3 +70,5 @@ export const generateUnscheduledShiftId = (userId: number, timestamp: string | D
     
     return `US_${dd}${mm}${yyyy}_${hh}${min}_${userId}_${random}`;
 };
+
+

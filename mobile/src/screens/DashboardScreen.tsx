@@ -67,7 +67,7 @@ export default function DashboardScreen() {
       const session = logs.find((l: any) => !l.check_out);
       setActiveSession(session || null);
       if (session) {
-        setStatus(session.current_status || 'working');
+        setStatus(session.working_status || 'working');
 
         let consumed = 0;
         if (session.breaks && Array.isArray(session.breaks)) {

@@ -170,7 +170,7 @@ describe('User Management API (Manager)', () => {
     expect(firstUser).toHaveProperty('status');
     expect(firstUser).toHaveProperty('job_id');
     expect(firstUser).toHaveProperty('job_title');
-    expect(firstUser).toHaveProperty('current_status');
+    expect(firstUser).toHaveProperty('working_status');
   });
 });
 

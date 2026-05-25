@@ -208,7 +208,7 @@ export function initDb() {
     }
 
     const newAttendanceColumns = db.prepare("PRAGMA table_info(attendance)").all() as any[];
-    if (!newAttendanceColumns.some(c => c.name === 'current_status')) {
+    if (!newAttendanceColumns.some(c => c.name === 'working_status') && !newAttendanceColumns.some(c => c.name === 'current_status')) {
       db.exec("ALTER TABLE attendance ADD COLUMN current_status TEXT NOT NULL DEFAULT 'working';");
     }
     if (!newAttendanceColumns.some(c => c.name === 'approved_overtime_minutes')) {
@@ -320,6 +320,78 @@ export function initDb() {
         logger.info('Attendance table split location migration completed.');
       }
     }
+
+    // Migration: Split status into checkin_status and checkout_status, and rename current_status to working_status
+    const postLocationAttendanceColumns = db.prepare("PRAGMA table_info(attendance)").all() as any[];
+    if (postLocationAttendanceColumns.some(c => c.name === 'status')) {
+      if (!isTestEnv) {
+        logger.info('Migrating attendance table status to checkin_status/checkout_status and current_status to working_status...');
+      }
+      db.exec(`
+        PRAGMA foreign_keys=off;
+        BEGIN TRANSACTION;
+
+        CREATE TABLE attendance_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            check_in DATETIME NOT NULL,
+            check_out DATETIME,
+            date DATE NOT NULL,
+            checkin_status TEXT NOT NULL CHECK(checkin_status IN ('on_time', 'late_in', 'unscheduled')) DEFAULT 'on_time',
+            checkout_status TEXT CHECK(checkout_status IN ('on_time', 'early_out', 'unscheduled')),
+            working_status TEXT NOT NULL CHECK(working_status IN ('working', 'away')) DEFAULT 'working',
+            check_in_lat REAL,
+            check_in_lng REAL,
+            check_out_lat REAL,
+            check_out_lng REAL,
+            shift_id TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        INSERT INTO attendance_new (
+          id, user_id, check_in, check_out, date,
+          checkin_status, checkout_status, working_status,
+          check_in_lat, check_in_lng, check_out_lat, check_out_lng,
+          shift_id, created_at, updated_at
+        )
+        SELECT 
+          id, user_id, check_in, check_out, date,
+          CASE 
+            WHEN status = 'late_in' THEN 'late_in'
+            WHEN status = 'unscheduled' THEN 'unscheduled'
+            ELSE 'on_time'
+          END,
+          CASE 
+            WHEN check_out IS NULL THEN NULL
+            WHEN status = 'early_out' THEN 'early_out'
+            WHEN status = 'unscheduled' THEN 'unscheduled'
+            ELSE 'on_time'
+          END,
+          current_status,
+          check_in_lat, check_in_lng, check_out_lat, check_out_lng,
+          shift_id, created_at, updated_at
+        FROM attendance;
+
+        DROP TABLE attendance;
+        ALTER TABLE attendance_new RENAME TO attendance;
+
+        CREATE INDEX IF NOT EXISTS idx_attendance_user_id ON attendance(user_id);
+        CREATE INDEX IF NOT EXISTS idx_attendance_shift_id ON attendance(shift_id);
+
+        CREATE TRIGGER IF NOT EXISTS update_attendance_updated_at AFTER UPDATE ON attendance
+        FOR EACH ROW WHEN NEW.updated_at <= OLD.updated_at
+        BEGIN UPDATE attendance SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;
+
+        COMMIT;
+        PRAGMA foreign_keys=on;
+      `);
+      if (!isTestEnv) {
+        logger.info('Attendance table status split migration completed.');
+      }
+    }
+
 
 
     // Settings bootstrapping is done in schema default values.

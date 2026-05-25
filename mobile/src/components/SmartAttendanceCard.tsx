@@ -77,7 +77,7 @@ export default function SmartAttendanceCard({
   }, [serverTimeOffset, lastLocalSyncTime]);
 
   const isClockedIn = currentStatus === 'working' || currentStatus === 'away';
-  const isUnscheduledSession = activeSession?.status === 'unscheduled';
+  const isUnscheduledSession = activeSession?.checkin_status === 'unscheduled';
 
   const runningShift = (() => {
     if (!currentShift) return null;

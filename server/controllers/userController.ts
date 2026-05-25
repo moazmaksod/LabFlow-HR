@@ -21,7 +21,7 @@ export const getUsers = (req: Request, res: Response): void => {
                 u.id, u.name, u.email, u.role, u.created_at,
                 p.status, p.job_id, p.device_id,
                 j.title as job_title,
-                (SELECT current_status FROM attendance a WHERE a.user_id = u.id AND a.check_out IS NULL ORDER BY a.check_in DESC LIMIT 1) as raw_current_status,
+                (SELECT working_status FROM attendance a WHERE a.user_id = u.id AND a.check_out IS NULL ORDER BY a.check_in DESC LIMIT 1) as raw_current_status,
                 (SELECT date FROM attendance a WHERE a.user_id = u.id AND a.check_out IS NULL ORDER BY a.check_in DESC LIMIT 1) as current_attendance_date
             FROM users u
             LEFT JOIN profiles p ON u.id = p.user_id
@@ -46,12 +46,12 @@ export const getUsers = (req: Request, res: Response): void => {
                 // or if there is no scheduled shift at all but they are working, we show their status.
                 // Otherwise, the open shift is stale.
                 if (user.current_attendance_date === currentShift?.logical_date || !currentShift) {
-                    user.current_status = user.raw_current_status;
+                    user.working_status = user.raw_current_status;
                 } else {
-                    user.current_status = null;
+                    user.working_status = null;
                 }
             } else {
-                user.current_status = null;
+                user.working_status = null;
             }
 
             delete user.raw_current_status;
