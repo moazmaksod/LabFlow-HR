@@ -105,14 +105,19 @@ export const formatDisplayTime = (
 
     try {
         let dateToFormat: Date;
-        const hasTimezone = dateString.includes('Z') || /[+-]\d{2}:?\d{2}$/.test(dateString.trim());
-        if (hasTimezone) {
-            dateToFormat = new Date(dateString);
+        const trimmed = dateString.trim();
+        const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(trimmed);
+        if (isDateOnly) {
+            dateToFormat = toDate(`${trimmed}T00:00:00`, { timeZone: resolvedTimezone });
         } else {
-            const isoString = dateString.includes('T') ? dateString : dateString.replace(' ', 'T');
-            // Only append Z if it looks like a time string (contains a colon) to avoid breaking date-only strings
-            const finalString = isoString.includes(':') ? `${isoString}Z` : isoString;
-            dateToFormat = new Date(finalString);
+            const hasTimezone = dateString.includes('Z') || /[+-]\d{2}:?\d{2}$/.test(trimmed);
+            if (hasTimezone) {
+                dateToFormat = new Date(dateString);
+            } else {
+                const isoString = dateString.includes('T') ? dateString : dateString.replace(' ', 'T');
+                const finalString = isoString.includes(':') ? `${isoString}Z` : isoString;
+                dateToFormat = new Date(finalString);
+            }
         }
 
         return formatInTimeZone(dateToFormat, resolvedTimezone, finalFormatString);
@@ -130,13 +135,19 @@ export const formatDisplayDate = (
     const resolvedTimezone = resolveTimezone(userPreference);
     try {
         let dateToFormat: Date;
-        const hasTimezone = dateString.includes('Z') || /[+-]\d{2}:?\d{2}$/.test(dateString.trim());
-        if (hasTimezone) {
-            dateToFormat = new Date(dateString);
+        const trimmed = dateString.trim();
+        const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(trimmed);
+        if (isDateOnly) {
+            dateToFormat = toDate(`${trimmed}T00:00:00`, { timeZone: resolvedTimezone });
         } else {
-            const isoString = dateString.includes('T') ? dateString : dateString.replace(' ', 'T');
-            const finalString = isoString.includes(':') ? `${isoString}Z` : isoString;
-            dateToFormat = new Date(finalString);
+            const hasTimezone = dateString.includes('Z') || /[+-]\d{2}:?\d{2}$/.test(trimmed);
+            if (hasTimezone) {
+                dateToFormat = new Date(dateString);
+            } else {
+                const isoString = dateString.includes('T') ? dateString : dateString.replace(' ', 'T');
+                const finalString = isoString.includes(':') ? `${isoString}Z` : isoString;
+                dateToFormat = new Date(finalString);
+            }
         }
         return new Intl.DateTimeFormat('en-CA', {
             timeZone: resolvedTimezone

@@ -179,13 +179,46 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
         const timezone = 'UTC';
         const currentServerTime = new Date().toISOString();
 
-        const currentShiftRecord = db.prepare(`
-            SELECT * FROM shift_instances
-            WHERE user_id = ?
-              AND ? <= end_time
-            ORDER BY start_time ASC
+        const activeSessionRecord = db.prepare(`
+            SELECT * FROM attendance
+            WHERE user_id = ? AND check_out IS NULL
+            ORDER BY check_in DESC
             LIMIT 1
-        `).get(userId, currentServerTime) as any;
+        `).get(userId) as any;
+
+        let currentShiftRecord = null;
+        if (activeSessionRecord && activeSessionRecord.shift_id && !activeSessionRecord.shift_id.startsWith('US_')) {
+            currentShiftRecord = db.prepare(`
+                SELECT * FROM shift_instances
+                WHERE id = ?
+            `).get(activeSessionRecord.shift_id) as any;
+        }
+
+        if (!currentShiftRecord) {
+            const displayTimezone = user.display_timezone || 'UTC';
+            const localTodayStr = new Intl.DateTimeFormat('en-CA', {
+                timeZone: displayTimezone,
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            }).format(new Date());
+
+            currentShiftRecord = db.prepare(`
+                SELECT * FROM shift_instances
+                WHERE user_id = ? AND logical_date = ? AND status != 'Cancelled'
+                LIMIT 1
+            `).get(userId, localTodayStr) as any;
+        }
+
+        if (!currentShiftRecord) {
+            currentShiftRecord = db.prepare(`
+                SELECT * FROM shift_instances
+                WHERE user_id = ?
+                  AND ? <= end_time
+                ORDER BY start_time ASC
+                LIMIT 1
+            `).get(userId, currentServerTime) as any;
+        }
         logger.debug('[getProfile] currentShiftRecord=', currentShiftRecord);
 
         // Fetch all today shifts to calculate TotalDailyMinutes for break limits.

@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Play, Pause, AlertCircle } from 'lucide-react-native';
 import { useAttendanceStore } from '../store/useAttendanceStore';
-import { formatDisplayDate, formatDisplayTime, formatTimeString, formatDuration, getMobileNow } from '../lib/timeManager';
+import { formatDisplayDate, formatDisplayTime, formatTimeString, formatDuration, getMobileNow, resolveTimezone } from '../lib/timeManager';
+import { toDate } from 'date-fns-tz';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -81,12 +82,17 @@ export default function SmartAttendanceCard({
 
   const runningShift = (() => {
     if (!currentShift) return null;
-    const startMs = new Date(currentShift.start_utc).getTime();
-    const endMs = new Date(currentShift.end_utc).getTime();
-    const nowMs = now.getTime();
-    const isWithinTime = nowMs >= startMs && nowMs <= endMs;
+    const resolvedTimezone = resolveTimezone(userTimezone || user?.display_timezone);
+    const localTodayStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: resolvedTimezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(now);
+
+    const isToday = currentShift.date === localTodayStr;
     const isClockedIntoShift = isClockedIn && activeSession?.shift_id && !activeSession.shift_id.startsWith('US_');
-    return (isWithinTime || isClockedIntoShift) ? currentShift : null;
+    return (isToday || isClockedIntoShift) ? currentShift : null;
   })();
 
   const todayShift = runningShift;
@@ -168,8 +174,16 @@ export default function SmartAttendanceCard({
 
   // --- 1. إعداد الثوابت الزمنية المطلقة ---
   const currentNowMs = now.getTime();
-  const shiftStartMs = new Date(todayShift.start_utc).getTime();
-  const shiftEndMs = new Date(todayShift.end_utc).getTime();
+  const resolvedTimezone = resolveTimezone(userTimezone || user?.display_timezone);
+
+
+
+  // Step 2: Implement the Architectural Fix
+  const shiftStartMs = toDate(`${todayShift.date}T${todayShift.start}:00`, { timeZone: resolvedTimezone }).getTime();
+  let shiftEndMs = toDate(`${todayShift.date}T${todayShift.end}:00`, { timeZone: resolvedTimezone }).getTime();
+  if (shiftEndMs < shiftStartMs) {
+    shiftEndMs += 24 * 60 * 60 * 1000;
+  }
   const totalShiftMins = (shiftEndMs - shiftStartMs) / 60000;
   const shiftDate = new Date(shiftStartMs);
 

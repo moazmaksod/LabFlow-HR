@@ -108,13 +108,18 @@ export const formatDisplayTime = (
             dateToFormat = new Date(dateString);
         } else {
             const trimmed = dateString.trim();
-            const hasTimezone = trimmed.includes('Z') || /[+-]\d{2}:?\d{2}$/.test(trimmed);
-            if (hasTimezone) {
-                dateToFormat = new Date(trimmed);
+            const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(trimmed);
+            if (isDateOnly) {
+                dateToFormat = toDate(`${trimmed}T00:00:00`, { timeZone: resolvedTimezone });
             } else {
-                const isoString = trimmed.includes('T') ? trimmed : trimmed.replace(' ', 'T');
-                const finalString = isoString.includes(':') ? `${isoString}Z` : isoString;
-                dateToFormat = new Date(finalString);
+                const hasTimezone = trimmed.includes('Z') || /[+-]\d{2}:?\d{2}$/.test(trimmed);
+                if (hasTimezone) {
+                    dateToFormat = new Date(trimmed);
+                } else {
+                    const isoString = trimmed.includes('T') ? trimmed : trimmed.replace(' ', 'T');
+                    const finalString = isoString.includes(':') ? `${isoString}Z` : isoString;
+                    dateToFormat = new Date(finalString);
+                }
             }
         }
 
