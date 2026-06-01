@@ -8,7 +8,7 @@ import { formatStatusLabel } from '../lib/utils';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { formatDisplayTime, formatDisplayDate } from '../lib/timeManager';
+import { formatDisplayTime, formatDisplayDate, formatDuration } from '../lib/timeManager';
 import { saveOfflineRequest } from '../lib/db';
 
 interface AttendanceLog {
@@ -115,6 +115,14 @@ export default function HistoryScreen() {
     return formatDisplayDate(dateString, userTimezone, 'EEE, MMM d');
   };
 
+  const formatRequestType = (type: string) => {
+    if (!type) return '';
+    return type
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
+
   const handleCheckInChange = (event: any, date?: Date) => {
     setShowCheckInPicker(false);
     if (event.type === 'dismissed') return;
@@ -190,7 +198,7 @@ export default function HistoryScreen() {
         <View style={styles.logHeader}>
           <View style={styles.dateContainer}>
             <Calendar size={16} color="#71717a" />
-            <Text style={styles.dateText}>{formatDate(item.date)}</Text>
+            <Text style={styles.dateText}>{formatDisplayDate(item.check_in, userTimezone, 'EEE, MMM d')}</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end', flex: 1 }}>
             {(() => {
@@ -353,6 +361,58 @@ export default function HistoryScreen() {
               </View>
             )}
 
+            {selectedLog?.requests && selectedLog.requests.length > 0 && (
+              <View style={styles.requestSection}>
+                <Text style={styles.sectionTitle}>Associated Requests</Text>
+                {selectedLog.requests.map((r, index) => {
+                  const statusColor = r.status === 'approved' ? '#10b981' : r.status === 'rejected' ? '#ef4444' : '#f59e0b';
+                  return (
+                    <View key={r.id || index} style={styles.requestCard}>
+                      <View style={styles.requestHeader}>
+                        <Text style={styles.requestType}>{formatRequestType(r.type)}</Text>
+                        <View style={[styles.statusBadgeInline, { backgroundColor: `${statusColor}15` }]}>
+                          <Text style={[styles.statusTextInline, { color: statusColor }]}>
+                            {r.status.toUpperCase()}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.requestReason}>
+                        <Text style={{ fontWeight: '600' }}>Reason:</Text> {r.reason}
+                      </Text>
+                      {r.type === 'attendance_correction' && (
+                        <Text style={styles.requestDetailsText}>
+                          Proposed: {formatTime(r.requested_check_in)} - {formatTime(r.requested_check_out)}
+                        </Text>
+                      )}
+                      {r.type === 'permission_to_leave' && r.shift_interruption_id && (() => {
+                        const brk = selectedLog.breaks?.find((b: any) => b.id === r.shift_interruption_id);
+                        if (brk) {
+                          return (
+                            <Text style={styles.requestDetailsText}>
+                              Away: {formatTime(brk.start_time)} - {brk.end_time ? formatTime(brk.end_time) : 'Ongoing'}
+                            </Text>
+                          );
+                        }
+                        return null;
+                      })()}
+                      {r.value > 0 && r.type !== 'attendance_correction' && (
+                        <Text style={styles.requestDetailsText}>
+                          Value: {r.type === 'overtime_approval' ? formatDuration(r.value) : `${r.value} mins`}
+                        </Text>
+                      )}
+                      {r.manager_note ? (
+                        <View style={styles.managerNoteInline}>
+                          <Text style={styles.managerNoteInlineText}>
+                            Manager Note: {r.manager_note}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
             <View style={styles.divider} />
 
             <Text style={styles.sectionTitle}>Request Edit</Text>
@@ -466,4 +526,57 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: '#e4e4e7', marginVertical: 16 },
   pendingBadgeLarge: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#fef3c7', padding: 16, borderRadius: 8, justifyContent: 'center' },
   pendingBadgeLargeText: { color: '#d97706', fontWeight: 'bold', fontSize: 14 },
+  requestSection: { marginBottom: 16 },
+  requestCard: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  requestHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  requestType: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1e293b',
+  },
+  statusBadgeInline: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  statusTextInline: {
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  requestReason: {
+    fontSize: 12,
+    color: '#475569',
+    marginBottom: 4,
+  },
+  requestDetailsText: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  managerNoteInline: {
+    marginTop: 6,
+    backgroundColor: '#f1f5f9',
+    padding: 8,
+    borderRadius: 6,
+    borderLeftWidth: 2,
+    borderLeftColor: '#94a3b8',
+  },
+  managerNoteInlineText: {
+    fontSize: 11,
+    color: '#475569',
+    fontStyle: 'italic',
+  },
 });

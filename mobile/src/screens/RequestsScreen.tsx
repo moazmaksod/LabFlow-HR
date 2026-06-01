@@ -22,6 +22,14 @@ interface RequestItem {
   requested_check_in?: string;
   requested_check_out?: string;
   value?: number;
+  attendance_shift_id?: string;
+  approved_overtime_minutes?: number;
+  interruption_start_time?: string;
+  interruption_end_time?: string;
+  shift_instance_id?: number;
+  shift_start_time?: string;
+  shift_end_time?: string;
+  shift_logical_date?: string;
 }
 
 export default function RequestsScreen() {
@@ -133,6 +141,10 @@ export default function RequestsScreen() {
       .join(' ');
   };
 
+  const getRequestAnchorTimestamp = (item: RequestItem) => {
+    return item.original_check_in || item.requested_check_in || item.shift_start_time || item.interruption_start_time || item.created_at;
+  };
+
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
     return formatDisplayDate(dateString, userTimezone, 'EEE, MMM d');
@@ -182,7 +194,7 @@ export default function RequestsScreen() {
           <View style={styles.infoRow}>
             <Calendar size={16} color="#6b7280" />
             <Text style={styles.infoText}>
-              Shift Date: <Text style={styles.infoValue}>{formatDate(item.attendance_date || item.created_at)}</Text>
+              Shift Date: <Text style={styles.infoValue}>{formatDate(getRequestAnchorTimestamp(item))}</Text>
             </Text>
           </View>
           

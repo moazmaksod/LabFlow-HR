@@ -5,7 +5,7 @@ import api from '../../lib/axios';
 import { Search, Filter, Calendar as CalendarIcon, RefreshCw } from 'lucide-react';
 import { formatStatusLabel } from '../../lib/utils';
 import { useAuthStore } from '../../store/useAuthStore';
-import { formatDisplayTime, getWebNow } from '../../lib/timeManager';
+import { formatDisplayTime, formatDisplayDate, getWebNow } from '../../lib/timeManager';
 
 interface AttendanceLog {
   id: number;
@@ -79,8 +79,9 @@ export default function AttendanceLogs() {
   const formatTime = (isoString: string | null) => formatDisplayTime(isoString, user?.display_timezone, 'HH:mm');
 
   const filteredLogs = logs?.filter(log => {
-    if (filterStartDate && log.date < filterStartDate) return false;
-    if (filterEndDate && log.date > filterEndDate) return false;
+    const localLogDate = formatDisplayDate(log.check_in, user?.display_timezone);
+    if (filterStartDate && localLogDate < filterStartDate) return false;
+    if (filterEndDate && localLogDate > filterEndDate) return false;
     const matchesStatus = filterStatus 
       ? getDisplayStatus(log) === filterStatus
       : true;
@@ -190,7 +191,7 @@ export default function AttendanceLogs() {
                          <div className="font-medium">{log.user_name}</div>
                          <div className="text-xs text-muted-foreground">{log.job_title || 'No Job Assigned'}</div>
                        </td>
-                       <td className="px-6 py-4">{log.date}</td>
+                       <td className="px-6 py-4">{formatDisplayDate(log.check_in, user?.display_timezone)}</td>
                        <td className={`px-6 py-4 font-mono font-semibold ${
                          log.checkin_status === 'on_time' ? 'text-emerald-600 dark:text-emerald-400' :
                          log.checkin_status === 'late_in' ? 'text-amber-500 dark:text-amber-400' :

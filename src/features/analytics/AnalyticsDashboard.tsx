@@ -41,6 +41,9 @@ interface RequestLog {
   type: string | null;
   created_at: string;
   attendance_date?: string | null;
+  original_check_in?: string | null;
+  requested_check_in?: string | null;
+  shift_start_time?: string | null;
   value?: number;
   status: string;
 }
@@ -159,8 +162,8 @@ export default function AnalyticsDashboard() {
   // Today's attendance logs
   const todayLogs = React.useMemo(() => {
     if (!logs) return [];
-    return logs.filter(log => log.date === todayDateStr);
-  }, [logs, todayDateStr]);
+    return logs.filter(log => formatDisplayDate(log.check_in, displayTimezone) === todayDateStr);
+  }, [logs, todayDateStr, displayTimezone]);
 
   // Roster Timings Extractor
   const getScheduledTime = React.useCallback((log: AttendanceLog) => {
@@ -252,7 +255,7 @@ export default function AnalyticsDashboard() {
       const baselineDateStr = getManagerLocalDateStr(i + 7, displayTimezone);
       
       // Today / Last 7 Days values
-      const currentLogs = logs ? logs.filter(log => log.date === currentDateStr) : [];
+      const currentLogs = logs ? logs.filter(log => formatDisplayDate(log.check_in, displayTimezone) === currentDateStr) : [];
       let currentMins = 0;
       currentLogs.forEach(log => {
         const checkInMs = new Date(log.check_in).getTime();
@@ -270,7 +273,7 @@ export default function AnalyticsDashboard() {
       });
 
       // Baseline / Preceding 7 Days values
-      const baselineLogs = logs ? logs.filter(log => log.date === baselineDateStr) : [];
+      const baselineLogs = logs ? logs.filter(log => formatDisplayDate(log.check_in, displayTimezone) === baselineDateStr) : [];
       let baselineMins = 0;
       baselineLogs.forEach(log => {
         const checkInMs = new Date(log.check_in).getTime();
@@ -303,13 +306,17 @@ export default function AnalyticsDashboard() {
   const todayPendingDeductionMinutes = React.useMemo(() => {
     if (!requests) return 0;
     return requests
-      .filter(req => 
-        req.status === 'pending' && 
-        (req.type === 'late_in_approval' || req.type === 'early_leave_approval') &&
-        (req.created_at?.split('T')[0] === todayDateStr || req.attendance_date === todayDateStr)
-      )
+      .filter(req => {
+        if (req.status !== 'pending') return false;
+        if (req.type !== 'late_in_approval' && req.type !== 'early_leave_approval') return false;
+        const reqLocalDate = formatDisplayDate(
+          req.original_check_in || req.requested_check_in || req.shift_start_time || req.created_at,
+          displayTimezone
+        );
+        return reqLocalDate === todayDateStr;
+      })
       .reduce((sum, req) => sum + (req.value || 0), 0);
-  }, [requests, todayDateStr]);
+  }, [requests, todayDateStr, displayTimezone]);
 
   const defaultHourlyRate = 20; // $20/hour default baseline rate for estimated leakage
   const estimatedPayrollLeakage = React.useMemo(() => {

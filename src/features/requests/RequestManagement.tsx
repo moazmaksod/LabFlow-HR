@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/axios';
 import { useAuthStore } from '../../store/useAuthStore';
-import { formatDisplayTime, getWebNow as getSystemNow, calculateHoursBetween, getTimestamp, formatDuration } from '../../lib/timeManager';
+import { formatDisplayTime, formatDisplayDate, getWebNow as getSystemNow, calculateHoursBetween, getTimestamp, formatDuration } from '../../lib/timeManager';
 import { CheckCircle, XCircle, Clock, FileText, X, AlertCircle, RefreshCw } from 'lucide-react';
 
 interface RequestLog {
@@ -825,23 +825,27 @@ export default function RequestManagement() {
                                 <span className="text-xs text-muted-foreground">Shift ID:</span>
                                 <span className="font-mono text-xs text-muted-foreground">{selectedRequest.attendance_shift_id}</span>
                               </div>
-                              {selectedRequest.attendance_date && (
-                                <div className="flex justify-between">
-                                  <span className="text-xs text-muted-foreground">Logical Date:</span>
-                                  <span className="font-medium">{selectedRequest.attendance_date}</span>
-                                </div>
-                              )}
-                            </div>
-                          ) : selectedRequest.shift_instance_id ? (
-                            <div className="bg-muted/30 p-3 rounded-lg border border-border space-y-1.5 text-sm">
-                              <div className="flex justify-between">
-                                <span className="text-xs text-muted-foreground">Shift ID:</span>
-                                <span className="font-medium">{selectedRequest.shift_instance_id}</span>
-                              </div>
+                            {selectedRequest.attendance_date && (
                               <div className="flex justify-between">
                                 <span className="text-xs text-muted-foreground">Logical Date:</span>
-                                <span className="font-medium">{selectedRequest.shift_logical_date}</span>
+                                <span className="font-medium">
+                                  {formatDisplayDate(selectedRequest.original_check_in || selectedRequest.requested_check_in || selectedRequest.attendance_date, user?.display_timezone)}
+                                </span>
                               </div>
+                            )}
+                          </div>
+                        ) : selectedRequest.shift_instance_id ? (
+                          <div className="bg-muted/30 p-3 rounded-lg border border-border space-y-1.5 text-sm">
+                            <div className="flex justify-between">
+                              <span className="text-xs text-muted-foreground">Shift ID:</span>
+                              <span className="font-medium">{selectedRequest.shift_instance_id}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-xs text-muted-foreground">Logical Date:</span>
+                              <span className="font-medium">
+                                {formatDisplayDate(selectedRequest.shift_start_time || selectedRequest.shift_logical_date, user?.display_timezone)}
+                              </span>
+                            </div>
                               <div className="flex justify-between">
                                 <span className="text-xs text-muted-foreground">Scheduled Time:</span>
                                 <span className="font-mono text-xs">
