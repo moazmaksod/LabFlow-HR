@@ -1,13 +1,13 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity, Modal, TextInput, Alert, ScrollView } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Clock, Calendar, CheckCircle, XCircle, AlertCircle, MessageSquare, X } from 'lucide-react-native';
+import { Clock, Calendar, CheckCircle, XCircle, AlertCircle, MessageSquare, X, ArrowRight, CornerDownRight } from 'lucide-react-native';
 import api from '../lib/axios';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { saveOfflineRequest } from '../lib/db';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { formatDisplayDate, formatDisplayTime } from '../lib/timeManager';
+import { formatDisplayDate, formatDisplayTime, formatDuration } from '../lib/timeManager';
 
 interface RequestItem {
   id: number;
@@ -30,6 +30,8 @@ interface RequestItem {
   shift_start_time?: string;
   shift_end_time?: string;
   shift_logical_date?: string;
+  paid_minutes?: number;
+  penalty_minutes?: number;
 }
 
 export default function RequestsScreen() {
@@ -155,36 +157,298 @@ export default function RequestsScreen() {
     return formatDisplayTime(timeString, userTimezone, 'HH:mm');
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColors = (status: string) => {
     switch (status) {
-      case 'approved': return '#10b981'; // Green
-      case 'rejected': return '#ef4444'; // Red
-      case 'pending': return '#f59e0b'; // Yellow
-      default: return '#6b7280'; // Gray
+      case 'approved':
+        return { text: '#15803d', bg: '#dcfce7', border: '#bbf7d0' };
+      case 'rejected':
+        return { text: '#b91c1c', bg: '#fee2e2', border: '#fecaca' };
+      case 'pending':
+        return { text: '#b45309', bg: '#fef3c7', border: '#fde68a' };
+      default:
+        return { text: '#4b5563', bg: '#f3f4f6', border: '#e5e7eb' };
+    }
+  };
+
+  const getRequestTypeColors = (type: string) => {
+    switch (type) {
+      case 'permission_to_leave':
+        return { text: '#1d4ed8', bg: '#dbeafe', border: '#bfdbfe' };
+      case 'overtime_approval':
+        return { text: '#7e22ce', bg: '#f3e8ff', border: '#e9d5ff' };
+      case 'early_leave_approval':
+        return { text: '#c2410c', bg: '#ffedd5', border: '#fed7aa' };
+      case 'shift_interruption_review':
+        return { text: '#b45309', bg: '#fef3c7', border: '#fde68a' };
+      case 'late_in_approval':
+        return { text: '#be123c', bg: '#ffe4e6', border: '#fecdd3' };
+      case 'attendance_correction':
+        return { text: '#0f766e', bg: '#ccfbf1', border: '#99f6e4' };
+      default: // manual_clock
+        return { text: '#374151', bg: '#f3f4f6', border: '#e5e7eb' };
     }
   };
 
   const getStatusIcon = (status: string, color: string) => {
     switch (status) {
-      case 'approved': return <CheckCircle size={16} color={color} />;
-      case 'rejected': return <XCircle size={16} color={color} />;
-      case 'pending': return <Clock size={16} color={color} />;
-      default: return <AlertCircle size={16} color={color} />;
+      case 'approved': return <CheckCircle size={14} color={color} />;
+      case 'rejected': return <XCircle size={14} color={color} />;
+      case 'pending': return <Clock size={14} color={color} />;
+      default: return <AlertCircle size={14} color={color} />;
     }
   };
 
+  const getDurationMins = (start: string | null | undefined, end: string | null | undefined): number => {
+    if (!start || !end) return 0;
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    startDate.setSeconds(0, 0);
+    startDate.setMilliseconds(0);
+    endDate.setSeconds(0, 0);
+    endDate.setMilliseconds(0);
+    return Math.max(0, Math.floor((endDate.getTime() - startDate.getTime()) / 60000));
+  };
+
+  const renderRequestDetails = (item: RequestItem) => {
+    const duration = item.type === 'permission_to_leave' || item.type === 'shift_interruption_review'
+      ? getDurationMins(item.interruption_start_time, item.interruption_end_time)
+      : item.value || 0;
+
+    switch (item.type) {
+      case 'manual_clock':
+        return (
+          <View style={styles.detailsTable}>
+            {item.requested_check_in && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Requested Check-In</Text>
+                <Text style={styles.detailValue}>{formatTime(item.requested_check_in)}</Text>
+              </View>
+            )}
+            {item.requested_check_out && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Requested Check-Out</Text>
+                <Text style={styles.detailValue}>{formatTime(item.requested_check_out)}</Text>
+              </View>
+            )}
+          </View>
+        );
+
+      case 'attendance_correction':
+        const origDuration = getDurationMins(item.original_check_in, item.original_check_out);
+        const propDuration = getDurationMins(item.requested_check_in, item.requested_check_out);
+        return (
+          <View style={styles.detailsTable}>
+            <Text style={styles.detailsHeader}>Attendance Correction</Text>
+            <View style={styles.cardCorrectionContainer}>
+              <View style={[styles.correctionBox, styles.originalBox]}>
+                <Text style={styles.correctionBoxTitle}>ORIGINAL (BEFORE)</Text>
+                <View style={styles.correctionRow}>
+                  <Text style={styles.correctionLabel}>In:</Text>
+                  <Text style={styles.correctionTimeText}>{formatTime(item.original_check_in)}</Text>
+                </View>
+                <View style={styles.correctionRow}>
+                  <Text style={styles.correctionLabel}>Out:</Text>
+                  <Text style={styles.correctionTimeText}>{formatTime(item.original_check_out)}</Text>
+                </View>
+                <View style={[styles.correctionRow, styles.correctionBorderTop]}>
+                  <Text style={styles.correctionLabel}>Dur:</Text>
+                  <Text style={styles.correctionDurationText}>{formatDuration(origDuration)}</Text>
+                </View>
+              </View>
+
+              <View style={styles.arrowContainer}>
+                <ArrowRight size={16} color="#9ca3af" />
+              </View>
+
+              <View style={[styles.correctionBox, styles.proposedBox]}>
+                <Text style={styles.correctionBoxTitle}>PROPOSED (AFTER)</Text>
+                <View style={styles.correctionRow}>
+                  <Text style={styles.correctionLabel}>In:</Text>
+                  <Text style={styles.correctionTimeText}>{formatTime(item.requested_check_in)}</Text>
+                </View>
+                <View style={styles.correctionRow}>
+                  <Text style={styles.correctionLabel}>Out:</Text>
+                  <Text style={styles.correctionTimeText}>{formatTime(item.requested_check_out)}</Text>
+                </View>
+                <View style={[styles.correctionRow, styles.correctionBorderTop]}>
+                  <Text style={styles.correctionLabel}>Dur:</Text>
+                  <Text style={styles.correctionDurationText}>{formatDuration(propDuration)}</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        );
+
+      case 'late_in_approval':
+        return (
+          <View style={styles.detailsTable}>
+            {item.shift_start_time && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Scheduled Shift Start</Text>
+                <Text style={styles.detailValue}>{formatTime(item.shift_start_time)}</Text>
+              </View>
+            )}
+            {item.original_check_in && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Actual Check-In Time</Text>
+                <Text style={styles.detailValue}>{formatTime(item.original_check_in)}</Text>
+              </View>
+            )}
+            <View style={[styles.detailRow, styles.detailBorderTop]}>
+              <Text style={styles.detailLabel}>Late Duration</Text>
+              <Text style={styles.detailValueHighlight}>{formatDuration(duration)}</Text>
+            </View>
+          </View>
+        );
+
+      case 'early_leave_approval':
+        return (
+          <View style={styles.detailsTable}>
+            {item.original_check_out && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Actual Check-Out Time</Text>
+                <Text style={styles.detailValue}>{formatTime(item.original_check_out)}</Text>
+              </View>
+            )}
+            {item.shift_end_time && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Scheduled Shift End</Text>
+                <Text style={styles.detailValue}>{formatTime(item.shift_end_time)}</Text>
+              </View>
+            )}
+            <View style={[styles.detailRow, styles.detailBorderTop]}>
+              <Text style={styles.detailLabel}>Early Leave Duration</Text>
+              <Text style={styles.detailValueHighlight}>{formatDuration(duration)}</Text>
+            </View>
+          </View>
+        );
+
+      case 'permission_to_leave':
+      case 'shift_interruption_review':
+        return (
+          <View style={styles.detailsTable}>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Interruption Start</Text>
+              <Text style={styles.detailValue}>{formatTime(item.interruption_start_time)}</Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Interruption End</Text>
+              <Text style={styles.detailValue}>{formatTime(item.interruption_end_time)}</Text>
+            </View>
+            <View style={[styles.detailRow, styles.detailBorderTop]}>
+              <Text style={styles.detailLabel}>Total Interruption Duration</Text>
+              <Text style={styles.detailValueHighlight}>{formatDuration(duration)}</Text>
+            </View>
+          </View>
+        );
+
+      case 'overtime_approval':
+        const workingDuration = getDurationMins(item.original_check_in, item.original_check_out);
+        return (
+          <View style={styles.detailsTable}>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Actual Clock-In</Text>
+              <Text style={styles.detailValue}>{formatTime(item.original_check_in)}</Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Actual Clock-Out</Text>
+              <Text style={styles.detailValue}>{formatTime(item.original_check_out)}</Text>
+            </View>
+            {item.shift_start_time && item.shift_end_time && !item.attendance_shift_id?.startsWith('US_') && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Scheduled Shift</Text>
+                <Text style={styles.detailValue}>{formatTime(item.shift_start_time)} - {formatTime(item.shift_end_time)}</Text>
+              </View>
+            )}
+            <View style={[styles.detailRow, styles.detailBorderTop]}>
+              <Text style={styles.detailLabel}>Total Work Duration</Text>
+              <Text style={styles.detailValue}>{formatDuration(workingDuration)}</Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Requested Overtime</Text>
+              <Text style={styles.detailValueHighlight}>{formatDuration(duration)}</Text>
+            </View>
+          </View>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  const renderProcessedOutcomes = (item: RequestItem) => {
+    if (item.status === 'pending') return null;
+
+    const isApproved = item.status === 'approved';
+    const finalMins = item.paid_minutes !== undefined ? item.paid_minutes : (item.value || 0);
+
+    return (
+      <View style={[
+        styles.outcomeContainer,
+        {
+          backgroundColor: isApproved ? '#f0fdf4' : '#fef2f2',
+          borderColor: isApproved ? '#bbf7d0' : '#fecaca',
+          borderWidth: 1
+        }
+      ]}>
+        <View style={styles.outcomeHeader}>
+          {isApproved ? (
+            <CheckCircle size={14} color="#16a34a" />
+          ) : (
+            <XCircle size={14} color="#dc2626" />
+          )}
+          <Text style={[styles.outcomeTitle, { color: isApproved ? '#16a34a' : '#dc2626' }]}>
+            {isApproved ? 'APPROVED OUTCOME' : 'REJECTED OUTCOME'}
+          </Text>
+        </View>
+
+        {isApproved ? (
+          item.type === 'attendance_correction' ? (
+            <Text style={styles.outcomeText}>
+              Shift check-in and check-out times updated to the proposed times.
+            </Text>
+          ) : item.type === 'overtime_approval' ? (
+            <Text style={styles.outcomeText}>
+              Overtime duration of <Text style={styles.outcomeTextBold}>{formatDuration(finalMins)}</Text> approved.
+            </Text>
+          ) : (
+            <Text style={styles.outcomeText}>
+              Paid credit of <Text style={styles.outcomeTextBold}>{formatDuration(finalMins)}</Text> approved.
+            </Text>
+          )
+        ) : (
+          <View>
+            <Text style={styles.outcomeText}>
+              This request was rejected. The duration remains unpaid.
+            </Text>
+            {item.penalty_minutes !== undefined && item.penalty_minutes > 0 && (
+              <Text style={[styles.outcomeText, { color: '#b91c1c', marginTop: 4, fontWeight: '600' }]}>
+                Disciplinary penalty applied: {(item.penalty_minutes / 60).toFixed(1)} Hours
+              </Text>
+            )}
+          </View>
+        )}
+      </View>
+    );
+  };
+
   const renderRequestCard = ({ item }: { item: RequestItem }) => {
-    const statusColor = getStatusColor(item.status);
+    const statusColors = getStatusColors(item.status);
+    const typeColors = getRequestTypeColors(item.type);
     
     return (
-      <View style={styles.card}>
+      <View style={[styles.card, { borderLeftWidth: 5, borderLeftColor: statusColors.text }]}>
         <View style={styles.cardHeader}>
-          <View style={styles.typeContainer}>
-            <Text style={styles.typeText}>{formatRequestType(item.type)}</Text>
+          <View style={styles.typeBadgeContainer}>
+            <View style={[styles.typeBadge, { backgroundColor: typeColors.bg, borderColor: typeColors.border }]}>
+              <Text style={[styles.typeText, { color: typeColors.text }]}>
+                {formatRequestType(item.type || 'manual_clock')}
+              </Text>
+            </View>
           </View>
-          <View style={[styles.statusBadge, { backgroundColor: `${statusColor}15` }]}>
-            {getStatusIcon(item.status, statusColor)}
-            <Text style={[styles.statusText, { color: statusColor }]}>
+          <View style={[styles.statusBadge, { backgroundColor: statusColors.bg, borderColor: statusColors.border, borderWidth: 1 }]}>
+            {getStatusIcon(item.status, statusColors.text)}
+            <Text style={[styles.statusText, { color: statusColors.text }]}>
               {item.status.toUpperCase()}
             </Text>
           </View>
@@ -197,9 +461,15 @@ export default function RequestsScreen() {
               Shift Date: <Text style={styles.infoValue}>{formatDate(getRequestAnchorTimestamp(item))}</Text>
             </Text>
           </View>
+
+          {renderRequestDetails(item)}
           
-          <Text style={styles.reasonLabel}>Reason:</Text>
-          <Text style={styles.reasonText}>{item.reason}</Text>
+          <View style={styles.reasonContainer}>
+            <Text style={styles.reasonLabel}>Reason:</Text>
+            <Text style={styles.reasonText}>{item.reason}</Text>
+          </View>
+
+          {renderProcessedOutcomes(item)}
 
           {item.status !== 'pending' && item.manager_note && (
             <View style={styles.managerNoteContainer}>
@@ -288,6 +558,12 @@ export default function RequestsScreen() {
                 
                 <Text style={styles.summaryLabel}>Reason:</Text>
                 <Text style={styles.summaryValue}>{selectedRequest?.reason}</Text>
+
+                {selectedRequest && (
+                  <View style={{ marginTop: 8, borderTopWidth: 1, borderTopColor: '#e4e4e7', paddingTop: 12 }}>
+                    {renderRequestDetails(selectedRequest)}
+                  </View>
+                )}
               </View>
 
               {actionType === 'approved' && (selectedRequest?.type === 'early_leave_approval' || selectedRequest?.type === 'attendance_correction') && (
@@ -414,9 +690,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   typeText: {
-    fontSize: 16,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#18181b',
   },
   statusBadge: {
     flexDirection: 'row',
@@ -662,6 +937,143 @@ const styles = StyleSheet.create({
     padding: 8,
     fontSize: 14,
     color: '#18181b',
+  },
+  typeBadgeContainer: {
+    flex: 1,
+  },
+  typeBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  reasonContainer: {
+    marginTop: 12,
+  },
+  detailsTable: {
+    backgroundColor: '#fafafa',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e4e4e7',
+    padding: 12,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  detailsHeader: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#71717a',
+    textTransform: 'uppercase',
+    marginBottom: 8,
+    letterSpacing: 0.5,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  detailBorderTop: {
+    borderTopWidth: 1,
+    borderTopColor: '#e4e4e7',
+    marginTop: 4,
+    paddingTop: 8,
+  },
+  detailLabel: {
+    fontSize: 13,
+    color: '#71717a',
+  },
+  detailValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#18181b',
+  },
+  detailValueHighlight: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#4f46e5',
+  },
+  cardCorrectionContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  correctionBox: {
+    flex: 1,
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 8,
+  },
+  originalBox: {
+    backgroundColor: '#fafafa',
+    borderColor: '#e4e4e7',
+  },
+  proposedBox: {
+    backgroundColor: '#f0fdf4',
+    borderColor: '#bbf7d0',
+  },
+  correctionBoxTitle: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#71717a',
+    marginBottom: 6,
+    letterSpacing: 0.5,
+  },
+  correctionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 3,
+  },
+  correctionBorderTop: {
+    borderTopWidth: 1,
+    borderTopColor: '#e4e4e7',
+    marginTop: 4,
+    paddingTop: 6,
+  },
+  correctionLabel: {
+    fontSize: 11,
+    color: '#71717a',
+  },
+  correctionTimeText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#18181b',
+  },
+  correctionDurationText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#16a34a',
+  },
+  arrowContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  outcomeContainer: {
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 12,
+  },
+  outcomeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  outcomeTitle: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  outcomeText: {
+    fontSize: 13,
+    color: '#374151',
+    lineHeight: 18,
+  },
+  outcomeTextBold: {
+    fontWeight: '700',
   },
   emptyContainer: {
     alignItems: 'center',
