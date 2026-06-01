@@ -129,8 +129,9 @@ export default function SmartAttendanceCard({
     }
   }
 
-  // Find all check-in/out timestamps and bounds for today
-  const logsToProcess = isTimelineScheduled ? todayLogs : (activeSession ? [activeSession] : []);
+  const logsToProcess = isTimelineScheduled
+    ? todayLogs.filter((log: any) => todayShift?.id && String(log.shift_id) === String(todayShift.id))
+    : (activeSession ? [activeSession] : []);
   const startMsList: number[] = [];
   const endMsList: number[] = [];
 

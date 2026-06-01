@@ -249,6 +249,7 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
             const endLocal = formatter.format(new Date(currentShiftRecord.end_time));
 
             current_shift = {
+                id: currentShiftRecord.id,
                 start: startLocal,
                 end: endLocal,
                 date: currentShiftRecord.logical_date,
