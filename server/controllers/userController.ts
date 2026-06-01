@@ -203,21 +203,43 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
                 day: '2-digit'
             }).format(new Date());
 
+            // 1. Get the first shift today that has not ended yet
             currentShiftRecord = db.prepare(`
                 SELECT * FROM shift_instances
                 WHERE user_id = ? AND logical_date = ? AND status != 'Cancelled'
+                  AND ? <= end_time
+                ORDER BY start_time ASC
                 LIMIT 1
-            `).get(userId, localTodayStr) as any;
+            `).get(userId, localTodayStr, currentServerTime) as any;
         }
 
         if (!currentShiftRecord) {
+            // 2. Fall back to any active/upcoming shift on future days
             currentShiftRecord = db.prepare(`
                 SELECT * FROM shift_instances
-                WHERE user_id = ?
+                WHERE user_id = ? AND status != 'Cancelled'
                   AND ? <= end_time
                 ORDER BY start_time ASC
                 LIMIT 1
             `).get(userId, currentServerTime) as any;
+        }
+
+        if (!currentShiftRecord) {
+            // 3. Fall back to the last completed/cancelled shift of today to display historical progress
+            const displayTimezone = user.display_timezone || 'UTC';
+            const localTodayStr = new Intl.DateTimeFormat('en-CA', {
+                timeZone: displayTimezone,
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            }).format(new Date());
+
+            currentShiftRecord = db.prepare(`
+                SELECT * FROM shift_instances
+                WHERE user_id = ? AND logical_date = ? AND status != 'Cancelled'
+                ORDER BY start_time DESC
+                LIMIT 1
+            `).get(userId, localTodayStr) as any;
         }
         logger.debug('[getProfile] currentShiftRecord=', currentShiftRecord);
 

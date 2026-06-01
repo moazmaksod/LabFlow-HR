@@ -106,9 +106,21 @@ export default function SmartAttendanceCard({
       day: '2-digit',
     }).format(now);
 
+    const shiftStartMs = currentShift.start_utc
+      ? new Date(currentShift.start_utc).getTime()
+      : toDate(`${currentShift.date}T${currentShift.start}:00`, { timeZone: resolvedTz }).getTime();
+    const shiftEndMs = currentShift.end_utc
+      ? new Date(currentShift.end_utc).getTime()
+      : toDate(`${currentShift.date}T${currentShift.end}:00`, { timeZone: resolvedTz }).getTime();
+
+    const gracePeriod = settings?.late_grace_period !== undefined ? settings.late_grace_period : 15;
+    const gracePeriodMs = gracePeriod * 60000;
+    const currentNowMs = now.getTime();
+    const isShiftRunning = currentNowMs >= (shiftStartMs - gracePeriodMs) && currentNowMs <= shiftEndMs;
+
     const isToday = currentShift.date === localTodayStr;
     const isClockedIntoShift = isClockedIn && activeSession?.shift_id && !activeSession.shift_id.startsWith('US_');
-    return (isToday || isClockedIntoShift) ? currentShift : null;
+    return (isToday || isClockedIntoShift || isShiftRunning) ? currentShift : null;
   })();
 
   const todayShift = runningShift;
@@ -122,11 +134,12 @@ export default function SmartAttendanceCard({
   let shiftStartMs = 0;
   let shiftEndMs = 0;
   if (todayShift) {
-    shiftStartMs = toDate(`${todayShift.date}T${todayShift.start}:00`, { timeZone: resolvedTimezone }).getTime();
-    shiftEndMs = toDate(`${todayShift.date}T${todayShift.end}:00`, { timeZone: resolvedTimezone }).getTime();
-    if (shiftEndMs < shiftStartMs) {
-      shiftEndMs += 24 * 60 * 60 * 1000;
-    }
+    shiftStartMs = todayShift.start_utc
+      ? new Date(todayShift.start_utc).getTime()
+      : toDate(`${todayShift.date}T${todayShift.start}:00`, { timeZone: resolvedTimezone }).getTime();
+    shiftEndMs = todayShift.end_utc
+      ? new Date(todayShift.end_utc).getTime()
+      : toDate(`${todayShift.date}T${todayShift.end}:00`, { timeZone: resolvedTimezone }).getTime();
   }
 
   const logsToProcess = isTimelineScheduled
@@ -149,19 +162,20 @@ export default function SmartAttendanceCard({
 
   // Calculate timeline start and end boundaries
   let timelineStartMs = isTimelineScheduled ? shiftStartMs : currentNowMs;
-  if (isTimelineScheduled && currentNowMs < timelineStartMs) {
-    timelineStartMs = currentNowMs;
-  }
-  if (startMsList.length > 0) {
-    timelineStartMs = Math.min(timelineStartMs, ...startMsList);
+  if (!isTimelineScheduled) {
+    if (startMsList.length > 0) {
+      timelineStartMs = Math.min(timelineStartMs, ...startMsList);
+    }
   }
 
   let timelineEndMs = isTimelineScheduled ? shiftEndMs : currentNowMs;
-  if (endMsList.length > 0) {
-    timelineEndMs = Math.max(timelineEndMs, ...endMsList);
-  }
-  if (currentNowMs > timelineEndMs) {
-    timelineEndMs = currentNowMs;
+  if (!isTimelineScheduled) {
+    if (endMsList.length > 0) {
+      timelineEndMs = Math.max(timelineEndMs, ...endMsList);
+    }
+    if (currentNowMs > timelineEndMs) {
+      timelineEndMs = currentNowMs;
+    }
   }
 
   const activeDurationRaw = currentNowMs - timelineStartMs;
@@ -288,7 +302,8 @@ export default function SmartAttendanceCard({
     }
   });
 
-  const nowPct = totalDuration > 0 ? ((currentNowMs - timelineStartMs) / totalDuration) * 100 : 0;
+  const nowPctRaw = totalDuration > 0 ? ((currentNowMs - timelineStartMs) / totalDuration) * 100 : 0;
+  const nowPct = Math.max(0, Math.min(100, nowPctRaw));
   const startMarkerPct = totalDuration > 0 && isTimelineScheduled ? ((shiftStartMs - timelineStartMs) / totalDuration) * 100 : 0;
   const endMarkerPct = totalDuration > 0 && isTimelineScheduled ? ((shiftEndMs - timelineStartMs) / totalDuration) * 100 : 0;
 
