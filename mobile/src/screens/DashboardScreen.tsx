@@ -135,6 +135,38 @@ export default function DashboardScreen() {
     }, [checkUnsyncedLogs, fetchStatus, fetchProfile])
   );
 
+  useEffect(() => {
+    if (!userProfile) return;
+
+    const currentShift = userProfile.current_shift;
+    const nextShift = userProfile.next_shift;
+
+    const times: number[] = [];
+    if (currentShift) {
+      if (currentShift.start_utc) times.push(new Date(currentShift.start_utc).getTime());
+      if (currentShift.end_utc) times.push(new Date(currentShift.end_utc).getTime());
+    }
+    if (nextShift) {
+      if (nextShift.start_utc) times.push(new Date(nextShift.start_utc).getTime());
+      if (nextShift.end_utc) times.push(new Date(nextShift.end_utc).getTime());
+    }
+
+    const nowMs = new Date(getMobileNow()).getTime();
+    const futureTimes = times.filter((t) => t > nowMs).sort((a, b) => a - b);
+
+    if (futureTimes.length > 0) {
+      const targetTime = futureTimes[0];
+      const delay = targetTime - nowMs;
+
+      const timer = setTimeout(() => {
+        fetchProfile();
+        fetchStatus();
+      }, delay);
+
+      return () => clearTimeout(timer);
+    }
+  }, [userProfile, fetchProfile, fetchStatus]);
+
   const executeClock = async (type: 'check_in' | 'check_out') => {
     setLoading(true);
     try {
