@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, StyleSheet, Alert, ScrollView } from 'react-native';
+import { View, StyleSheet, Alert, ScrollView, RefreshControl } from 'react-native';
 import * as Location from 'expo-location';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuthStore } from '../store/useAuthStore';
@@ -24,6 +24,7 @@ export default function DashboardScreen() {
   const { user, logout } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [unsyncedCount, setUnsyncedCount] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
   const { isSyncing, syncOfflineRecords, isConnected } = useNetworkStore();
 
   const {
@@ -108,6 +109,22 @@ export default function DashboardScreen() {
     const requests = getUnsyncedRequests();
     setUnsyncedCount(logs.length + requests.length);
   }, []);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        fetchStatus(),
+        fetchProfile(),
+        useNetworkStore.getState().syncServerTime()
+      ]);
+      checkUnsyncedLogs();
+    } catch (error) {
+      console.error('Error refreshing dashboard:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchStatus, fetchProfile, checkUnsyncedLogs]);
 
   useFocusEffect(
     useCallback(() => {
@@ -416,7 +433,18 @@ export default function DashboardScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.scrollContent}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          colors={['#10b981']}
+          tintColor="#10b981"
+        />
+      }
+    >
       {/* Redesigned Dashboard Header */}
       <DashboardHeader userProfile={userProfile} logout={logout} />
 
