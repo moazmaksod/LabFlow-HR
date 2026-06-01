@@ -5,7 +5,7 @@ import api from '../../lib/axios';
 import { Search, Filter, Calendar as CalendarIcon, RefreshCw } from 'lucide-react';
 import { formatStatusLabel } from '../../lib/utils';
 import { useAuthStore } from '../../store/useAuthStore';
-import { formatDisplayTime, formatDisplayDate, getWebNow } from '../../lib/timeManager';
+import { formatDisplayTime, formatDisplayDate, resolveTimezone, getWebNow } from '../../lib/timeManager';
 
 interface AttendanceLog {
   id: number;
@@ -54,13 +54,15 @@ export default function AttendanceLogs() {
   const user = useAuthStore(state => state.user);
   const location = useLocation();
   const [filterStartDate, setFilterStartDate] = useState(() => {
+    const tz = user?.display_timezone || resolveTimezone(user?.display_timezone);
     return new Intl.DateTimeFormat('en-CA', {
-      timeZone: user?.display_timezone || 'UTC'
+      timeZone: tz
     }).format(new Date(getWebNow()));
   });
   const [filterEndDate, setFilterEndDate] = useState(() => {
+    const tz = user?.display_timezone || resolveTimezone(user?.display_timezone);
     return new Intl.DateTimeFormat('en-CA', {
-      timeZone: user?.display_timezone || 'UTC'
+      timeZone: tz
     }).format(new Date(getWebNow()));
   });
   const [filterStatus, setFilterStatus] = useState(() => {

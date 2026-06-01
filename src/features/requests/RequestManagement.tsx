@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/axios';
 import { useAuthStore } from '../../store/useAuthStore';
-import { formatDisplayTime, formatDisplayDate, getWebNow as getSystemNow, calculateHoursBetween, getTimestamp, formatDuration } from '../../lib/timeManager';
+import { formatDisplayTime, formatDisplayDate, resolveTimezone, getWebNow as getSystemNow, calculateHoursBetween, getTimestamp, formatDuration } from '../../lib/timeManager';
 import { CheckCircle, XCircle, Clock, FileText, X, AlertCircle, RefreshCw } from 'lucide-react';
 
 interface RequestLog {
@@ -38,13 +38,15 @@ export default function RequestManagement() {
   const [filterEmployee, setFilterEmployee] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [filterStartDate, setFilterStartDate] = useState(() => {
+    const tz = user?.display_timezone || resolveTimezone(user?.display_timezone);
     return new Intl.DateTimeFormat('en-CA', {
-      timeZone: user?.display_timezone || 'UTC'
+      timeZone: tz
     }).format(new Date(getSystemNow()));
   });
   const [filterEndDate, setFilterEndDate] = useState(() => {
+    const tz = user?.display_timezone || resolveTimezone(user?.display_timezone);
     return new Intl.DateTimeFormat('en-CA', {
-      timeZone: user?.display_timezone || 'UTC'
+      timeZone: tz
     }).format(new Date(getSystemNow()));
   });
   const [selectedRequest, setSelectedRequest] = useState<RequestLog | null>(null);
@@ -186,17 +188,10 @@ export default function RequestManagement() {
       if (typeStr !== filterType) return false;
     }
 
-    const reqDate = getTimestamp(req.created_at);
+    const reqLocalDate = formatDisplayDate(req.created_at, user?.display_timezone);
 
-    if (filterStartDate) {
-      const startTimestamp = getTimestamp(filterStartDate);
-      if (reqDate < startTimestamp) return false;
-    }
-
-    if (filterEndDate) {
-      const endTimestamp = getTimestamp(filterEndDate) + (24 * 60 * 60 * 1000) - 1;
-      if (reqDate > endTimestamp) return false;
-    }
+    if (filterStartDate && reqLocalDate < filterStartDate) return false;
+    if (filterEndDate && reqLocalDate > filterEndDate) return false;
 
     return true;
   });
