@@ -1,13 +1,14 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity, Modal, TextInput, Alert, ScrollView } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Clock, Calendar, CheckCircle, XCircle, AlertCircle, MessageSquare, X, ArrowRight, CornerDownRight } from 'lucide-react-native';
+import { Clock, Calendar, CheckCircle, XCircle, AlertCircle, MessageSquare, X, ArrowRight, CornerDownRight, Filter, RotateCcw } from 'lucide-react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import api from '../lib/axios';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { saveOfflineRequest } from '../lib/db';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { formatDisplayDate, formatDisplayTime, formatDuration } from '../lib/timeManager';
+import { formatDisplayDate, formatDisplayTime, formatDuration, getMobileNow } from '../lib/timeManager';
 
 interface RequestItem {
   id: number;
@@ -34,12 +35,65 @@ interface RequestItem {
   penalty_minutes?: number;
 }
 
+const STATUS_OPTIONS = [
+  { label: 'All Statuses', value: 'all' },
+  { label: 'Pending', value: 'pending' },
+  { label: 'Approved', value: 'approved' },
+  { label: 'Rejected', value: 'rejected' },
+];
+
+const TYPE_OPTIONS = [
+  { label: 'All Types', value: 'all' },
+  { label: 'Manual Clock', value: 'manual_clock' },
+  { label: 'Overtime', value: 'overtime_approval' },
+  { label: 'Early Leave', value: 'early_leave_approval' },
+  { label: 'Late In', value: 'late_in_approval' },
+  { label: 'Permission', value: 'permission_to_leave' },
+  { label: 'Correction', value: 'attendance_correction' },
+  { label: 'Interruption', value: 'shift_interruption_review' },
+];
+
+const getRequestAnchorTimestamp = (item: RequestItem) => {
+  return item.original_check_in || item.requested_check_in || item.shift_start_time || item.interruption_start_time || item.created_at;
+};
+
 export default function RequestsScreen() {
   const { user } = useAuthStore();
   const userTimezone = useSettingsStore((state) => state.userTimezone);
   const [requests, setRequests] = useState<RequestItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Filters State
+  const [showFilters, setShowFilters] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
+
+  const getTodayStr = useCallback(() => {
+    return formatDisplayDate(getMobileNow(), userTimezone, 'yyyy-MM-dd');
+  }, [userTimezone]);
+
+  const [filterStartDate, setFilterStartDate] = useState<string>(() => {
+    return formatDisplayDate(getMobileNow(), userTimezone, 'yyyy-MM-dd');
+  });
+  const [filterEndDate, setFilterEndDate] = useState<string>(() => {
+    return formatDisplayDate(getMobileNow(), userTimezone, 'yyyy-MM-dd');
+  });
+  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+
+  const filteredRequests = requests.filter(req => {
+    if (statusFilter !== 'all' && req.status !== statusFilter) return false;
+    if (typeFilter !== 'all' && req.type !== typeFilter) return false;
+
+    const anchorTime = getRequestAnchorTimestamp(req);
+    const reqLocalDate = formatDisplayDate(anchorTime, userTimezone, 'yyyy-MM-dd');
+
+    if (filterStartDate && reqLocalDate < filterStartDate) return false;
+    if (filterEndDate && reqLocalDate > filterEndDate) return false;
+
+    return true;
+  });
   
   // Manager Action State
   const [selectedRequest, setSelectedRequest] = useState<RequestItem | null>(null);
@@ -141,10 +195,6 @@ export default function RequestsScreen() {
       .split('_')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
-  };
-
-  const getRequestAnchorTimestamp = (item: RequestItem) => {
-    return item.original_check_in || item.requested_check_in || item.shift_start_time || item.interruption_start_time || item.created_at;
   };
 
   const formatDate = (dateString?: string) => {
@@ -519,11 +569,145 @@ export default function RequestsScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Requests</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={styles.headerTitle}>My Requests</Text>
+          <TouchableOpacity 
+            style={[
+              styles.filterToggleBtn,
+              (statusFilter !== 'all' || typeFilter !== 'all' || filterStartDate !== getTodayStr() || filterEndDate !== getTodayStr()) && styles.filterToggleActive
+            ]}
+            onPress={() => setShowFilters(!showFilters)}
+          >
+            <Filter size={18} color={showFilters ? '#4f46e5' : '#4b5563'} />
+            <Text style={[styles.filterToggleText, showFilters && { color: '#4f46e5' }]}>Filters</Text>
+            {(statusFilter !== 'all' || typeFilter !== 'all' || filterStartDate !== getTodayStr() || filterEndDate !== getTodayStr()) && (
+              <View style={styles.activeFilterBadge} />
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
+
+      {showFilters && (
+        <View style={styles.filterPanel}>
+          <ScrollView nestedScrollEnabled={true}>
+            {/* Status Filters */}
+            <Text style={styles.filterSectionTitle}>Status</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsContainer}>
+              {STATUS_OPTIONS.map(opt => (
+                <TouchableOpacity
+                  key={opt.value}
+                  style={[styles.chip, statusFilter === opt.value && styles.chipActive]}
+                  onPress={() => setStatusFilter(opt.value as any)}
+                >
+                  <Text style={[styles.chipText, statusFilter === opt.value && styles.chipTextActive]}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            {/* Type Filters */}
+            <Text style={styles.filterSectionTitle}>Request Type</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsContainer}>
+              {TYPE_OPTIONS.map(opt => (
+                <TouchableOpacity
+                  key={opt.value}
+                  style={[styles.chip, typeFilter === opt.value && styles.chipActive]}
+                  onPress={() => setTypeFilter(opt.value)}
+                >
+                  <Text style={[styles.chipText, typeFilter === opt.value && styles.chipTextActive]}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            {/* Date Filters */}
+            <Text style={styles.filterSectionTitle}>Date Range</Text>
+            <View style={styles.dateFilterRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.dateLabel}>From</Text>
+                <TouchableOpacity 
+                  style={styles.dateInputBtn} 
+                  onPress={() => setShowStartDatePicker(true)}
+                >
+                  <Calendar size={14} color="#6b7280" />
+                  <Text style={styles.dateInputText}>{filterStartDate || 'Select Date'}</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.dateLabel}>To</Text>
+                <TouchableOpacity 
+                  style={styles.dateInputBtn} 
+                  onPress={() => setShowEndDatePicker(true)}
+                >
+                  <Calendar size={14} color="#6b7280" />
+                  <Text style={styles.dateInputText}>{filterEndDate || 'Select Date'}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Reset Filters */}
+            <View style={styles.filterActionsRow}>
+              <TouchableOpacity 
+                style={styles.resetFiltersBtn}
+                onPress={() => {
+                  setStatusFilter('all');
+                  setTypeFilter('all');
+                  setFilterStartDate(getTodayStr());
+                  setFilterEndDate(getTodayStr());
+                }}
+              >
+                <RotateCcw size={14} color="#dc2626" />
+                <Text style={styles.resetFiltersText}>Reset to Today</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.clearAllBtn}
+                onPress={() => {
+                  setStatusFilter('all');
+                  setTypeFilter('all');
+                  setFilterStartDate('');
+                  setFilterEndDate('');
+                }}
+              >
+                <X size={14} color="#4b5563" />
+                <Text style={styles.clearAllText}>Clear All Dates</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      )}
+
+      {showStartDatePicker && (
+        <DateTimePicker
+          value={filterStartDate ? new Date(filterStartDate + 'T12:00:00') : new Date(getMobileNow())}
+          mode="date"
+          display="default"
+          onChange={(event, date) => {
+            setShowStartDatePicker(false);
+            if (date) {
+              setFilterStartDate(formatDisplayDate(date, userTimezone, 'yyyy-MM-dd'));
+            }
+          }}
+        />
+      )}
+      {showEndDatePicker && (
+        <DateTimePicker
+          value={filterEndDate ? new Date(filterEndDate + 'T12:00:00') : new Date(getMobileNow())}
+          mode="date"
+          display="default"
+          onChange={(event, date) => {
+            setShowEndDatePicker(false);
+            if (date) {
+              setFilterEndDate(formatDisplayDate(date, userTimezone, 'yyyy-MM-dd'));
+            }
+          }}
+        />
+      )}
       
       <FlatList
-        data={requests}
+        data={filteredRequests}
         keyExtractor={(item) => item.id.toString()}
         renderItem={renderRequestCard}
         contentContainerStyle={styles.listContainer}
@@ -534,7 +718,24 @@ export default function RequestsScreen() {
           <View style={styles.emptyContainer}>
             <AlertCircle size={48} color="#d1d5db" />
             <Text style={styles.emptyText}>No requests found</Text>
-            <Text style={styles.emptySubtext}>Your request history will appear here.</Text>
+            <Text style={styles.emptySubtext}>
+              {statusFilter !== 'all' || typeFilter !== 'all' || filterStartDate || filterEndDate
+                ? 'Try adjusting your filters.'
+                : 'Your request history will appear here.'}
+            </Text>
+            {(statusFilter !== 'all' || typeFilter !== 'all' || filterStartDate || filterEndDate) && (
+              <TouchableOpacity
+                style={styles.emptyResetBtn}
+                onPress={() => {
+                  setStatusFilter('all');
+                  setTypeFilter('all');
+                  setFilterStartDate(getTodayStr());
+                  setFilterEndDate(getTodayStr());
+                }}
+              >
+                <Text style={styles.emptyResetBtnText}>Reset Filters to Today</Text>
+              </TouchableOpacity>
+            )}
           </View>
         }
       />
@@ -1090,5 +1291,142 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#9ca3af',
     marginTop: 8,
+  },
+  filterToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: '#f3f4f6',
+    gap: 6,
+    position: 'relative',
+  },
+  filterToggleActive: {
+    backgroundColor: '#e0e7ff',
+  },
+  filterToggleText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4b5563',
+  },
+  activeFilterBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#4f46e5',
+  },
+  filterPanel: {
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e4e4e7',
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  filterSectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#71717a',
+    textTransform: 'uppercase',
+    marginTop: 12,
+    marginBottom: 8,
+    letterSpacing: 0.5,
+  },
+  chipsContainer: {
+    paddingVertical: 4,
+    gap: 8,
+  },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e4e4e7',
+    backgroundColor: '#fafafa',
+    marginRight: 6,
+  },
+  chipActive: {
+    backgroundColor: '#4f46e5',
+    borderColor: '#4f46e5',
+  },
+  chipText: {
+    fontSize: 13,
+    color: '#4b5563',
+    fontWeight: '500',
+  },
+  chipTextActive: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  dateFilterRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 4,
+  },
+  dateLabel: {
+    fontSize: 11,
+    color: '#71717a',
+    marginBottom: 4,
+  },
+  dateInputBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#e4e4e7',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#fcfcfc',
+  },
+  dateInputText: {
+    fontSize: 13,
+    color: '#18181b',
+    fontWeight: '500',
+  },
+  filterActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f4f4f5',
+  },
+  resetFiltersBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+  },
+  resetFiltersText: {
+    fontSize: 13,
+    color: '#dc2626',
+    fontWeight: '600',
+  },
+  clearAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+  },
+  clearAllText: {
+    fontSize: 13,
+    color: '#4b5563',
+    fontWeight: '600',
+  },
+  emptyResetBtn: {
+    marginTop: 16,
+    backgroundColor: '#4f46e5',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  emptyResetBtnText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
   },
 });
