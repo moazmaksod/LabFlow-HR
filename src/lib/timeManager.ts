@@ -32,8 +32,14 @@ export enum DateFormats {
 
 export const getDeviceTimezone = (): string => {
     try {
-        return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (!tz) {
+            console.warn("getDeviceTimezone: Intl resolved options returned empty. Defaulting to UTC.");
+            return 'UTC';
+        }
+        return tz;
     } catch (e) {
+        console.error("getDeviceTimezone: Failed to resolve browser timezone. Defaulting to UTC.", e);
         return 'UTC';
     }
 };
@@ -228,6 +234,7 @@ export const getLocalDateParts = (timezone?: string | null): { month: number; ye
             year: parseInt(yearStr, 10)
         };
     } catch (e) {
+        console.error("getLocalDateParts: Failed to format date in timezone, falling back to UTC", e);
         return {
             month: now.getUTCMonth() + 1,
             year: now.getUTCFullYear()

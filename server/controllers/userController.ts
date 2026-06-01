@@ -176,6 +176,10 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
             return;
         }
 
+        if (!user.display_timezone) {
+            logger.warn(`getProfile: User ${userId} has no display_timezone configured. Defaulting to UTC.`);
+        }
+
         const timezone = 'UTC';
         const currentServerTime = new Date().toISOString();
 

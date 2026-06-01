@@ -17,6 +17,9 @@ export const getDifferenceInMinutes = (start: string | Date, end: string | Date)
 export const parseAndFormat = (dateString: string | null, timezone?: string): string => {
     if (!dateString) return '-';
 
+    if (!timezone) {
+        logger.warn(`parseAndFormat: No timezone provided for dateString ${dateString}. Defaulting to UTC.`);
+    }
     const tz = timezone || 'UTC';
 
     try {
