@@ -257,9 +257,38 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
             };
         }
 
+        const nextShiftRecord = db.prepare(`
+            SELECT * FROM shift_instances
+            WHERE user_id = ?
+              AND ? < start_time AND status != 'Cancelled'
+            ORDER BY start_time ASC
+            LIMIT 1
+        `).get(userId, currentServerTime) as any;
+
+        let next_shift = null;
+        if (nextShiftRecord) {
+            const displayTimezone = user.display_timezone || timezone;
+            const formatter = new Intl.DateTimeFormat('en-US', {
+                timeZone: displayTimezone,
+                hour: '2-digit', minute: '2-digit',
+                hour12: false
+            });
+            const startLocal = formatter.format(new Date(nextShiftRecord.start_time));
+            const endLocal = formatter.format(new Date(nextShiftRecord.end_time));
+
+            next_shift = {
+                id: nextShiftRecord.id,
+                start: startLocal,
+                end: endLocal,
+                date: nextShiftRecord.logical_date,
+                start_utc: nextShiftRecord.start_time,
+                end_utc: nextShiftRecord.end_time
+            };
+        }
+
         user.current_shift = current_shift;
         user.today_shifts = todayShifts;
-        user.next_shift = null; // We don't need next_shift anymore, current_shift handles the nearest shift
+        user.next_shift = next_shift;
 
         res.json(user);
     } catch (error) {

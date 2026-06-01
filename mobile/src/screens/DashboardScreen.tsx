@@ -1,11 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, ScrollView } from 'react-native';
+import { View, StyleSheet, Alert, ScrollView } from 'react-native';
 import * as Location from 'expo-location';
 import { useFocusEffect } from '@react-navigation/native';
-import { Pause, Play, LayoutDashboard, LogOut, RefreshCw, Calendar, DollarSign, Clock, Shield, Briefcase, Info } from 'lucide-react-native';
 import { useAuthStore } from '../store/useAuthStore';
 import api from '../lib/axios';
-import { initLocalDb, saveOfflineLog, getUnsyncedLogs, markLogsAsSynced, getUnsyncedRequests, saveOfflineRequest } from '../lib/db';
+import { initLocalDb, saveOfflineLog, getUnsyncedLogs, getUnsyncedRequests, saveOfflineRequest } from '../lib/db';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { getUniqueDeviceId } from '../utils/device';
 import { useAttendanceStore } from '../store/useAttendanceStore';
@@ -14,8 +13,12 @@ import LiveServerClock from '../components/LiveServerClock';
 import NetInfo from '@react-native-community/netinfo';
 import { useSettingsStore } from '../store/useSettingsStore';
 import * as Linking from 'expo-linking';
-import { getMobileNow, getSystemNow, getTimestamp, formatDisplayDate, formatDisplayTime } from '../lib/timeManager';
+import { getMobileNow, getSystemNow, getTimestamp } from '../lib/timeManager';
 
+// Import refactored components
+import DashboardHeader from '../components/DashboardHeader';
+import UpcomingShiftCard from '../components/UpcomingShiftCard';
+import OfflineSyncCard from '../components/OfflineSyncCard';
 
 export default function DashboardScreen() {
   const { user, logout } = useAuthStore();
@@ -32,18 +35,17 @@ export default function DashboardScreen() {
     setConsumedBreakMinutes,
     setLastActionTimestamp,
     activeSession,
-    setActiveSession
+    setActiveSession,
+    setTodayLogs
   } = useAttendanceStore();
   const userTimezone = useSettingsStore((state) => state.userTimezone);
-  const isClockedIn = currentStatus === 'working' || currentStatus === 'away';
 
   useEffect(() => {
     // Initialize local SQLite database
     initLocalDb();
 
-    // سطر المزامنة الفورية الذي يقرأ الوقت والمنطقة الزمنية من السيرفر
+    // Sync server time on load
     useNetworkStore.getState().syncServerTime();
-
   }, []);
 
   const fetchProfile = useCallback(async () => {
@@ -63,6 +65,18 @@ export default function DashboardScreen() {
     try {
       const response = await api.get('/attendance/my-logs');
       const logs = response.data;
+
+      const resolvedTimezone = userTimezone || user?.display_timezone || 'UTC';
+      const localTodayStr = new Intl.DateTimeFormat('en-CA', {
+        timeZone: resolvedTimezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date(getMobileNow()));
+
+      const todayLogs = logs.filter((l: any) => l.date === localTodayStr);
+      setTodayLogs(todayLogs);
+
       // Check if there is an active session (check_out is null)
       const session = logs.find((l: any) => !l.check_out);
       setActiveSession(session || null);
@@ -87,7 +101,7 @@ export default function DashboardScreen() {
         console.error('Error fetching status:', error);
       }
     }
-  }, [isConnected, setActiveSession, setStatus, setConsumedBreakMinutes]);
+  }, [isConnected, setActiveSession, setStatus, setConsumedBreakMinutes, setTodayLogs, userTimezone, user?.display_timezone]);
 
   const checkUnsyncedLogs = useCallback(() => {
     const logs = getUnsyncedLogs();
@@ -104,32 +118,25 @@ export default function DashboardScreen() {
     }, [checkUnsyncedLogs, fetchStatus, fetchProfile])
   );
 
-const executeClock = async (type: 'check_in' | 'check_out') => {
+  const executeClock = async (type: 'check_in' | 'check_out') => {
     setLoading(true);
     try {
-      // ==========================================
-      // 1. Fetch live settings to bypass empty cache
-      // ==========================================
       let latestSettings = useSettingsStore.getState().settings;
       if (isConnected) {
         try {
           const settingsResponse = await api.get('/settings');
           latestSettings = settingsResponse.data;
-          // Update cache in the background
           useSettingsStore.getState().fetchSettings();
         } catch (e) {
-          console.warn('[Clock] Failed to fetch live settings, using cache.');
+          // Silent skip
         }
       }
 
-      // ==========================================
-      // 2. Strict Wi-Fi Check (Only for Check-In)
-      // ==========================================
       if (type === 'check_in' && latestSettings?.wifi_validation_toggle) {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
           Alert.alert(
-            'Permission Denied', 
+            'Permission Denied',
             'Location permission is strictly required to verify attendance network.',
             [
               { text: 'Cancel', style: 'cancel' },
@@ -142,9 +149,7 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
 
         const networkState = await NetInfo.fetch();
         const details = networkState.details as any;
-        
-        // Clean up quotation marks from SSID
-        const currentSsid = details?.ssid?.replace(/^"|"$/g, ''); 
+        const currentSsid = details?.ssid?.replace(/^"|"$/g, '');
 
         if (networkState.type !== 'wifi' || !currentSsid || currentSsid === '<unknown ssid>') {
           Alert.alert('Network Verification Failed', 'Cannot verify your network. Please ensure both Wi-Fi and Location/GPS are turned ON.');
@@ -153,25 +158,18 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
         }
 
         let isAuthorizedNetwork = true;
-
-        // Validate SSID using latest settings
         if (latestSettings.company_wifi_ssid && currentSsid !== latestSettings.company_wifi_ssid) {
           isAuthorizedNetwork = false;
         }
 
-        // Validate BSSID (Optional: only if admin entered it)
         if (latestSettings.company_wifi_bssid && latestSettings.company_wifi_bssid.trim() !== '') {
-          // Convert both to lowercase to avoid case sensitivity issues
           const requiredBssid = latestSettings.company_wifi_bssid.toLowerCase().trim();
           const deviceBssid = details?.bssid?.toLowerCase().trim();
-
-          // Note: Some Android devices return 02:00:00:00:00:00 as a security measure to hide the MAC address
           if (deviceBssid !== requiredBssid) {
             isAuthorizedNetwork = false;
           }
         }
 
-        // Generic Error (No Data Leakage)
         if (!isAuthorizedNetwork) {
           Alert.alert('Access Denied', 'You are not connected to the authorized company Wi-Fi network. Please connect to the correct workplace network to clock in.');
           setLoading(false);
@@ -180,7 +178,6 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
       }
 
       const deviceId = await getUniqueDeviceId();
-      // 1. Request Location Permissions
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Permission Denied', 'Location permission is required to clock in/out.');
@@ -188,12 +185,9 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
         return;
       }
 
-      // 2. Get Current Location
       const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       const { latitude, longitude } = location.coords;
 
-
-      // 3. Calculate True Time and detect device clock tampering
       const timestamp = getMobileNow();
       const localNow = Date.now();
       const { serverTimeOffset, lastLocalSyncTime } = useNetworkStore.getState();
@@ -206,7 +200,6 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
         return;
       }
 
-      // Optimistic Update if offline
       if (!isConnected) {
         saveOfflineLog(type, timestamp, latitude, longitude, deviceId);
         setStatus(type === 'check_in' ? 'working' : 'none');
@@ -220,7 +213,6 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
         return;
       }
 
-      // 3. Try to call the Backend API
       try {
         await api.post('/attendance/clock', {
           type,
@@ -232,15 +224,12 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
         Alert.alert('Success', `Successfully clocked ${type === 'check_in' ? 'in' : 'out'}!`);
         setStatus(type === 'check_in' ? 'working' : 'none');
         setLastActionTimestamp(timestamp);
-        fetchStatus(); // Refresh to get the latest session data
+        fetchStatus();
       } catch (apiError: any) {
         const errorMessage = apiError.response?.data?.error || apiError.message;
-
-        // If it's a server response error (e.g., 403 Out of Range), show the error
         if (apiError.response) {
           Alert.alert('Attendance Error', errorMessage);
         } else {
-          // Network error, save to local SQLite for later sync
           saveOfflineLog(type, timestamp, latitude, longitude, deviceId);
           setStatus(type === 'check_in' ? 'working' : 'none');
           setLastActionTimestamp(timestamp);
@@ -278,10 +267,7 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
   };
 
   const handleStepAway = async () => {
-    console.debug('[DashboardScreen.handleStepAway] Entry');
     const allowedBreak = userProfile?.lunch_break_minutes || 0;
-    console.debug('[DashboardScreen.handleStepAway] allowedBreak=', allowedBreak);
-    // Calculate total daily shift minutes to apply 10% cap
     let totalDailyMinutes = 0;
     if (userProfile?.today_shifts) {
       userProfile.today_shifts.forEach((shift: any) => {
@@ -290,17 +276,14 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
         totalDailyMinutes += (end - start) / 60000;
       });
     } else if (userProfile?.current_shift) {
-      // Fallback if we only have current_shift, though it might be incomplete
       const start = getTimestamp(userProfile.current_shift.start_time || userProfile.current_shift.start);
       const end = getTimestamp(userProfile.current_shift.end_time || userProfile.current_shift.end);
       totalDailyMinutes += (end - start) / 60000;
     }
 
     const maxAllowed = Math.floor(totalDailyMinutes * 0.1);
-    console.debug('[DashboardScreen.handleStepAway] totalDailyMinutes=', totalDailyMinutes, 'maxAllowed=', maxAllowed);
     const finalAllowedBreak = Math.min(allowedBreak, maxAllowed);
     const remainingBreak = Math.max(0, finalAllowedBreak - consumedBreakMinutes);
-    console.debug('[DashboardScreen.handleStepAway] finalAllowedBreak=', finalAllowedBreak, 'consumedBreakMinutes=', consumedBreakMinutes, 'remainingBreak=', remainingBreak);
 
     Alert.alert(
       'Confirm Step Away',
@@ -311,26 +294,19 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
           setLoading(true);
           try {
             const deviceId = await getUniqueDeviceId();
+            const timestamp = getMobileNow();
+            const localNow = Date.now();
+            const { serverTimeOffset, lastLocalSyncTime } = useNetworkStore.getState();
+            const monotonicTime = getTimestamp(timestamp);
+            const expectedOsTime = localNow + serverTimeOffset;
 
-      // 3. Calculate True Time and detect device clock tampering
-      const timestamp = getMobileNow();
-      const localNow = Date.now();
-      console.debug('[DashboardScreen.handleStepAway] localNow=', localNow);
-      const { serverTimeOffset, lastLocalSyncTime } = useNetworkStore.getState();
-      const monotonicTime = getTimestamp(timestamp);
-      const expectedOsTime = localNow + serverTimeOffset;
+            if (Math.abs(expectedOsTime - monotonicTime) > 60000 || localNow < lastLocalSyncTime) {
+              Alert.alert('Security Alert', 'Device clock tampering detected.');
+              setLoading(false);
+              return;
+            }
 
-      if (Math.abs(expectedOsTime - monotonicTime) > 60000 || localNow < lastLocalSyncTime) {
-        console.debug('[DashboardScreen.handleStepAway] Tampering Check Failed: expectedOsTime=', expectedOsTime, 'monotonicTime=', monotonicTime);
-        Alert.alert('Security Alert', 'Device clock tampering detected.');
-        setLoading(false);
-        return;
-      }
-      console.debug('[DashboardScreen.handleStepAway] timestamp=', timestamp, 'serverTimeOffset=', serverTimeOffset);
-
-            // Optimistic Update if offline
             if (!isConnected) {
-            console.debug('[DashboardScreen.handleStepAway] isConnected=', isConnected);
               saveOfflineRequest('POST', '/attendance/step-away', { timestamp, deviceId });
               setStatus('away');
               setLastActionTimestamp(timestamp);
@@ -341,10 +317,8 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
             }
 
             const response = await api.post('/attendance/step-away', { timestamp, deviceId });
-            console.debug('[DashboardScreen.handleStepAway] Call API /attendance/step-away');
 
             if (!response.data.hasBreakBalance) {
-            console.debug('[DashboardScreen.handleStepAway] API response data=', response.data);
               Alert.alert('Notice', 'You have no break balance. A permission request has been sent to your manager.');
             } else {
               Alert.alert('Success', 'You have stepped away.');
@@ -352,27 +326,21 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
 
             setStatus('away');
             setLastActionTimestamp(timestamp);
-            fetchStatus(); // Refresh to update consumed time
+            fetchStatus();
           } catch (error: any) {
-            console.error('[DashboardScreen.handleStepAway] Catch error=', error);
             if (!error.response) {
               const deviceId = await getUniqueDeviceId();
+              const timestamp = getMobileNow();
+              const localNow = Date.now();
+              const { serverTimeOffset, lastLocalSyncTime } = useNetworkStore.getState();
+              const monotonicTime = getTimestamp(timestamp);
+              const expectedOsTime = localNow + serverTimeOffset;
 
-      // 3. Calculate True Time and detect device clock tampering
-      const timestamp = getMobileNow();
-      const localNow = Date.now();
-      console.debug('[DashboardScreen.handleStepAway] localNow=', localNow);
-      const { serverTimeOffset, lastLocalSyncTime } = useNetworkStore.getState();
-      const monotonicTime = getTimestamp(timestamp);
-      const expectedOsTime = localNow + serverTimeOffset;
-
-      if (Math.abs(expectedOsTime - monotonicTime) > 60000 || localNow < lastLocalSyncTime) {
-        console.debug('[DashboardScreen.handleStepAway] Tampering Check Failed: expectedOsTime=', expectedOsTime, 'monotonicTime=', monotonicTime);
-        Alert.alert('Security Alert', 'Device clock tampering detected.');
-        setLoading(false);
-        return;
-      }
-      console.debug('[DashboardScreen.handleStepAway] timestamp=', timestamp, 'serverTimeOffset=', serverTimeOffset);
+              if (Math.abs(expectedOsTime - monotonicTime) > 60000 || localNow < lastLocalSyncTime) {
+                Alert.alert('Security Alert', 'Device clock tampering detected.');
+                setLoading(false);
+                return;
+              }
               saveOfflineRequest('POST', '/attendance/step-away', { timestamp, deviceId });
               Alert.alert('Offline Mode', 'Network error. Your request was saved locally and will be synced later.');
               setStatus('away');
@@ -393,8 +361,6 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
     setLoading(true);
     try {
       const deviceId = await getUniqueDeviceId();
-
-      // 3. Calculate True Time and detect device clock tampering
       const timestamp = getMobileNow();
       const localNow = Date.now();
       const { serverTimeOffset, lastLocalSyncTime } = useNetworkStore.getState();
@@ -407,7 +373,6 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
         return;
       }
 
-      // Optimistic Update if offline
       if (!isConnected) {
         saveOfflineRequest('POST', '/attendance/resume-work', { timestamp, deviceId });
         setStatus('working');
@@ -422,23 +387,21 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
       Alert.alert('Success', 'Welcome back! You have resumed work.');
       setStatus('working');
       setLastActionTimestamp(timestamp);
-      fetchStatus(); // Refresh to update consumed time
+      fetchStatus();
     } catch (error: any) {
       if (!error.response) {
         const deviceId = await getUniqueDeviceId();
+        const timestamp = getMobileNow();
+        const localNow = Date.now();
+        const { serverTimeOffset, lastLocalSyncTime } = useNetworkStore.getState();
+        const monotonicTime = getTimestamp(timestamp);
+        const expectedOsTime = localNow + serverTimeOffset;
 
-      // 3. Calculate True Time and detect device clock tampering
-      const timestamp = getMobileNow();
-      const localNow = Date.now();
-      const { serverTimeOffset, lastLocalSyncTime } = useNetworkStore.getState();
-      const monotonicTime = getTimestamp(timestamp);
-      const expectedOsTime = localNow + serverTimeOffset;
-
-      if (Math.abs(expectedOsTime - monotonicTime) > 60000 || localNow < lastLocalSyncTime) {
-        Alert.alert('Security Alert', 'Device clock tampering detected.');
-        setLoading(false);
-        return;
-      }
+        if (Math.abs(expectedOsTime - monotonicTime) > 60000 || localNow < lastLocalSyncTime) {
+          Alert.alert('Security Alert', 'Device clock tampering detected.');
+          setLoading(false);
+          return;
+        }
         saveOfflineRequest('POST', '/attendance/resume-work', { timestamp, deviceId });
         Alert.alert('Offline Mode', 'Network error. Your request was saved locally and will be synced later.');
         setStatus('working');
@@ -452,63 +415,18 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
     }
   };
 
-
-
-  const formatSchedule = (scheduleStr: string | null) => {
-    if (!scheduleStr) return 'Not set';
-    try {
-      const schedule = JSON.parse(scheduleStr);
-      const activeDays = Object.keys(schedule).filter(day => schedule[day] && schedule[day].length > 0);
-      if (activeDays.length === 0) return 'No active days';
-      if (activeDays.length === 7) return 'Daily';
-      if (activeDays.length === 5 && !activeDays.includes('saturday') && !activeDays.includes('sunday')) return 'Mon - Fri';
-      return `${activeDays.length} days / week`;
-    } catch (e) {
-      return 'Invalid format';
-    }
-  };
-
-  const isShiftInFuture = (shift: any) => {
-    if (!shift) return false;
-    const startMs = new Date(shift.start_utc).getTime();
-    const nowMs = new Date(getMobileNow()).getTime();
-    return nowMs < startMs;
-  };
-
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-      <View style={styles.header}>
-        <View style={styles.headerMain}>
-          <Text style={styles.title}>{user?.name}</Text>
-          <Text style={styles.subtitle}>Welcome back to your dashboard</Text>
-        </View>
-        <TouchableOpacity
-          onPress={logout}
-          style={styles.iconButton}
-          accessibilityLabel="Logout"
-          accessibilityRole="button"
-        >
-          <LogOut color="#ef4444" size={24} />
-        </TouchableOpacity>
-      </View>
+      {/* Redesigned Dashboard Header */}
+      <DashboardHeader userProfile={userProfile} logout={logout} />
 
+      {/* Live Server Clock */}
       <LiveServerClock />
 
-      {userProfile && userProfile.current_shift && isShiftInFuture(userProfile.current_shift) && (
-        <View style={styles.nextShiftCard}>
-          <View style={styles.nextShiftHeader}>
-            <Clock size={16} color="#3b82f6" style={{ marginRight: 6 }} />
-            <Text style={styles.nextShiftLabel}>Next Scheduled Shift</Text>
-          </View>
-          <Text style={styles.nextShiftTime}>
-            {formatDisplayDate(userProfile.current_shift.start_utc, userTimezone, 'EEEE d MMM')}
-          </Text>
-          <Text style={styles.nextShiftHours}>
-            {formatDisplayTime(userProfile.current_shift.start_utc, userTimezone, 'HH:mm')} - {formatDisplayTime(userProfile.current_shift.end_utc, userTimezone, 'HH:mm')}
-          </Text>
-        </View>
-      )}
+      {/* Modular Upcoming Shift Card */}
+      <UpcomingShiftCard upcomingShift={userProfile?.next_shift} userTimezone={userTimezone} />
 
+      {/* Modular Smart Attendance Card */}
       {userProfile && (
         <SmartAttendanceCard
           currentShift={userProfile.current_shift}
@@ -522,24 +440,12 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
         />
       )}
 
-      <View style={styles.syncCard}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.cardTitle}>Offline Sync</Text>
-          <Text style={styles.cardText}>
-            Unsynced Records: {unsyncedCount}
-          </Text>
-        </View>
-        <TouchableOpacity
-          style={[styles.syncButton, unsyncedCount === 0 && styles.syncButtonDisabled]}
-          onPress={handleSync}
-          disabled={isSyncing || unsyncedCount === 0}
-          accessibilityLabel="Sync offline logs"
-          accessibilityRole="button"
-          accessibilityState={{ disabled: isSyncing || unsyncedCount === 0 }}
-        >
-          {isSyncing ? <ActivityIndicator color="#18181b" /> : <RefreshCw color="#18181b" size={20} />}
-        </TouchableOpacity>
-      </View>
+      {/* Modular Offline Sync Card */}
+      <OfflineSyncCard
+        unsyncedCount={unsyncedCount}
+        isSyncing={isSyncing}
+        handleSync={handleSync}
+      />
 
       <View style={{ height: 40 }} />
     </ScrollView>
@@ -549,131 +455,4 @@ const executeClock = async (type: 'check_in' | 'check_out') => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f4f4f5' },
   scrollContent: { padding: 24, paddingTop: 60, paddingBottom: 40 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },
-  headerMain: { flex: 1 },
-  title: { fontSize: 28, fontWeight: '900', color: '#18181b', marginBottom: 6, letterSpacing: -0.5 },
-  roleBadge: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-  roleText: { fontSize: 14, fontWeight: '600', color: '#71717a' },
-  tenureContainer: { flexDirection: 'row', alignItems: 'center' },
-  tenureText: { fontSize: 12, color: '#a1a1aa', fontWeight: '500' },
-  subtitle: { fontSize: 16, color: '#71717a' },
-  iconButton: { padding: 8, borderRadius: 12, backgroundColor: '#fff', elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
-  card: {
-    backgroundColor: '#fff',
-    padding: 24,
-    borderRadius: 20,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 2
-  },
-  detailsCard: {
-    backgroundColor: '#fff',
-    padding: 24,
-    borderRadius: 20,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#e4e4e7',
-  },
-  detailsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 16,
-    gap: 16,
-  },
-  detailItem: {
-    width: '47%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  detailContent: {
-    flex: 1,
-  },
-  detailLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#a1a1aa',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  detailValue: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#18181b',
-  },
-  scheduleSummary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 20,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#f4f4f5',
-    gap: 8,
-  },
-  scheduleLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#71717a',
-  },
-  scheduleValue: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#18181b',
-  },
-  syncCard: {
-    backgroundColor: '#fff',
-    padding: 24,
-    borderRadius: 20,
-    marginBottom: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: '#e4e4e7',
-  },
-  nextShiftCard: {
-    backgroundColor: '#fff',
-    padding: 24,
-    borderRadius: 20,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#e4e4e7',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  nextShiftHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  nextShiftLabel: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#3b82f6',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  nextShiftTime: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#18181b',
-    marginBottom: 4,
-  },
-  nextShiftHours: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#71717a',
-  },
-  cardTitle: { fontSize: 16, fontWeight: '800', color: '#18181b', textTransform: 'uppercase', letterSpacing: 1 },
-  cardText: { fontSize: 13, color: '#71717a', lineHeight: 18, marginBottom: 16 },
-  syncButton: { backgroundColor: '#f4f4f5', padding: 12, borderRadius: 12 },
-  syncButtonDisabled: { opacity: 0.5 },
-  syncButtonText: { color: '#18181b', fontWeight: '600' },
-  logoutButton: { backgroundColor: '#ef4444', padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 24 },
 });
