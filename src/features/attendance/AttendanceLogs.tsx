@@ -386,6 +386,25 @@ export default function AttendanceLogs() {
   const [confirmActionType, setConfirmActionType] = useState<'approve' | 'reject' | null>(null);
   const [isRejecting, setIsRejecting] = useState(false);
 
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (selectedRequestId !== null) {
+          setSelectedRequestId(null);
+          setError(null);
+        } else {
+          setSelectedLogId(null);
+        }
+      }
+    };
+    if (selectedLogId !== null) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedLogId, selectedRequestId]);
+
   const { data: logs, isLoading, refetch, isFetching } = useQuery<AttendanceLog[]>({
     queryKey: ['attendance-logs'],
     queryFn: async () => {

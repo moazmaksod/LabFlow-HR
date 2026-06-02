@@ -30,6 +30,20 @@ export default function EmployeeList() {
   const [workingStatusFilter, setWorkingStatusFilter] = useState('');
   const [employmentStatusFilter, setEmploymentStatusFilter] = useState('');
 
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setViewingEmployeeId(null);
+      }
+    };
+    if (viewingEmployeeId) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [viewingEmployeeId]);
+
   const { data: users, isLoading: usersLoading, refetch, isFetching: usersFetching } = useQuery<User[]>({
     queryKey: ['users'],
     queryFn: async () => {
