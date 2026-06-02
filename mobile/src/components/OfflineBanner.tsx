@@ -1,10 +1,13 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { WifiOff } from 'lucide-react-native';
+import { useThemeColors } from '../hooks/useTheme';
 
 export default function OfflineBanner() {
   const { isConnected } = useNetworkStore();
+  const { colors } = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   if (isConnected) {
     return null;
@@ -18,9 +21,9 @@ export default function OfflineBanner() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
-    backgroundColor: '#ef4444', // red-500
+    backgroundColor: colors.danger,
     paddingVertical: 8,
     paddingHorizontal: 16,
     flexDirection: 'row',

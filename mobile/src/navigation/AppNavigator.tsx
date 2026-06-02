@@ -1,9 +1,10 @@
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { LayoutDashboard, History, User, FileText, DollarSign } from 'lucide-react-native';
 import { useAuthStore } from '../store/useAuthStore';
+import { useThemeColors } from '../hooks/useTheme';
 
 // Screens
 import LoginScreen from '../screens/auth/LoginScreen';
@@ -21,18 +22,21 @@ const Tab = createBottomTabNavigator();
 
 function MainTabs() {
   const { user } = useAuthStore();
+  const { colors } = useThemeColors();
   
   return (
     <Tab.Navigator 
       id="MainTabs"
       screenOptions={{ 
         headerShown: false,
-        tabBarActiveTintColor: '#18181b',
-        tabBarInactiveTintColor: '#a1a1aa',
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.subtext,
         tabBarStyle: {
           paddingBottom: 8,
           paddingTop: 8,
           height: 60,
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
         }
       }}
     >
@@ -84,9 +88,32 @@ function MainTabs() {
 
 export default function AppNavigator() {
   const { isAuthenticated, user } = useAuthStore();
+  const { colors, isDark } = useThemeColors();
+
+  const customLightTheme = {
+    ...DefaultTheme,
+    colors: {
+      ...DefaultTheme.colors,
+      background: colors.background,
+      card: colors.surface,
+      text: colors.text,
+      border: colors.border,
+    },
+  };
+
+  const customDarkTheme = {
+    ...DarkTheme,
+    colors: {
+      ...DarkTheme.colors,
+      background: colors.background,
+      card: colors.surface,
+      text: colors.text,
+      border: colors.border,
+    },
+  };
 
   return (
-    <NavigationContainer>
+    <NavigationContainer theme={isDark ? customDarkTheme : customLightTheme}>
       <Stack.Navigator id="RootStack" screenOptions={{ headerShown: false }}>
         {!isAuthenticated ? (
           // 1. Auth Stack (Public)

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity, Modal, TextInput, Alert, ScrollView } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Clock, Calendar, CheckCircle, XCircle, AlertCircle, MessageSquare, X, ArrowRight, CornerDownRight, Filter, RotateCcw } from 'lucide-react-native';
@@ -9,6 +9,7 @@ import { useNetworkStore } from '../store/useNetworkStore';
 import { saveOfflineRequest } from '../lib/db';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { formatDisplayDate, formatDisplayTime, formatDuration, getMobileNow } from '../lib/timeManager';
+import { useThemeColors } from '../hooks/useTheme';
 
 interface RequestItem {
   id: number;
@@ -60,6 +61,8 @@ const getRequestAnchorTimestamp = (item: RequestItem) => {
 export default function RequestsScreen() {
   const { user } = useAuthStore();
   const userTimezone = useSettingsStore((state) => state.userTimezone);
+  const { colors, isDark } = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [requests, setRequests] = useState<RequestItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -210,32 +213,51 @@ export default function RequestsScreen() {
   const getStatusColors = (status: string) => {
     switch (status) {
       case 'approved':
-        return { text: '#15803d', bg: '#dcfce7', border: '#bbf7d0' };
+        return { text: colors.success, bg: colors.successBg, border: colors.successBorder };
       case 'rejected':
-        return { text: '#b91c1c', bg: '#fee2e2', border: '#fecaca' };
+        return { text: colors.danger, bg: colors.dangerBg, border: colors.dangerBorder };
       case 'pending':
-        return { text: '#b45309', bg: '#fef3c7', border: '#fde68a' };
+        return { text: colors.warning, bg: colors.warningBg, border: colors.warningBorder };
       default:
-        return { text: '#4b5563', bg: '#f3f4f6', border: '#e5e7eb' };
+        return { text: colors.subtext, bg: colors.card, border: colors.border };
     }
   };
 
   const getRequestTypeColors = (type: string) => {
-    switch (type) {
-      case 'permission_to_leave':
-        return { text: '#1d4ed8', bg: '#dbeafe', border: '#bfdbfe' };
-      case 'overtime_approval':
-        return { text: '#7e22ce', bg: '#f3e8ff', border: '#e9d5ff' };
-      case 'early_leave_approval':
-        return { text: '#c2410c', bg: '#ffedd5', border: '#fed7aa' };
-      case 'shift_interruption_review':
-        return { text: '#b45309', bg: '#fef3c7', border: '#fde68a' };
-      case 'late_in_approval':
-        return { text: '#be123c', bg: '#ffe4e6', border: '#fecdd3' };
-      case 'attendance_correction':
-        return { text: '#0f766e', bg: '#ccfbf1', border: '#99f6e4' };
-      default: // manual_clock
-        return { text: '#374151', bg: '#f3f4f6', border: '#e5e7eb' };
+    if (isDark) {
+      switch (type) {
+        case 'permission_to_leave':
+          return { text: '#60a5fa', bg: '#1e3a8a', border: '#1e40af' };
+        case 'overtime_approval':
+          return { text: '#c084fc', bg: '#3b0764', border: '#581c87' };
+        case 'early_leave_approval':
+          return { text: '#f97316', bg: '#431407', border: '#7c2d12' };
+        case 'shift_interruption_review':
+          return { text: '#fbbf24', bg: '#451a03', border: '#78350f' };
+        case 'late_in_approval':
+          return { text: '#f43f5e', bg: '#4c0519', border: '#881337' };
+        case 'attendance_correction':
+          return { text: '#2dd4bf', bg: '#115e59', border: '#134e4a' };
+        default:
+          return { text: colors.text, bg: colors.card, border: colors.border };
+      }
+    } else {
+      switch (type) {
+        case 'permission_to_leave':
+          return { text: '#1d4ed8', bg: '#dbeafe', border: '#bfdbfe' };
+        case 'overtime_approval':
+          return { text: '#7e22ce', bg: '#f3e8ff', border: '#e9d5ff' };
+        case 'early_leave_approval':
+          return { text: '#c2410c', bg: '#ffedd5', border: '#fed7aa' };
+        case 'shift_interruption_review':
+          return { text: '#b45309', bg: '#fef3c7', border: '#fde68a' };
+        case 'late_in_approval':
+          return { text: '#be123c', bg: '#ffe4e6', border: '#fecdd3' };
+        case 'attendance_correction':
+          return { text: '#0f766e', bg: '#ccfbf1', border: '#99f6e4' };
+        default: // manual_clock
+          return { text: '#374151', bg: '#f3f4f6', border: '#e5e7eb' };
+      }
     }
   };
 
@@ -443,11 +465,11 @@ export default function RequestsScreen() {
       ]}>
         <View style={styles.outcomeHeader}>
           {isApproved ? (
-            <CheckCircle size={14} color="#16a34a" />
+            <CheckCircle size={14} color={colors.success} />
           ) : (
-            <XCircle size={14} color="#dc2626" />
+            <XCircle size={14} color={colors.danger} />
           )}
-          <Text style={[styles.outcomeTitle, { color: isApproved ? '#16a34a' : '#dc2626' }]}>
+          <Text style={[styles.outcomeTitle, { color: isApproved ? colors.success : colors.danger }]}>
             {isApproved ? 'APPROVED OUTCOME' : 'REJECTED OUTCOME'}
           </Text>
         </View>
@@ -506,7 +528,7 @@ export default function RequestsScreen() {
 
         <View style={styles.cardBody}>
           <View style={styles.infoRow}>
-            <Calendar size={16} color="#6b7280" />
+            <Calendar size={16} color={colors.subtext} />
             <Text style={styles.infoText}>
               Shift Date: <Text style={styles.infoValue}>{formatDate(getRequestAnchorTimestamp(item))}</Text>
             </Text>
@@ -524,7 +546,7 @@ export default function RequestsScreen() {
           {item.status !== 'pending' && item.manager_note && (
             <View style={styles.managerNoteContainer}>
               <View style={styles.managerNoteHeader}>
-                <MessageSquare size={14} color="#4f46e5" />
+                <MessageSquare size={14} color={colors.accent} />
                 <Text style={styles.managerNoteLabel}>Manager Note</Text>
               </View>
               <Text style={styles.managerNoteText}>{item.manager_note}</Text>
@@ -561,7 +583,7 @@ export default function RequestsScreen() {
   if (loading && !refreshing) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#4f46e5" />
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
@@ -578,8 +600,8 @@ export default function RequestsScreen() {
             ]}
             onPress={() => setShowFilters(!showFilters)}
           >
-            <Filter size={18} color={showFilters ? '#4f46e5' : '#4b5563'} />
-            <Text style={[styles.filterToggleText, showFilters && { color: '#4f46e5' }]}>Filters</Text>
+            <Filter size={18} color={showFilters ? colors.accent : colors.subtext} />
+            <Text style={[styles.filterToggleText, showFilters && { color: colors.accent }]}>Filters</Text>
             {(statusFilter !== 'all' || typeFilter !== 'all' || filterStartDate !== getTodayStr() || filterEndDate !== getTodayStr()) && (
               <View style={styles.activeFilterBadge} />
             )}
@@ -631,7 +653,7 @@ export default function RequestsScreen() {
                   style={styles.dateInputBtn} 
                   onPress={() => setShowStartDatePicker(true)}
                 >
-                  <Calendar size={14} color="#6b7280" />
+                  <Calendar size={14} color={colors.subtext} />
                   <Text style={styles.dateInputText}>{filterStartDate || 'Select Date'}</Text>
                 </TouchableOpacity>
               </View>
@@ -641,7 +663,7 @@ export default function RequestsScreen() {
                   style={styles.dateInputBtn} 
                   onPress={() => setShowEndDatePicker(true)}
                 >
-                  <Calendar size={14} color="#6b7280" />
+                  <Calendar size={14} color={colors.subtext} />
                   <Text style={styles.dateInputText}>{filterEndDate || 'Select Date'}</Text>
                 </TouchableOpacity>
               </View>
@@ -658,7 +680,7 @@ export default function RequestsScreen() {
                   setFilterEndDate(getTodayStr());
                 }}
               >
-                <RotateCcw size={14} color="#dc2626" />
+                <RotateCcw size={14} color={colors.danger} />
                 <Text style={styles.resetFiltersText}>Reset to Today</Text>
               </TouchableOpacity>
 
@@ -671,7 +693,7 @@ export default function RequestsScreen() {
                   setFilterEndDate('');
                 }}
               >
-                <X size={14} color="#4b5563" />
+                <X size={14} color={colors.subtext} />
                 <Text style={styles.clearAllText}>Clear All Dates</Text>
               </TouchableOpacity>
             </View>
@@ -712,7 +734,7 @@ export default function RequestsScreen() {
         renderItem={renderRequestCard}
         contentContainerStyle={styles.listContainer}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#4f46e5']} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.accent]} />
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
@@ -748,7 +770,7 @@ export default function RequestsScreen() {
                 {actionType === 'approved' ? 'Approve' : 'Reject'} Request
               </Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <X size={24} color="#18181b" />
+                <X size={24} color={colors.text} />
               </TouchableOpacity>
             </View>
 
@@ -840,39 +862,39 @@ export default function RequestsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f4f4f5',
+    backgroundColor: colors.background,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f4f4f5',
+    backgroundColor: colors.background,
   },
   header: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     paddingTop: 60,
     paddingBottom: 20,
     paddingHorizontal: 24,
     borderBottomWidth: 1,
-    borderBottomColor: '#e4e4e7',
+    borderBottomColor: colors.border,
   },
   headerTitle: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#18181b',
+    color: colors.text,
   },
   listContainer: {
     padding: 16,
     paddingBottom: 40,
   },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     marginBottom: 16,
-    shadowColor: '#000',
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 4,
@@ -885,7 +907,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#f4f4f5',
+    borderBottomColor: colors.border,
   },
   typeContainer: {
     flex: 1,
@@ -917,31 +939,31 @@ const styles = StyleSheet.create({
   },
   infoText: {
     fontSize: 14,
-    color: '#6b7280',
+    color: colors.subtext,
   },
   infoValue: {
     fontWeight: '600',
-    color: '#374151',
+    color: colors.text,
   },
   reasonLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#9ca3af',
+    color: colors.subtext,
     textTransform: 'uppercase',
     marginBottom: 4,
   },
   reasonText: {
     fontSize: 15,
-    color: '#374151',
+    color: colors.text,
     lineHeight: 22,
   },
   managerNoteContainer: {
     marginTop: 16,
-    backgroundColor: '#eef2ff',
+    backgroundColor: colors.accentBg,
     padding: 12,
     borderRadius: 8,
     borderLeftWidth: 3,
-    borderLeftColor: '#4f46e5',
+    borderLeftColor: colors.accent,
   },
   managerNoteHeader: {
     flexDirection: 'row',
@@ -952,25 +974,25 @@ const styles = StyleSheet.create({
   managerNoteLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#4f46e5',
+    color: colors.accent,
     textTransform: 'uppercase',
   },
   managerNoteText: {
     fontSize: 14,
-    color: '#374151',
+    color: colors.text,
     fontStyle: 'italic',
     lineHeight: 20,
   },
   cardFooter: {
-    backgroundColor: '#fafafa',
+    backgroundColor: colors.card,
     padding: 12,
     paddingHorizontal: 16,
     borderTopWidth: 1,
-    borderTopColor: '#f4f4f5',
+    borderTopColor: colors.border,
   },
   footerText: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: colors.subtext,
   },
   actionRow: {
     flexDirection: 'row',
@@ -989,34 +1011,36 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   approveButton: {
-    borderColor: '#10b981',
-    backgroundColor: '#f0fdf4',
+    borderColor: colors.success,
+    backgroundColor: colors.successBg,
   },
   rejectButton: {
-    borderColor: '#ef4444',
-    backgroundColor: '#fef2f2',
+    borderColor: colors.danger,
+    backgroundColor: colors.dangerBg,
   },
   approveButtonText: {
-    color: '#10b981',
+    color: colors.success,
     fontWeight: '700',
     fontSize: 14,
   },
   rejectButtonText: {
-    color: '#ef4444',
+    color: colors.danger,
     fontWeight: '700',
     fontSize: 14,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
     maxHeight: '80%',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1027,10 +1051,10 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#18181b',
+    color: colors.text,
   },
   requestSummary: {
-    backgroundColor: '#f4f4f5',
+    backgroundColor: colors.card,
     padding: 16,
     borderRadius: 12,
     marginBottom: 20,
@@ -1038,13 +1062,13 @@ const styles = StyleSheet.create({
   summaryLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#71717a',
+    color: colors.subtext,
     textTransform: 'uppercase',
     marginBottom: 2,
   },
   summaryValue: {
     fontSize: 14,
-    color: '#18181b',
+    color: colors.text,
     fontWeight: '500',
     marginBottom: 12,
   },
@@ -1054,16 +1078,17 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#374151',
+    color: colors.text,
     marginBottom: 8,
   },
   textInput: {
     borderWidth: 1,
-    borderColor: '#e4e4e7',
+    borderColor: colors.border,
     borderRadius: 12,
     padding: 12,
     fontSize: 16,
-    color: '#18181b',
+    color: colors.text,
+    backgroundColor: colors.card,
     minHeight: 100,
     textAlignVertical: 'top',
   },
@@ -1074,10 +1099,10 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   submitApprove: {
-    backgroundColor: '#10b981',
+    backgroundColor: colors.success,
   },
   submitReject: {
-    backgroundColor: '#ef4444',
+    backgroundColor: colors.danger,
   },
   submitButtonText: {
     color: '#fff',
@@ -1085,11 +1110,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   paidPermissionContainer: {
-    backgroundColor: '#f0f9ff',
+    backgroundColor: colors.accentBg,
     padding: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#bae6fd',
+    borderColor: colors.border,
     marginBottom: 20,
   },
   checkboxRow: {
@@ -1102,42 +1127,42 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: '#0ea5e9',
+    borderColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   checkboxChecked: {
-    backgroundColor: '#0ea5e9',
+    backgroundColor: colors.accent,
   },
   checkboxLabel: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#0369a1',
+    color: colors.accent,
   },
   checkboxSubtext: {
     fontSize: 11,
-    color: '#0ea5e9',
+    color: colors.accent,
   },
   paidInputContainer: {
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#bae6fd',
+    borderTopColor: colors.border,
   },
   paidInputLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#0369a1',
+    color: colors.accent,
     marginBottom: 4,
   },
   paidInput: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#bae6fd',
+    borderColor: colors.border,
     borderRadius: 8,
     padding: 8,
     fontSize: 14,
-    color: '#18181b',
+    color: colors.text,
   },
   typeBadgeContainer: {
     flex: 1,
@@ -1153,10 +1178,10 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   detailsTable: {
-    backgroundColor: '#fafafa',
+    backgroundColor: colors.card,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#e4e4e7',
+    borderColor: colors.border,
     padding: 12,
     marginTop: 8,
     marginBottom: 8,
@@ -1164,7 +1189,7 @@ const styles = StyleSheet.create({
   detailsHeader: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#71717a',
+    color: colors.subtext,
     textTransform: 'uppercase',
     marginBottom: 8,
     letterSpacing: 0.5,
@@ -1177,23 +1202,23 @@ const styles = StyleSheet.create({
   },
   detailBorderTop: {
     borderTopWidth: 1,
-    borderTopColor: '#e4e4e7',
+    borderTopColor: colors.border,
     marginTop: 4,
     paddingTop: 8,
   },
   detailLabel: {
     fontSize: 13,
-    color: '#71717a',
+    color: colors.subtext,
   },
   detailValue: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#18181b',
+    color: colors.text,
   },
   detailValueHighlight: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#4f46e5',
+    color: colors.accent,
   },
   cardCorrectionContainer: {
     flexDirection: 'row',
@@ -1208,17 +1233,17 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   originalBox: {
-    backgroundColor: '#fafafa',
-    borderColor: '#e4e4e7',
+    backgroundColor: colors.card,
+    borderColor: colors.border,
   },
   proposedBox: {
-    backgroundColor: '#f0fdf4',
-    borderColor: '#bbf7d0',
+    backgroundColor: colors.successBg,
+    borderColor: colors.successBorder,
   },
   correctionBoxTitle: {
     fontSize: 9,
     fontWeight: '800',
-    color: '#71717a',
+    color: colors.subtext,
     marginBottom: 6,
     letterSpacing: 0.5,
   },
@@ -1230,23 +1255,23 @@ const styles = StyleSheet.create({
   },
   correctionBorderTop: {
     borderTopWidth: 1,
-    borderTopColor: '#e4e4e7',
+    borderTopColor: colors.border,
     marginTop: 4,
     paddingTop: 6,
   },
   correctionLabel: {
     fontSize: 11,
-    color: '#71717a',
+    color: colors.subtext,
   },
   correctionTimeText: {
     fontSize: 11,
     fontWeight: '500',
-    color: '#18181b',
+    color: colors.text,
   },
   correctionDurationText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#16a34a',
+    color: colors.success,
   },
   arrowContainer: {
     justifyContent: 'center',
@@ -1270,7 +1295,7 @@ const styles = StyleSheet.create({
   },
   outcomeText: {
     fontSize: 13,
-    color: '#374151',
+    color: colors.text,
     lineHeight: 18,
   },
   outcomeTextBold: {
@@ -1284,12 +1309,12 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#4b5563',
+    color: colors.text,
     marginTop: 16,
   },
   emptySubtext: {
     fontSize: 14,
-    color: '#9ca3af',
+    color: colors.subtext,
     marginTop: 8,
   },
   filterToggleBtn: {
@@ -1298,17 +1323,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: colors.card,
     gap: 6,
     position: 'relative',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   filterToggleActive: {
-    backgroundColor: '#e0e7ff',
+    backgroundColor: colors.border,
   },
   filterToggleText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#4b5563',
+    color: colors.text,
   },
   activeFilterBadge: {
     position: 'absolute',
@@ -1317,19 +1344,19 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#4f46e5',
+    backgroundColor: colors.accent,
   },
   filterPanel: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#e4e4e7',
+    borderBottomColor: colors.border,
     paddingHorizontal: 20,
     paddingBottom: 16,
   },
   filterSectionTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#71717a',
+    color: colors.subtext,
     textTransform: 'uppercase',
     marginTop: 12,
     marginBottom: 8,
@@ -1344,21 +1371,21 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#e4e4e7',
-    backgroundColor: '#fafafa',
+    borderColor: colors.border,
+    backgroundColor: colors.card,
     marginRight: 6,
   },
   chipActive: {
-    backgroundColor: '#4f46e5',
-    borderColor: '#4f46e5',
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   chipText: {
     fontSize: 13,
-    color: '#4b5563',
+    color: colors.subtext,
     fontWeight: '500',
   },
   chipTextActive: {
-    color: '#fff',
+    color: colors.primaryForeground,
     fontWeight: '600',
   },
   dateFilterRow: {
@@ -1368,7 +1395,7 @@ const styles = StyleSheet.create({
   },
   dateLabel: {
     fontSize: 11,
-    color: '#71717a',
+    color: colors.subtext,
     marginBottom: 4,
   },
   dateInputBtn: {
@@ -1376,15 +1403,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     borderWidth: 1,
-    borderColor: '#e4e4e7',
+    borderColor: colors.border,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: '#fcfcfc',
+    backgroundColor: colors.card,
   },
   dateInputText: {
     fontSize: 13,
-    color: '#18181b',
+    color: colors.text,
     fontWeight: '500',
   },
   filterActionsRow: {
@@ -1393,7 +1420,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#f4f4f5',
+    borderTopColor: colors.border,
   },
   resetFiltersBtn: {
     flexDirection: 'row',
@@ -1403,7 +1430,7 @@ const styles = StyleSheet.create({
   },
   resetFiltersText: {
     fontSize: 13,
-    color: '#dc2626',
+    color: colors.danger,
     fontWeight: '600',
   },
   clearAllBtn: {
@@ -1414,18 +1441,18 @@ const styles = StyleSheet.create({
   },
   clearAllText: {
     fontSize: 13,
-    color: '#4b5563',
+    color: colors.subtext,
     fontWeight: '600',
   },
   emptyResetBtn: {
     marginTop: 16,
-    backgroundColor: '#4f46e5',
+    backgroundColor: colors.primary,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 8,
   },
   emptyResetBtnText: {
-    color: '#fff',
+    color: colors.primaryForeground,
     fontWeight: '600',
     fontSize: 14,
   },

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { RefreshCw, Database } from 'lucide-react-native';
+import { useThemeColors } from '../hooks/useTheme';
 
 interface OfflineSyncCardProps {
   unsyncedCount: number;
@@ -13,12 +14,15 @@ export default function OfflineSyncCard({
   isSyncing,
   handleSync,
 }: OfflineSyncCardProps) {
+  const { colors } = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   if (unsyncedCount === 0) return null;
 
   return (
     <View style={styles.syncCard}>
       <View style={styles.iconContainer}>
-        <Database size={24} color="#f59e0b" />
+        <Database size={24} color={colors.warning} />
       </View>
       <View style={styles.contentContainer}>
         <Text style={styles.cardTitle}>Offline Records</Text>
@@ -44,17 +48,17 @@ export default function OfflineSyncCard({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   syncCard: {
-    backgroundColor: '#fffdf5',
+    backgroundColor: colors.warningBg,
     padding: 20,
     borderRadius: 24,
     marginBottom: 20,
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#fef3c7',
-    shadowColor: '#d97706',
+    borderColor: colors.warningBorder,
+    shadowColor: colors.warning,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.03,
     shadowRadius: 12,
@@ -64,7 +68,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 12,
-    backgroundColor: '#fffbeb',
+    backgroundColor: colors.card,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 14,
@@ -75,24 +79,24 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 15,
     fontWeight: '800',
-    color: '#92400e',
+    color: colors.warning,
     letterSpacing: 0.3,
   },
   cardText: {
     fontSize: 12,
-    color: '#b45309',
+    color: colors.text,
     lineHeight: 16,
     marginTop: 2,
     fontWeight: '500',
   },
   syncButton: {
-    backgroundColor: '#d97706',
+    backgroundColor: colors.warning,
     width: 40,
     height: 40,
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#d97706',
+    shadowColor: colors.warning,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,

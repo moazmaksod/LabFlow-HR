@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { LogOut } from 'lucide-react-native';
 import { useAuthStore } from '../store/useAuthStore';
+import { useThemeColors } from '../hooks/useTheme';
 
 // Base URL for images derived from API URL
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://ais-dev-dt5wflxz22iihcij747x5r-137896224739.europe-west1.run.app/api';
@@ -14,6 +15,9 @@ interface DashboardHeaderProps {
 
 export default function DashboardHeader({ userProfile, logout }: DashboardHeaderProps) {
   const { user } = useAuthStore();
+  const { colors } = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const userName = user?.name || 'Employee';
   const roleText = userProfile?.job_title || user?.role?.toUpperCase() || 'Staff';
 
@@ -59,24 +63,24 @@ export default function DashboardHeader({ userProfile, logout }: DashboardHeader
         accessibilityLabel="Logout"
         accessibilityRole="button"
       >
-        <LogOut color="#ef4444" size={20} />
+        <LogOut color={colors.danger} size={20} />
       </TouchableOpacity>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   headerContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.surface,
     padding: 16,
     borderRadius: 24,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
-    shadowColor: '#0f172a',
+    borderColor: colors.border,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.02,
     shadowRadius: 16,
@@ -92,7 +96,7 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: 30,
     padding: 2,
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.border,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -100,13 +104,13 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.card,
   },
   avatarFallback: {
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#3b82f6',
+    backgroundColor: colors.accent,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -124,39 +128,39 @@ const styles = StyleSheet.create({
   welcomeText: {
     fontSize: 12,
     fontWeight: '500',
-    color: '#64748b',
+    color: colors.subtext,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   userNameText: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#0f172a',
+    color: colors.text,
     marginTop: 2,
   },
   badgeContainer: {
     alignSelf: 'flex-start',
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.card,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 8,
     marginTop: 4,
     borderWidth: 0.5,
-    borderColor: '#e2e8f0',
+    borderColor: colors.border,
   },
   badgeText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#475569',
+    color: colors.subtext,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   logoutButton: {
     padding: 12,
     borderRadius: 14,
-    backgroundColor: '#fef2f2',
+    backgroundColor: colors.dangerBg,
     borderWidth: 1,
-    borderColor: '#fee2e2',
+    borderColor: colors.dangerBorder,
     justifyContent: 'center',
     alignItems: 'center',
   },

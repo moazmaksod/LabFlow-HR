@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
@@ -6,6 +6,7 @@ import { Fingerprint } from 'lucide-react-native';
 import api from '../../lib/axios';
 import { useAuthStore } from '../../store/useAuthStore';
 import { getUniqueDeviceId } from '../../utils/device';
+import { useThemeColors } from '../../hooks/useTheme';
 
 const BIOMETRIC_CREDENTIALS_KEY = 'biometric_credentials';
 
@@ -16,6 +17,8 @@ export default function LoginScreen({ navigation }: any) {
   const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
 
   const login = useAuthStore((state) => state.login);
+  const { colors } = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   useEffect(() => {
     checkBiometrics();
@@ -104,6 +107,7 @@ export default function LoginScreen({ navigation }: any) {
           value={email}
           onChangeText={setEmail}
           placeholder="employee@labflow.com"
+          placeholderTextColor={colors.subtext}
           keyboardType="email-address"
           autoCapitalize="none"
         />
@@ -114,6 +118,7 @@ export default function LoginScreen({ navigation }: any) {
           value={password}
           onChangeText={setPassword}
           placeholder="••••••••"
+          placeholderTextColor={colors.subtext}
           secureTextEntry
         />
 
@@ -123,7 +128,7 @@ export default function LoginScreen({ navigation }: any) {
 
         {isBiometricAvailable && (
           <TouchableOpacity style={styles.biometricButton} onPress={handleBiometricLogin} disabled={loading}>
-            <Fingerprint color="#18181b" size={24} />
+            <Fingerprint color={colors.text} size={24} />
             <Text style={styles.biometricButtonText}>Login with Biometrics</Text>
           </TouchableOpacity>
         )}
@@ -136,15 +141,15 @@ export default function LoginScreen({ navigation }: any) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff', padding: 24, justifyContent: 'center' },
-  title: { fontSize: 32, fontWeight: 'bold', color: '#18181b', marginBottom: 8 },
-  subtitle: { fontSize: 16, color: '#71717a', marginBottom: 32 },
+const createStyles = (colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background, padding: 24, justifyContent: 'center' },
+  title: { fontSize: 32, fontWeight: 'bold', color: colors.text, marginBottom: 8 },
+  subtitle: { fontSize: 16, color: colors.subtext, marginBottom: 32 },
   form: { gap: 16 },
-  label: { fontSize: 14, fontWeight: '500', color: '#18181b', marginBottom: -8 },
-  input: { borderWidth: 1, borderColor: '#e4e4e7', borderRadius: 8, padding: 12, fontSize: 16, backgroundColor: '#fafafa' },
-  button: { backgroundColor: '#18181b', padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 8 },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  label: { fontSize: 14, fontWeight: '500', color: colors.text, marginBottom: -8 },
+  input: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 12, fontSize: 16, backgroundColor: colors.surface, color: colors.text },
+  button: { backgroundColor: colors.primary, padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 8 },
+  buttonText: { color: colors.primaryForeground, fontSize: 16, fontWeight: '600' },
   biometricButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -152,11 +157,11 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#e4e4e7',
+    borderColor: colors.border,
     gap: 8,
     marginTop: 8
   },
-  biometricButtonText: { color: '#18181b', fontSize: 16, fontWeight: '600' },
+  biometricButtonText: { color: colors.text, fontSize: 16, fontWeight: '600' },
   linkButton: { alignItems: 'center', marginTop: 16 },
-  linkText: { color: '#71717a', fontSize: 14 },
+  linkText: { color: colors.subtext, fontSize: 14 },
 });

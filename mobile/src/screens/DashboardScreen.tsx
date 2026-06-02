@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, StyleSheet, Alert, ScrollView, RefreshControl } from 'react-native';
 import * as Location from 'expo-location';
 import { useFocusEffect } from '@react-navigation/native';
@@ -19,8 +19,11 @@ import { getMobileNow, getSystemNow, getTimestamp } from '../lib/timeManager';
 import DashboardHeader from '../components/DashboardHeader';
 import UpcomingShiftCard from '../components/UpcomingShiftCard';
 import OfflineSyncCard from '../components/OfflineSyncCard';
+import { useThemeColors } from '../hooks/useTheme';
 
 export default function DashboardScreen() {
+  const { colors } = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { user, logout } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [unsyncedCount, setUnsyncedCount] = useState(0);
@@ -472,8 +475,8 @@ export default function DashboardScreen() {
         <RefreshControl
           refreshing={refreshing}
           onRefresh={onRefresh}
-          colors={['#10b981']}
-          tintColor="#10b981"
+          colors={[colors.success]}
+          tintColor={colors.success}
         />
       }
     >
@@ -512,7 +515,7 @@ export default function DashboardScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f4f5' },
+const createStyles = (colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   scrollContent: { padding: 24, paddingTop: 60, paddingBottom: 40 },
 });

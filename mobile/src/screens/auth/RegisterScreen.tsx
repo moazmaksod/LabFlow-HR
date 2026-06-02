@@ -1,15 +1,18 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView } from 'react-native';
 import api from '../../lib/axios';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { EmployeeRegistrationSchema } from '../../../../shared/validations';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useThemeColors } from '../../hooks/useTheme';
 
 export default function RegisterScreen({ navigation }: any) {
   const [loading, setLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
+  const { colors } = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const {
     control,
@@ -80,6 +83,7 @@ export default function RegisterScreen({ navigation }: any) {
                 onChangeText={onChange}
                 value={value}
                 placeholder="John Doe"
+                placeholderTextColor={colors.subtext}
                 autoCapitalize="words"
               />
             )}
@@ -94,7 +98,7 @@ export default function RegisterScreen({ navigation }: any) {
               style={[styles.input, errors.date_of_birth && styles.inputError, { justifyContent: 'center' }]}
               onPress={() => setShowDatePicker(true)}
             >
-              <Text style={{ fontSize: 16 }}>{formatDate(watchDateOfBirth)}</Text>
+              <Text style={{ fontSize: 16, color: colors.text }}>{formatDate(watchDateOfBirth)}</Text>
             </TouchableOpacity>
 
             {showDatePicker && (
@@ -145,6 +149,7 @@ export default function RegisterScreen({ navigation }: any) {
                 onChangeText={onChange}
                 value={value}
                 placeholder="employee@labflow.com"
+                placeholderTextColor={colors.subtext}
                 keyboardType="email-address"
                 autoCapitalize="none"
               />
@@ -165,6 +170,7 @@ export default function RegisterScreen({ navigation }: any) {
                 onChangeText={onChange}
                 value={value}
                 placeholder="••••••••"
+                placeholderTextColor={colors.subtext}
                 secureTextEntry
               />
             )}
@@ -184,6 +190,7 @@ export default function RegisterScreen({ navigation }: any) {
                 onChangeText={onChange}
                 value={value}
                 placeholder="••••••••"
+                placeholderTextColor={colors.subtext}
                 secureTextEntry
               />
             )}
@@ -203,23 +210,23 @@ export default function RegisterScreen({ navigation }: any) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flexGrow: 1, backgroundColor: '#fff', padding: 24, justifyContent: 'center' },
-  title: { fontSize: 32, fontWeight: 'bold', color: '#18181b', marginBottom: 8 },
-  subtitle: { fontSize: 16, color: '#71717a', marginBottom: 32 },
+const createStyles = (colors: any) => StyleSheet.create({
+  container: { flexGrow: 1, backgroundColor: colors.background, padding: 24, justifyContent: 'center' },
+  title: { fontSize: 32, fontWeight: 'bold', color: colors.text, marginBottom: 8 },
+  subtitle: { fontSize: 16, color: colors.subtext, marginBottom: 32 },
   form: { gap: 16 },
   row: { flexDirection: 'row', alignItems: 'flex-start' },
-  label: { fontSize: 14, fontWeight: '500', color: '#18181b', marginBottom: 4 },
-  input: { borderWidth: 1, borderColor: '#e4e4e7', borderRadius: 8, padding: 12, fontSize: 16, backgroundColor: '#fafafa', minHeight: 50 },
+  label: { fontSize: 14, fontWeight: '500', color: colors.text, marginBottom: 4 },
+  input: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 12, fontSize: 16, backgroundColor: colors.surface, color: colors.text, minHeight: 50 },
   inputError: { borderColor: 'red' },
   errorText: { color: 'red', fontSize: 12, marginTop: 4 },
   genderContainer: { flexDirection: 'row', gap: 8 },
-  genderButton: { flex: 1, paddingVertical: 12, paddingHorizontal: 4, borderRadius: 8, borderWidth: 1, borderColor: '#e4e4e7', alignItems: 'center', backgroundColor: '#fafafa', minHeight: 50, justifyContent: 'center' },
-  genderButtonActive: { backgroundColor: '#18181b', borderColor: '#18181b' },
-  genderButtonText: { fontSize: 14, color: '#18181b', fontWeight: '500' },
-  genderButtonTextActive: { color: '#fff' },
-  button: { backgroundColor: '#18181b', padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 8 },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  genderButton: { flex: 1, paddingVertical: 12, paddingHorizontal: 4, borderRadius: 8, borderWidth: 1, borderColor: colors.border, alignItems: 'center', backgroundColor: colors.surface, minHeight: 50, justifyContent: 'center' },
+  genderButtonActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  genderButtonText: { fontSize: 14, color: colors.text, fontWeight: '500' },
+  genderButtonTextActive: { color: colors.primaryForeground },
+  button: { backgroundColor: colors.primary, padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 8 },
+  buttonText: { color: colors.primaryForeground, fontSize: 16, fontWeight: '600' },
   linkButton: { alignItems: 'center', marginTop: 16 },
-  linkText: { color: '#71717a', fontSize: 14 },
+  linkText: { color: colors.subtext, fontSize: 14 },
 });

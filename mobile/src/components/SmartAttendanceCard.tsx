@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Animated } from 'react-native';
 import { Play, Pause, AlertCircle, Clock } from 'lucide-react-native';
 import { useAttendanceStore } from '../store/useAttendanceStore';
@@ -7,6 +7,7 @@ import { toDate } from 'date-fns-tz';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useThemeColors } from '../hooks/useTheme';
 
 interface SmartAttendanceCardProps {
   currentShift: any | null;
@@ -32,6 +33,8 @@ export default function SmartAttendanceCard({
   const user = useAuthStore((state) => state.user);
   const userTimezone = useSettingsStore((state) => state.userTimezone);
   const settings = useSettingsStore((state) => state.settings);
+  const { colors } = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const formatShiftTime = (timeStr: string, utcTimeStr?: string) => {
     if (utcTimeStr) {
@@ -348,8 +351,8 @@ export default function SmartAttendanceCard({
             <Text style={styles.timelineTitle}>Daily Attendance</Text>
           </View>
           <View style={[styles.statusBadge, currentStatus === 'working' ? styles.statusWorking : currentStatus === 'away' ? styles.statusAway : styles.statusNone]}>
-            {currentStatus === 'working' && <Play size={12} color="#10b981" style={{ marginRight: 4 }} />}
-            {currentStatus === 'away' && <Pause size={12} color="#f59e0b" style={{ marginRight: 4 }} />}
+            {currentStatus === 'working' && <Play size={12} color={colors.success} style={{ marginRight: 4 }} />}
+            {currentStatus === 'away' && <Pause size={12} color={colors.warning} style={{ marginRight: 4 }} />}
             <Text style={[styles.statusText, currentStatus === 'working' ? styles.statusTextWorking : currentStatus === 'away' ? styles.statusTextAway : styles.statusTextNone]}>
               {currentStatus === 'working' ? 'Working' : currentStatus === 'away' ? 'Away' : 'Not Working'}
             </Text>
@@ -434,7 +437,7 @@ export default function SmartAttendanceCard({
               </>
             ) : (
               <View style={styles.emptyTimelineContainer}>
-                <Clock size={18} color="#94a3b8" />
+                <Clock size={18} color={colors.subtext} />
                 <Text style={styles.emptyTimelineText}>Clock in to start tracking your daily progress.</Text>
               </View>
             )}
@@ -442,7 +445,7 @@ export default function SmartAttendanceCard({
             {/* Stats Row */}
             <View style={styles.statsRow}>
               <View style={styles.statBox}>
-                <View style={[styles.statDot, { backgroundColor: isTimelineScheduled ? '#10b981' : '#3b82f6' }]} />
+                <View style={[styles.statDot, { backgroundColor: isTimelineScheduled ? colors.success : colors.accent }]} />
                 <View>
                   <Text style={styles.statLabel}>{isTimelineScheduled ? 'Worked' : 'Overtime'}</Text>
                   <Text style={styles.statValue}>{formatDuration(Math.floor(workedMins))}</Text>
@@ -451,14 +454,14 @@ export default function SmartAttendanceCard({
               {isTimelineScheduled && (
                 <>
                   <View style={styles.statBox}>
-                    <View style={[styles.statDot, { backgroundColor: '#f59e0b' }]} />
+                    <View style={[styles.statDot, { backgroundColor: colors.warning }]} />
                     <View>
                       <Text style={styles.statLabel}>Break</Text>
                       <Text style={styles.statValue}>{formatDuration(Math.floor(breakMins))}</Text>
                     </View>
                   </View>
                   <View style={styles.statBox}>
-                    <View style={[styles.statDot, { backgroundColor: '#e2e8f0' }]} />
+                    <View style={[styles.statDot, { backgroundColor: colors.timelineRemaining }]} />
                     <View>
                       <Text style={styles.statLabel}>Remaining</Text>
                       <Text style={styles.statValue}>{formatDuration(Math.floor(remainingMins))}</Text>
@@ -500,7 +503,7 @@ export default function SmartAttendanceCard({
         <View style={styles.buttonRow}>
           {isTampered ? (
             <View style={styles.tamperContainer}>
-              <AlertCircle color="#ef4444" size={24} style={{ marginBottom: 8 }} />
+              <AlertCircle color={colors.danger} size={24} style={{ marginBottom: 8 }} />
               <Text style={styles.tamperTitle}>Device Time Out of Sync</Text>
               <Text style={styles.tamperText}>
                 Please set your phone's Date & Time to 'Automatic' to log attendance.
@@ -556,22 +559,22 @@ export default function SmartAttendanceCard({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     marginBottom: 24,
   },
   timelineCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.surface,
     borderRadius: 24,
     padding: 20,
-    shadowColor: '#000',
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.04,
     shadowRadius: 24,
     elevation: 4,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: colors.border,
   },
   timelineHeader: {
     flexDirection: 'row',
@@ -582,13 +585,13 @@ const styles = StyleSheet.create({
   timelineTitle: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#0f172a',
+    color: colors.text,
     marginBottom: 4,
   },
   timelineSubtitle: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#64748b',
+    color: colors.subtext,
     lineHeight: 20,
   },
   statusBadge: {
@@ -599,13 +602,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   statusWorking: {
-    backgroundColor: '#ecfdf5',
+    backgroundColor: colors.successBg,
   },
   statusAway: {
-    backgroundColor: '#fffbeb',
+    backgroundColor: colors.warningBg,
   },
   statusNone: {
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.card,
   },
   statusText: {
     fontSize: 12,
@@ -614,21 +617,21 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   statusTextWorking: {
-    color: '#10b981',
+    color: colors.success,
   },
   statusTextAway: {
-    color: '#f59e0b',
+    color: colors.warning,
   },
   statusTextNone: {
-    color: '#64748b',
+    color: colors.subtext,
   },
   shiftInfoCard: {
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.card,
     borderRadius: 16,
     padding: 16,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: colors.border,
   },
   shiftInfoRow: {
     flexDirection: 'row',
@@ -639,7 +642,7 @@ const styles = StyleSheet.create({
   shiftInfoLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#64748b',
+    color: colors.subtext,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -649,10 +652,10 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   badgeScheduled: {
-    backgroundColor: '#ecfdf5',
+    backgroundColor: colors.successBg,
   },
   badgeUnscheduled: {
-    backgroundColor: '#eff6ff',
+    backgroundColor: colors.accentBg,
   },
   shiftInfoBadgeText: {
     fontSize: 10,
@@ -660,19 +663,19 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   badgeTextScheduled: {
-    color: '#059669',
+    color: colors.success,
   },
   badgeTextUnscheduled: {
-    color: '#2563eb',
+    color: colors.accent,
   },
   shiftInfoValue: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
   },
   shiftInfoNotice: {
     fontSize: 11,
-    color: '#64748b',
+    color: colors.subtext,
     marginTop: 8,
     fontWeight: '500',
     fontStyle: 'italic',
@@ -681,18 +684,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.card,
     padding: 16,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: colors.border,
     borderStyle: 'dashed',
     marginBottom: 20,
     gap: 8,
   },
   emptyTimelineText: {
     fontSize: 13,
-    color: '#64748b',
+    color: colors.subtext,
     fontWeight: '500',
   },
   timelineWrapper: {
@@ -703,7 +706,7 @@ const styles = StyleSheet.create({
   timelineTrack: {
     flexDirection: 'row',
     height: 12,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.timelineTrackBg,
     borderRadius: 6,
     overflow: 'hidden',
     marginTop: 10,
@@ -712,29 +715,29 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   segmentWorked: {
-    backgroundColor: '#10b981',
+    backgroundColor: colors.success,
   },
   segmentBreak: {
-    backgroundColor: '#f59e0b',
+    backgroundColor: colors.warning,
   },
   segmentMissed: {
-    backgroundColor: '#f59e0b',
+    backgroundColor: colors.timelineMissed,
   },
   segmentRemaining: {
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.timelineRemaining,
   },
   segmentOvertime: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: colors.accent,
   },
   segmentNone: {
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.timelineNone,
   },
   shiftMarker: {
     position: 'absolute',
     top: 0,
     bottom: 0,
     width: 2,
-    backgroundColor: '#cbd5e1',
+    backgroundColor: colors.timelineMarker,
     marginTop: 10,
     height: 12,
     zIndex: 5,
@@ -748,7 +751,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 15,
   },
-
   nowIndicatorArrow: {
     width: 0,
     height: 0,
@@ -783,14 +785,14 @@ const styles = StyleSheet.create({
   timelineLabelText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#94a3b8',
+    color: colors.subtext,
   },
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
+    borderTopColor: colors.border,
   },
   statBox: {
     flexDirection: 'row',
@@ -805,7 +807,7 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#94a3b8',
+    color: colors.subtext,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 2,
@@ -813,10 +815,10 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
   },
   breakInfoContainer: {
-    backgroundColor: '#f4f4f5',
+    backgroundColor: colors.card,
     padding: 12,
     borderRadius: 12,
     marginTop: 16,
@@ -824,26 +826,26 @@ const styles = StyleSheet.create({
   },
   breakInfoText: {
     fontSize: 13,
-    color: '#3f3f46',
+    color: colors.text,
     fontWeight: '600',
   },
   breakWarningText: {
     fontSize: 11,
-    color: '#ef4444',
+    color: colors.danger,
     marginTop: 4,
     fontWeight: '800',
     textTransform: 'uppercase',
   },
   radiusWarning: {
     fontSize: 12,
-    color: '#71717a',
+    color: colors.subtext,
     textAlign: 'center',
     marginTop: 16,
     marginBottom: 12,
   },
   tamperContainer: {
-    backgroundColor: '#fef2f2',
-    borderColor: '#fca5a5',
+    backgroundColor: colors.dangerBg,
+    borderColor: colors.dangerBorder,
     borderWidth: 1,
     borderRadius: 12,
     padding: 16,
@@ -853,12 +855,12 @@ const styles = StyleSheet.create({
   tamperTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#ef4444',
+    color: colors.danger,
     marginBottom: 4,
   },
   tamperText: {
     fontSize: 13,
-    color: '#991b1b',
+    color: colors.danger,
     textAlign: 'center',
   },
   disabledButton: {
@@ -877,16 +879,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   clockInButton: {
-    backgroundColor: '#10b981',
+    backgroundColor: colors.success,
   },
   clockOutButton: {
-    backgroundColor: '#ef4444',
+    backgroundColor: colors.danger,
   },
   stepAwayButton: {
-    backgroundColor: '#f59e0b',
+    backgroundColor: colors.warning,
   },
   resumeButton: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: colors.accent,
   },
   buttonText: {
     color: '#fff',

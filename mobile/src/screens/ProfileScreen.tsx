@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from '@react-navigation/native';
-import { User, Camera, Save, LogOut, Mail, UserCircle, Lock, Info, DollarSign, Calendar, Clock, Shield, LayoutDashboard, MapPin, Landmark, HeartHandshake, Phone, FileText, Globe } from 'lucide-react-native';
+import { User, Camera, Save, LogOut, Mail, UserCircle, Lock, Info, DollarSign, Calendar, Clock, Shield, LayoutDashboard, MapPin, Landmark, HeartHandshake, Phone, FileText, Globe, Sun, Moon, Monitor } from 'lucide-react-native';
 import { Picker } from '@react-native-picker/picker';
 import { simplifiedTimezones, formatDisplayTime, formatTimeOnlyToLocal, calculateTenure } from '../lib/timeManager';
 import api from '../lib/axios';
@@ -14,16 +14,16 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { EmployeeProfileSchema } from '../../../shared/validations';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useThemeColors, ThemeColors } from '../hooks/useTheme';
 
 // Base URL for images derived from API URL
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://ais-dev-dt5wflxz22iihcij747x5r-137896224739.europe-west1.run.app/api';
 const BASE_URL = API_URL.replace('/api', '');
 
-
 export default function ProfileScreen() {
   const { user, logout, login } = useAuthStore();
   const { userProfile, setUserProfile } = useAttendanceStore();
-  const { userTimezone, setUserTimezone } = useSettingsStore();
+  const { userTimezone, setUserTimezone, theme, setTheme } = useSettingsStore();
   const [avatar, setAvatar] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
@@ -31,6 +31,8 @@ export default function ProfileScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
 
   const { isConnected } = useNetworkStore();
+  const { colors, isDark } = useThemeColors();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   // Extend the schema with extra HR fields visible on mobile for now since it renders them all
   const {
@@ -55,7 +57,6 @@ export default function ProfileScreen() {
   });
 
   const watchDateOfBirth = watch('date_of_birth');
-
 
   const fetchProfile = useCallback(async () => {
     if (!isConnected) {
@@ -148,7 +149,6 @@ export default function ProfileScreen() {
       setUserProfile(updateRes.data);
       Alert.alert('Success', 'Avatar updated successfully');
     } catch (error: any) {
-      // Graceful error catching to avoid redbox
       const message = error.isNetworkError
         ? 'Network unavailable. Please try again when online.'
         : (error.response?.data?.error || 'Failed to upload avatar');
@@ -157,7 +157,6 @@ export default function ProfileScreen() {
       setLoading(false);
     }
   };
-
 
   const onInvalid = (errors: any) => {
     scrollViewRef.current?.scrollTo({ y: 0, animated: true });
@@ -199,7 +198,6 @@ export default function ProfileScreen() {
     }
   }, onInvalid);
 
-
   const formatTime = (timeStr: string) => {
     if (!timeStr) return '';
     return formatTimeOnlyToLocal(timeStr, userTimezone);
@@ -234,7 +232,7 @@ export default function ProfileScreen() {
                 <Text style={[styles.tableCell, { flex: 1, textTransform: 'capitalize', fontWeight: isActive ? '600' : '400' }]}>
                   {day.substring(0, 3)}
                 </Text>
-                <Text style={[styles.tableCell, { flex: 2, color: isActive ? '#18181b' : '#a1a1aa' }]}>
+                <Text style={[styles.tableCell, { flex: 2, color: isActive ? colors.primary : colors.subtext }]}>
                   {shiftText}
                 </Text>
               </View>
@@ -250,13 +248,13 @@ export default function ProfileScreen() {
   if (fetching) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#18181b" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} ref={scrollViewRef}>
       <View style={styles.header}>
         <TouchableOpacity
           onPress={pickImage}
@@ -271,17 +269,17 @@ export default function ProfileScreen() {
             />
           ) : (
             <View style={styles.avatarPlaceholder}>
-              <UserCircle size={80} color="#a1a1aa" />
+              <UserCircle size={80} color={colors.subtext} />
             </View>
           )}
           <View style={styles.cameraIcon}>
-            <Camera size={16} color="#fff" />
+            <Camera size={16} color={colors.primaryForeground} />
           </View>
         </TouchableOpacity>
         <Text style={styles.userName}>{watch("legal_name")}</Text>
         <Text style={styles.userRole}>{userProfile?.job_title || user?.role.toUpperCase()}</Text>
         <View style={styles.tenureHeader}>
-          <Calendar size={12} color="#71717a" style={{ marginRight: 4 }} />
+          <Calendar size={12} color={colors.subtext} style={{ marginRight: 4 }} />
           <Text style={styles.tenureHeaderText}>Tenure: {calculateTenure(userProfile?.hire_date)}</Text>
         </View>
       </View>
@@ -289,12 +287,44 @@ export default function ProfileScreen() {
       <View style={styles.form}>
 
         <View style={styles.section}>
+          <Text style={styles.sectionTitle}>App Preferences</Text>
+          <View style={styles.preferenceCard}>
+            <Text style={styles.preferenceLabel}>Theme Mode</Text>
+            <View style={styles.themeSelector}>
+              <TouchableOpacity
+                style={[styles.themeOption, theme === 'light' && styles.themeOptionActive]}
+                onPress={() => setTheme('light')}
+              >
+                <Sun size={18} color={theme === 'light' ? colors.primaryForeground : colors.subtext} />
+                <Text style={[styles.themeText, theme === 'light' && styles.themeTextActive]}>Light</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.themeOption, theme === 'dark' && styles.themeOptionActive]}
+                onPress={() => setTheme('dark')}
+              >
+                <Moon size={18} color={theme === 'dark' ? colors.primaryForeground : colors.subtext} />
+                <Text style={[styles.themeText, theme === 'dark' && styles.themeTextActive]}>Dark</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.themeOption, theme === 'system' && styles.themeOptionActive]}
+                onPress={() => setTheme('system')}
+              >
+                <Monitor size={18} color={theme === 'system' ? colors.primaryForeground : colors.subtext} />
+                <Text style={[styles.themeText, theme === 'system' && styles.themeTextActive]}>System</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>Personal Information</Text>
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Full Name</Text>
             <View style={[styles.inputWrapper, errors.legal_name && styles.inputError]}>
-              <UserCircle size={18} color="#71717a" style={styles.inputIcon} />
+              <UserCircle size={18} color={colors.subtext} style={styles.inputIcon} />
               <Controller
                 control={control}
                 name="legal_name"
@@ -305,6 +335,7 @@ export default function ProfileScreen() {
                     onChangeText={onChange}
                     value={value}
                     placeholder="Full Name"
+                    placeholderTextColor={colors.subtext}
                   />
                 )}
               />
@@ -315,7 +346,7 @@ export default function ProfileScreen() {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Personal Phone</Text>
             <View style={[styles.inputWrapper, errors.personal_phone && styles.inputError]}>
-              <Phone size={18} color="#71717a" style={styles.inputIcon} />
+              <Phone size={18} color={colors.subtext} style={styles.inputIcon} />
               <Controller
                 control={control}
                 name="personal_phone"
@@ -326,6 +357,7 @@ export default function ProfileScreen() {
                     onChangeText={onChange}
                     value={value}
                     placeholder="+1 234 567 890"
+                    placeholderTextColor={colors.subtext}
                     keyboardType="phone-pad"
                   />
                 )}
@@ -340,7 +372,7 @@ export default function ProfileScreen() {
               style={[styles.inputWrapper, errors.date_of_birth && styles.inputError]}
               onPress={() => setShowDatePicker(true)}
             >
-              <Calendar size={18} color="#71717a" style={styles.inputIcon} />
+              <Calendar size={18} color={colors.subtext} style={styles.inputIcon} />
               <Text style={[styles.input, { paddingTop: 14 }]}>
                 {watchDateOfBirth ? (watchDateOfBirth as Date).toISOString().split('T')[0] : 'YYYY-MM-DD'}
               </Text>
@@ -365,7 +397,7 @@ export default function ProfileScreen() {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>National ID</Text>
             <View style={[styles.inputWrapper, errors.national_id && styles.inputError]}>
-              <Shield size={18} color="#71717a" style={styles.inputIcon} />
+              <Shield size={18} color={colors.subtext} style={styles.inputIcon} />
               <Controller
                 control={control}
                 name="national_id"
@@ -376,6 +408,7 @@ export default function ProfileScreen() {
                     onChangeText={onChange}
                     value={value}
                     placeholder="National Identification Number"
+                    placeholderTextColor={colors.subtext}
                   />
                 )}
               />
@@ -386,7 +419,7 @@ export default function ProfileScreen() {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Bio</Text>
             <View style={[styles.inputWrapper, errors.bio && styles.inputError]}>
-              <FileText size={18} color="#71717a" style={styles.inputIcon} />
+              <FileText size={18} color={colors.subtext} style={styles.inputIcon} />
               <Controller
                 control={control}
                 name="bio"
@@ -397,6 +430,7 @@ export default function ProfileScreen() {
                     onChangeText={onChange}
                     value={value}
                     placeholder="Tell us about yourself..."
+                    placeholderTextColor={colors.subtext}
                     multiline
                     numberOfLines={4}
                   />
@@ -409,7 +443,7 @@ export default function ProfileScreen() {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Display Timezone</Text>
             <View style={[styles.inputWrapper, { paddingVertical: 0 }]}>
-              <Globe size={18} color="#71717a" style={[styles.inputIcon, { marginLeft: 16 }]} />
+              <Globe size={18} color={colors.subtext} style={[styles.inputIcon, { marginLeft: 16 }]} />
               <Controller
                 control={control}
                 name="display_timezone"
@@ -417,11 +451,12 @@ export default function ProfileScreen() {
                   <Picker
                     selectedValue={value || ''}
                     onValueChange={onChange}
-                    style={{ flex: 1, marginLeft: -8 }}
+                    style={{ flex: 1, marginLeft: -8, color: colors.primary }}
+                    dropdownIconColor={colors.primary}
                   >
-                    <Picker.Item label={`Device Default (${Intl.DateTimeFormat().resolvedOptions().timeZone})`} value="" />
+                    <Picker.Item label={`Device Default (${Intl.DateTimeFormat().resolvedOptions().timeZone})`} value="" color={colors.primary} style={{ backgroundColor: colors.surface }} />
                     {simplifiedTimezones.map((tz: string) => (
-                      <Picker.Item key={tz} label={tz} value={tz} />
+                      <Picker.Item key={tz} label={tz} value={tz} color={colors.primary} style={{ backgroundColor: colors.surface }} />
                     ))}
                   </Picker>
                 )}
@@ -436,7 +471,7 @@ export default function ProfileScreen() {
           <View style={styles.detailsCard}>
             <View style={styles.detailsGrid}>
               <View style={styles.detailItem}>
-                <DollarSign size={16} color="#71717a" />
+                <DollarSign size={16} color={colors.subtext} />
                 <View style={styles.detailContent}>
                   <Text style={styles.detailLabel}>Hourly Rate</Text>
                   <Text style={styles.detailValue}>${userProfile?.hourly_rate || 0}/hr</Text>
@@ -444,7 +479,7 @@ export default function ProfileScreen() {
               </View>
 
               <View style={styles.detailItem}>
-                <Calendar size={16} color="#71717a" />
+                <Calendar size={16} color={colors.subtext} />
                 <View style={styles.detailContent}>
                   <Text style={styles.detailLabel}>Annual Leave</Text>
                   <Text style={styles.detailValue}>{userProfile?.annual_leave_balance ?? 21} days</Text>
@@ -452,7 +487,7 @@ export default function ProfileScreen() {
               </View>
 
               <View style={styles.detailItem}>
-                <Calendar size={16} color="#71717a" />
+                <Calendar size={16} color={colors.subtext} />
                 <View style={styles.detailContent}>
                   <Text style={styles.detailLabel}>Sick Leave</Text>
                   <Text style={styles.detailValue}>{userProfile?.sick_leave_balance ?? 7} days</Text>
@@ -460,7 +495,7 @@ export default function ProfileScreen() {
               </View>
 
               <View style={styles.detailItem}>
-                <Clock size={16} color="#71717a" />
+                <Clock size={16} color={colors.subtext} />
                 <View style={styles.detailContent}>
                   <Text style={styles.detailLabel}>Overtime Allowed</Text>
                   <Text style={styles.detailValue}>{userProfile?.allow_overtime ? 'Yes' : 'No'}</Text>
@@ -468,7 +503,7 @@ export default function ProfileScreen() {
               </View>
 
               <View style={styles.detailItem}>
-                <Shield size={16} color="#71717a" />
+                <Shield size={16} color={colors.subtext} />
                 <View style={styles.detailContent}>
                   <Text style={styles.detailLabel}>Lunch Break</Text>
                   <Text style={styles.detailValue}>{userProfile?.lunch_break_minutes || 0} mins</Text>
@@ -478,7 +513,7 @@ export default function ProfileScreen() {
 
             <View style={styles.scheduleSection}>
               <View style={styles.scheduleHeader}>
-                <LayoutDashboard size={16} color="#71717a" style={{ marginRight: 8 }} />
+                <LayoutDashboard size={16} color={colors.subtext} style={{ marginRight: 8 }} />
                 <Text style={styles.scheduleTitle}>Working Hours Schedule</Text>
               </View>
               {renderScheduleTable(userProfile?.weekly_schedule)}
@@ -491,16 +526,16 @@ export default function ProfileScreen() {
           onPress={handleUpdateProfile}
           disabled={loading || !isConnected}
         >
-          {loading ? <ActivityIndicator color="#fff" /> : (
+          {loading ? <ActivityIndicator color={colors.primaryForeground} /> : (
             <>
               {isConnected ? (
                 <>
-                  <Save size={20} color="#fff" />
+                  <Save size={20} color={colors.primaryForeground} />
                   <Text style={styles.saveButtonText}>Save Changes</Text>
                 </>
               ) : (
                 <>
-                  <Lock size={20} color="#fff" />
+                  <Lock size={20} color={colors.primaryForeground} />
                   <Text style={styles.saveButtonText}>Offline</Text>
                 </>
               )}
@@ -509,7 +544,7 @@ export default function ProfileScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.logoutButton} onPress={logout}>
-          <LogOut size={20} color="#ef4444" />
+          <LogOut size={20} color={colors.danger} />
           <Text style={styles.logoutButtonText}>Sign Out</Text>
         </TouchableOpacity>
       </View>
@@ -517,49 +552,90 @@ export default function ProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+const createStyles = (colors: ThemeColors, isDark: boolean) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 24, paddingTop: 60, paddingBottom: 120 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: { alignItems: 'center', marginBottom: 32 },
   avatarContainer: { position: 'relative', marginBottom: 16 },
-  avatar: { width: 120, height: 120, borderRadius: 60, backgroundColor: '#f4f4f5' },
-  avatarPlaceholder: { width: 120, height: 120, borderRadius: 60, backgroundColor: '#f4f4f5', justifyContent: 'center', alignItems: 'center' },
-  cameraIcon: { position: 'absolute', bottom: 4, right: 4, backgroundColor: '#18181b', padding: 8, borderRadius: 20, borderWidth: 3, borderColor: '#fff' },
-  userName: { fontSize: 24, fontWeight: 'bold', color: '#18181b' },
-  userRole: { fontSize: 14, color: '#71717a', marginTop: 4, letterSpacing: 1 },
+  avatar: { width: 120, height: 120, borderRadius: 60, backgroundColor: colors.card },
+  avatarPlaceholder: { width: 120, height: 120, borderRadius: 60, backgroundColor: colors.card, justifyContent: 'center', alignItems: 'center' },
+  cameraIcon: { position: 'absolute', bottom: 4, right: 4, backgroundColor: colors.primary, padding: 8, borderRadius: 20, borderWidth: 3, borderColor: colors.surface },
+  userName: { fontSize: 24, fontWeight: 'bold', color: colors.primary },
+  userRole: { fontSize: 14, color: colors.subtext, marginTop: 4, letterSpacing: 1 },
   tenureHeader: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
-  tenureHeaderText: { fontSize: 12, color: '#a1a1aa', fontWeight: '500' },
+  tenureHeaderText: { fontSize: 12, color: colors.subtext, fontWeight: '500' },
   section: { gap: 16, marginBottom: 8 },
-  sectionTitle: { fontSize: 12, fontWeight: '800', color: '#71717a', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 4 },
+  sectionTitle: { fontSize: 12, fontWeight: '800', color: colors.subtext, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 4 },
   form: { gap: 24 },
   inputGroup: { gap: 8 },
-  label: { fontSize: 14, fontWeight: '600', color: '#18181b' },
-  inputError: { borderColor: "red", borderWidth: 1 },
-  errorText: { color: "red", fontSize: 12, marginTop: 4, marginLeft: 4 },
-  inputWrapper: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#e4e4e7', borderRadius: 8, backgroundColor: '#fafafa' },
+  label: { fontSize: 14, fontWeight: '600', color: colors.primary },
+  inputError: { borderColor: colors.danger, borderWidth: 1 },
+  errorText: { color: colors.danger, fontSize: 12, marginTop: 4, marginLeft: 4 },
+  inputWrapper: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 8, backgroundColor: colors.surface },
   inputIcon: { marginLeft: 12 },
-  input: { flex: 1, padding: 12, fontSize: 16, color: '#18181b' },
-  disabledInput: { backgroundColor: '#f4f4f5' },
+  input: { flex: 1, padding: 12, fontSize: 16, color: colors.primary },
+  disabledInput: { backgroundColor: colors.card },
   row: { flexDirection: 'row' },
-  disabledButton: { opacity: 0.5, backgroundColor: '#71717a' },
-  saveButton: { backgroundColor: '#18181b', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 8, gap: 8, marginTop: 12 },
-  saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  logoutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 8, gap: 8, marginTop: 8, borderWidth: 1, borderColor: '#fee2e2' },
-  logoutButtonText: { color: '#ef4444', fontSize: 16, fontWeight: '600' },
-  noData: { color: '#71717a', fontSize: 14, fontStyle: 'italic' },
-  detailsCard: { backgroundColor: '#fafafa', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#e4e4e7' },
+  disabledButton: { opacity: 0.5, backgroundColor: colors.subtext },
+  saveButton: { backgroundColor: colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 8, gap: 8, marginTop: 12 },
+  saveButtonText: { color: colors.primaryForeground, fontSize: 16, fontWeight: '600' },
+  logoutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 8, gap: 8, marginTop: 8, borderWidth: 1, borderColor: colors.dangerBorder },
+  logoutButtonText: { color: colors.danger, fontSize: 16, fontWeight: '600' },
+  noData: { color: colors.subtext, fontSize: 14, fontStyle: 'italic' },
+  detailsCard: { backgroundColor: colors.surface, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: colors.border },
   detailsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, marginBottom: 16 },
   detailItem: { flexDirection: 'row', alignItems: 'center', gap: 8, width: '45%' },
   detailContent: { flex: 1 },
-  detailLabel: { fontSize: 10, color: '#71717a', fontWeight: '600', textTransform: 'uppercase' },
-  detailValue: { fontSize: 14, color: '#18181b', fontWeight: '500' },
-  scheduleSection: { borderTopWidth: 1, borderTopColor: '#e4e4e7', paddingTop: 16 },
+  detailLabel: { fontSize: 10, color: colors.subtext, fontWeight: '600', textTransform: 'uppercase' },
+  detailValue: { fontSize: 14, color: colors.primary, fontWeight: '500' },
+  scheduleSection: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 16 },
   scheduleHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  scheduleTitle: { fontSize: 14, fontWeight: '600', color: '#18181b' },
-  scheduleTable: { backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#e4e4e7', overflow: 'hidden' },
-  tableHeader: { flexDirection: 'row', backgroundColor: '#f4f4f5', padding: 8, borderBottomWidth: 1, borderBottomColor: '#e4e4e7' },
-  tableHeaderText: { fontSize: 12, fontWeight: '700', color: '#71717a' },
-  tableRow: { flexDirection: 'row', padding: 8, borderBottomWidth: 1, borderBottomColor: '#f4f4f5' },
-  tableCell: { fontSize: 12, color: '#18181b' },
+  scheduleTitle: { fontSize: 14, fontWeight: '600', color: colors.primary },
+  scheduleTable: { backgroundColor: colors.surface, borderRadius: 8, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
+  tableHeader: { flexDirection: 'row', backgroundColor: colors.card, padding: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
+  tableHeaderText: { fontSize: 12, fontWeight: '700', color: colors.subtext },
+  tableRow: { flexDirection: 'row', padding: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
+  tableCell: { fontSize: 12, color: colors.primary },
+  preferenceCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  preferenceLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+    marginBottom: 12,
+  },
+  themeSelector: {
+    flexDirection: 'row',
+    backgroundColor: colors.card,
+    borderRadius: 8,
+    padding: 4,
+    gap: 4,
+  },
+  themeOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 6,
+    gap: 6,
+  },
+  themeOptionActive: {
+    backgroundColor: colors.primary,
+  },
+  themeText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.subtext,
+  },
+  themeTextActive: {
+    color: colors.primaryForeground,
+    fontWeight: '600',
+  },
 });

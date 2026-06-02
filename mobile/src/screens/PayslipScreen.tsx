@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl, TouchableOpacity, Modal, ScrollView } from 'react-native';
 import { DollarSign, Calendar, ChevronRight, X, Info, AlertCircle, CheckCircle2 } from 'lucide-react-native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -7,6 +7,7 @@ import { useNetworkStore } from '../store/useNetworkStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { formatDisplayDate } from '../lib/timeManager';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useThemeColors, ThemeColors } from '../hooks/useTheme';
 
 interface PayrollRecord {
   id: number;
@@ -40,6 +41,8 @@ export default function PayslipScreen() {
   const [modalVisible, setModalVisible] = useState(false);
 
   const { isConnected } = useNetworkStore();
+  const { colors, isDark } = useThemeColors();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   const fetchPayrolls = useCallback(async () => {
     if (!isConnected) {
@@ -105,7 +108,7 @@ export default function PayslipScreen() {
     <TouchableOpacity style={styles.card} onPress={() => handleOpenDetails(item)}>
       <View style={styles.cardHeader}>
         <View style={styles.dateContainer}>
-          <Calendar size={18} color="#71717a" />
+          <Calendar size={18} color={colors.subtext} />
           <Text style={styles.dateText}>{formatDate(item.start_date)}</Text>
         </View>
         <View style={[styles.statusBadge, 
@@ -136,17 +139,17 @@ export default function PayslipScreen() {
           </View>
           <View style={styles.summaryItem}>
             <Text style={styles.summaryLabel}>Additions</Text>
-            <Text style={[styles.summaryValue, { color: '#10b981' }]}>+${item.total_additions.toFixed(2)}</Text>
+            <Text style={[styles.summaryValue, { color: colors.success }]}>+${item.total_additions.toFixed(2)}</Text>
           </View>
           <View style={styles.summaryItem}>
             <Text style={styles.summaryLabel}>Deductions</Text>
-            <Text style={[styles.summaryValue, { color: '#ef4444' }]}>-${item.total_deductions.toFixed(2)}</Text>
+            <Text style={[styles.summaryValue, { color: colors.danger }]}>-${item.total_deductions.toFixed(2)}</Text>
           </View>
         </View>
       </View>
       <View style={styles.cardFooter}>
         <Text style={styles.footerText}>View detailed breakdown</Text>
-        <ChevronRight size={16} color="#a1a1aa" />
+        <ChevronRight size={16} color={colors.subtext} />
       </View>
     </TouchableOpacity>
   );
@@ -160,7 +163,7 @@ export default function PayslipScreen() {
 
       {loading && !refreshing ? (
         <View style={styles.center}>
-          <ActivityIndicator size="large" color="#18181b" />
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : (
         <FlatList
@@ -169,11 +172,16 @@ export default function PayslipScreen() {
           renderItem={renderPayrollItem}
           contentContainerStyle={styles.listContent}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#18181b" />
+            <RefreshControl 
+              refreshing={refreshing} 
+              onRefresh={onRefresh} 
+              tintColor={colors.primary} 
+              colors={[colors.primary]}
+            />
           }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <DollarSign size={48} color="#e4e4e7" style={{ marginBottom: 16 }} />
+              <DollarSign size={48} color={colors.border} style={{ marginBottom: 16 }} />
               <Text style={styles.emptyText}>No payroll records found yet.</Text>
             </View>
           }
@@ -191,7 +199,7 @@ export default function PayslipScreen() {
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <X size={24} color="#18181b" />
+                <X size={24} color={colors.primary} />
               </TouchableOpacity>
             </View>
 
@@ -204,11 +212,11 @@ export default function PayslipScreen() {
                   </View>
                   <View style={styles.mainSummaryRow}>
                     <Text style={styles.mainSummaryLabel}>Total Additions</Text>
-                    <Text style={[styles.mainSummaryValue, { color: '#10b981' }]}>+${selectedPayroll.total_additions.toFixed(2)}</Text>
+                    <Text style={[styles.mainSummaryValue, { color: colors.success }]}>+${selectedPayroll.total_additions.toFixed(2)}</Text>
                   </View>
                   <View style={styles.mainSummaryRow}>
                     <Text style={styles.mainSummaryLabel}>Total Deductions</Text>
-                    <Text style={[styles.mainSummaryValue, { color: '#ef4444' }]}>-${selectedPayroll.total_deductions.toFixed(2)}</Text>
+                    <Text style={[styles.mainSummaryValue, { color: colors.danger }]}>-${selectedPayroll.total_deductions.toFixed(2)}</Text>
                   </View>
                   <View style={[styles.divider, { marginVertical: 12 }]} />
                   <View style={styles.mainSummaryRow}>
@@ -220,7 +228,7 @@ export default function PayslipScreen() {
 
               <Text style={styles.sectionTitle}>Transaction History</Text>
               {loadingTransactions ? (
-                <ActivityIndicator color="#18181b" style={{ marginTop: 20 }} />
+                <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />
               ) : transactions.length === 0 ? (
                 <Text style={styles.emptyTransactions}>No specific additions or deductions for this period.</Text>
               ) : (
@@ -231,12 +239,12 @@ export default function PayslipScreen() {
                         <Text style={styles.txType}>{tx.type.replace(/_/g, ' ').toUpperCase()}</Text>
                         {tx.status === 'rejected' ? (
                           <View style={styles.rejectedBadge}>
-                            <AlertCircle size={10} color="#ef4444" />
+                            <AlertCircle size={10} color={colors.danger} />
                             <Text style={styles.rejectedBadgeText}>REJECTED</Text>
                           </View>
                         ) : (
                           <View style={styles.appliedBadge}>
-                            <CheckCircle2 size={10} color="#10b981" />
+                            <CheckCircle2 size={10} color={colors.success} />
                             <Text style={styles.appliedBadgeText}>APPLIED</Text>
                           </View>
                         )}
@@ -248,7 +256,7 @@ export default function PayslipScreen() {
                     
                     {tx.manager_notes && (
                       <View style={styles.notesContainer}>
-                        <Info size={14} color="#71717a" style={{ marginRight: 6 }} />
+                        <Info size={14} color={colors.subtext} style={{ marginRight: 6 }} />
                         <Text style={styles.notesText}>{tx.manager_notes}</Text>
                       </View>
                     )}
@@ -268,65 +276,86 @@ export default function PayslipScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f4f5', paddingTop: 60 },
+const createStyles = (colors: ThemeColors, isDark: boolean) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background, paddingTop: 60 },
   header: { paddingHorizontal: 20, marginBottom: 20 },
-  title: { fontSize: 32, fontWeight: 'bold', color: '#18181b', marginBottom: 4 },
-  subtitle: { fontSize: 16, color: '#71717a' },
+  title: { fontSize: 32, fontWeight: 'bold', color: colors.primary, marginBottom: 4 },
+  subtitle: { fontSize: 16, color: colors.subtext },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   listContent: { padding: 20 },
-  card: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+  card: { 
+    backgroundColor: colors.surface, 
+    borderRadius: 16, 
+    padding: 16, 
+    marginBottom: 16, 
+    shadowColor: colors.shadow, 
+    shadowOffset: { width: 0, height: 2 }, 
+    shadowOpacity: isDark ? 0.2 : 0.05, 
+    shadowRadius: 8, 
+    elevation: 2 
+  },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   dateContainer: { flexDirection: 'row', alignItems: 'center' },
-  dateText: { fontSize: 16, fontWeight: '600', color: '#18181b', marginLeft: 8 },
+  dateText: { fontSize: 16, fontWeight: '600', color: colors.primary, marginLeft: 8 },
   statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   statusText: { fontSize: 10, fontWeight: 'bold' },
-  draftBadge: { backgroundColor: '#fef9c3' },
-  draftText: { color: '#854d0e' },
-  finalizedBadge: { backgroundColor: '#dcfce7' },
-  finalizedText: { color: '#166534' },
-  paidBadge: { backgroundColor: '#dbeafe' },
-  paidText: { color: '#1e40af' },
+  draftBadge: { backgroundColor: colors.warningBg },
+  draftText: { color: colors.warning },
+  finalizedBadge: { backgroundColor: colors.successBg },
+  finalizedText: { color: colors.success },
+  paidBadge: { backgroundColor: colors.accentBg },
+  paidText: { color: colors.accent },
   cardBody: { marginBottom: 12 },
   amountRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 },
-  amountLabel: { fontSize: 14, color: '#71717a' },
-  netAmount: { fontSize: 24, fontWeight: 'bold', color: '#18181b' },
-  divider: { height: 1, backgroundColor: '#f4f4f5' },
+  amountLabel: { fontSize: 14, color: colors.subtext },
+  netAmount: { fontSize: 24, fontWeight: 'bold', color: colors.primary },
+  divider: { height: 1, backgroundColor: colors.border },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },
   summaryItem: { flex: 1 },
-  summaryLabel: { fontSize: 10, color: '#a1a1aa', textTransform: 'uppercase', marginBottom: 2 },
-  summaryValue: { fontSize: 14, fontWeight: '600', color: '#3f3f46' },
-  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#f4f4f5', paddingTop: 12 },
-  footerText: { fontSize: 12, color: '#a1a1aa' },
+  summaryLabel: { fontSize: 10, color: colors.subtext, textTransform: 'uppercase', marginBottom: 2 },
+  summaryValue: { fontSize: 14, fontWeight: '600', color: colors.primary },
+  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12 },
+  footerText: { fontSize: 12, color: colors.subtext },
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 100 },
-  emptyText: { fontSize: 16, color: '#a1a1aa' },
+  emptyText: { fontSize: 16, color: colors.subtext },
   modalContainer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, height: '85%', padding: 20 },
+  modalContent: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, height: '85%', padding: 20 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },
-  modalTitle: { fontSize: 24, fontWeight: 'bold', color: '#18181b' },
-  modalSubtitle: { fontSize: 14, color: '#71717a', marginTop: 4 },
+  modalTitle: { fontSize: 24, fontWeight: 'bold', color: colors.primary },
+  modalSubtitle: { fontSize: 14, color: colors.subtext, marginTop: 4 },
   modalBody: { flex: 1 },
-  mainSummary: { backgroundColor: '#f8fafc', borderRadius: 16, padding: 16, marginBottom: 24 },
+  mainSummary: { backgroundColor: colors.card, borderRadius: 16, padding: 16, marginBottom: 24 },
   mainSummaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  mainSummaryLabel: { fontSize: 14, color: '#64748b' },
-  mainSummaryValue: { fontSize: 14, fontWeight: '600', color: '#1e293b' },
-  netSalaryLabel: { fontSize: 16, fontWeight: 'bold', color: '#1e293b' },
-  netSalaryValue: { fontSize: 20, fontWeight: 'bold', color: '#1e293b' },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#18181b', marginBottom: 16 },
-  emptyTransactions: { fontSize: 14, color: '#a1a1aa', fontStyle: 'italic', textAlign: 'center', marginTop: 20 },
-  transactionCard: { backgroundColor: '#fff', borderLeftWidth: 4, borderLeftColor: '#10b981', padding: 12, borderRadius: 8, marginBottom: 12, borderTopWidth: 1, borderRightWidth: 1, borderBottomWidth: 1, borderColor: '#f1f5f9' },
-  rejectedTxCard: { borderLeftColor: '#ef4444', opacity: 0.8 },
+  mainSummaryLabel: { fontSize: 14, color: colors.subtext },
+  mainSummaryValue: { fontSize: 14, fontWeight: '600', color: colors.primary },
+  netSalaryLabel: { fontSize: 16, fontWeight: 'bold', color: colors.primary },
+  netSalaryValue: { fontSize: 20, fontWeight: 'bold', color: colors.primary },
+  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: colors.primary, marginBottom: 16 },
+  emptyTransactions: { fontSize: 14, color: colors.subtext, fontStyle: 'italic', textAlign: 'center', marginTop: 20 },
+  transactionCard: { 
+    backgroundColor: colors.surface, 
+    borderLeftWidth: 4, 
+    borderLeftColor: colors.success, 
+    padding: 12, 
+    borderRadius: 8, 
+    marginBottom: 12, 
+    borderTopWidth: 1, 
+    borderRightWidth: 1, 
+    borderBottomWidth: 1, 
+    borderColor: colors.border 
+  },
+  rejectedTxCard: { borderLeftColor: colors.danger, opacity: 0.8 },
   txHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   txTypeContainer: { flexDirection: 'row', alignItems: 'center' },
-  txType: { fontSize: 12, fontWeight: 'bold', color: '#475569' },
-  rejectedBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fee2e2', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: 8 },
-  rejectedBadgeText: { fontSize: 8, fontWeight: 'bold', color: '#b91c1c', marginLeft: 4 },
-  appliedBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#dcfce7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: 8 },
-  appliedBadgeText: { fontSize: 8, fontWeight: 'bold', color: '#15803d', marginLeft: 4 },
+  txType: { fontSize: 12, fontWeight: 'bold', color: colors.primary },
+  rejectedBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.dangerBg, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: 8 },
+  rejectedBadgeText: { fontSize: 8, fontWeight: 'bold', color: colors.danger, marginLeft: 4 },
+  appliedBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.successBg, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: 8 },
+  appliedBadgeText: { fontSize: 8, fontWeight: 'bold', color: colors.success, marginLeft: 4 },
   txAmount: { fontSize: 14, fontWeight: 'bold' },
-  positiveAmount: { color: '#10b981' },
-  negativeAmount: { color: '#ef4444' },
-  notesContainer: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#f8fafc', padding: 8, borderRadius: 6 },
-  notesText: { fontSize: 12, color: '#475569', flex: 1 },
-  noNotesText: { fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }
+  positiveAmount: { color: colors.success },
+  negativeAmount: { color: colors.danger },
+  notesContainer: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: colors.card, padding: 8, borderRadius: 6 },
+  notesText: { fontSize: 12, color: colors.subtext, flex: 1 },
+  noNotesText: { fontSize: 11, color: colors.subtext, fontStyle: 'italic' }
 });

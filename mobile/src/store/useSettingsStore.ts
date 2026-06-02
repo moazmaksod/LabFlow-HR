@@ -6,8 +6,10 @@ import api from '../lib/axios';
 interface SettingsState {
   settings: any | null;
   userTimezone: string | null;
+  theme: 'light' | 'dark' | 'system';
   fetchSettings: () => Promise<void>;
   setUserTimezone: (tz: string | null) => void;
+  setTheme: (theme: 'light' | 'dark' | 'system') => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -15,6 +17,7 @@ export const useSettingsStore = create<SettingsState>()(
     (set) => ({
       settings: null,
       userTimezone: null,
+      theme: 'system',
       fetchSettings: async () => {
         try {
           const response = await api.get('/settings');
@@ -24,6 +27,7 @@ export const useSettingsStore = create<SettingsState>()(
         }
       },
       setUserTimezone: (tz) => set({ userTimezone: tz }),
+      setTheme: (theme) => set({ theme }),
     }),
     {
       name: 'labflow-settings-state',

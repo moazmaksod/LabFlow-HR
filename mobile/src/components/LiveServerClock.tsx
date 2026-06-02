@@ -1,13 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Globe } from 'lucide-react-native';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getMobileNow, resolveTimezone, formatDisplayTime, formatDisplayDate, is12HourSystem } from '../lib/timeManager';
+import { useThemeColors } from '../hooks/useTheme';
 
 export default function LiveServerClock() {
   const userTimezone = useSettingsStore((state) => state.userTimezone);
   const serverTimeOffset = useNetworkStore((state) => state.serverTimeOffset); // just to trigger re-renders if it changes
+  const { colors } = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [displayTime, setDisplayTime] = useState("");
   const [displayDate, setDisplayDate] = useState("");
@@ -49,7 +52,7 @@ export default function LiveServerClock() {
     <View style={styles.container}>
       <View style={styles.innerContainer}>
         <View style={styles.timeRow}>
-          <Globe size={14} color="#71717a" style={styles.icon} />
+          <Globe size={14} color={colors.subtext} style={styles.icon} />
           <Text style={styles.text}>
             {displayTime} ({displayTimezone})
           </Text>
@@ -62,10 +65,10 @@ export default function LiveServerClock() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     paddingVertical: 8,
-    backgroundColor: "#f4f4f5",
+    backgroundColor: colors.card,
     borderRadius: 8,
     marginBottom: 16,
     alignItems: "center",
@@ -85,13 +88,13 @@ const styles = StyleSheet.create({
   },
   text: {
     fontSize: 13,
-    color: "#71717a",
+    color: colors.subtext,
     fontWeight: "500",
     fontVariant: ["tabular-nums"],
   },
   dateText: {
     fontSize: 11,
-    color: "#a1a1aa",
+    color: colors.subtext,
     marginTop: 2,
     fontWeight: "500",
   },
