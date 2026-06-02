@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from '@react-navigation/native';
-import { User, Camera, Save, LogOut, Mail, UserCircle, Lock, Info, DollarSign, Calendar, Clock, Shield, LayoutDashboard, MapPin, Landmark, HeartHandshake, Phone, FileText, Globe, Sun, Moon, Monitor } from 'lucide-react-native';
+import { User, Camera, Save, LogOut, Mail, UserCircle, Lock, Info, DollarSign, Calendar, Clock, Shield, LayoutDashboard, MapPin, Landmark, HeartHandshake, Phone, FileText, Globe, Sun, Moon, Monitor, ChevronDown, ChevronUp } from 'lucide-react-native';
 import { Picker } from '@react-native-picker/picker';
 import { simplifiedTimezones, formatDisplayTime, formatTimeOnlyToLocal, calculateTenure } from '../lib/timeManager';
 import api from '../lib/axios';
@@ -28,6 +28,7 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [scheduleExpanded, setScheduleExpanded] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
 
   const { isConnected } = useNetworkStore();
@@ -443,7 +444,7 @@ export default function ProfileScreen() {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Display Timezone</Text>
             <View style={[styles.inputWrapper, { paddingVertical: 0 }]}>
-              <Globe size={18} color={colors.subtext} style={[styles.inputIcon, { marginLeft: 16 }]} />
+              <Globe size={18} color={colors.subtext} style={styles.inputIcon} />
               <Controller
                 control={control}
                 name="display_timezone"
@@ -451,7 +452,7 @@ export default function ProfileScreen() {
                   <Picker
                     selectedValue={value || ''}
                     onValueChange={onChange}
-                    style={{ flex: 1, marginLeft: -8, color: colors.primary }}
+                    style={{ flex: 1, marginLeft: 0, color: colors.primary, backgroundColor: 'transparent' }}
                     dropdownIconColor={colors.primary}
                   >
                     <Picker.Item label={`Device Default (${Intl.DateTimeFormat().resolvedOptions().timeZone})`} value="" color={colors.primary} style={{ backgroundColor: colors.surface }} />
@@ -512,11 +513,22 @@ export default function ProfileScreen() {
             </View>
 
             <View style={styles.scheduleSection}>
-              <View style={styles.scheduleHeader}>
-                <LayoutDashboard size={16} color={colors.subtext} style={{ marginRight: 8 }} />
-                <Text style={styles.scheduleTitle}>Working Hours Schedule</Text>
-              </View>
-              {renderScheduleTable(userProfile?.weekly_schedule)}
+              <TouchableOpacity
+                style={[styles.scheduleHeader, { marginBottom: scheduleExpanded ? 12 : 0 }]}
+                onPress={() => setScheduleExpanded(!scheduleExpanded)}
+                activeOpacity={0.7}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <LayoutDashboard size={16} color={colors.subtext} style={{ marginRight: 8 }} />
+                  <Text style={styles.scheduleTitle}>Working Hours Schedule</Text>
+                </View>
+                {scheduleExpanded ? (
+                  <ChevronUp size={18} color={colors.subtext} />
+                ) : (
+                  <ChevronDown size={18} color={colors.subtext} />
+                )}
+              </TouchableOpacity>
+              {scheduleExpanded && renderScheduleTable(userProfile?.weekly_schedule)}
             </View>
           </View>
         </View>
@@ -590,7 +602,7 @@ const createStyles = (colors: ThemeColors, isDark: boolean) => StyleSheet.create
   detailLabel: { fontSize: 10, color: colors.subtext, fontWeight: '600', textTransform: 'uppercase' },
   detailValue: { fontSize: 14, color: colors.primary, fontWeight: '500' },
   scheduleSection: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 16 },
-  scheduleHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  scheduleHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   scheduleTitle: { fontSize: 14, fontWeight: '600', color: colors.primary },
   scheduleTable: { backgroundColor: colors.surface, borderRadius: 8, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
   tableHeader: { flexDirection: 'row', backgroundColor: colors.card, padding: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
