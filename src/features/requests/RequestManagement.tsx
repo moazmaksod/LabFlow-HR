@@ -504,7 +504,7 @@ export default function RequestManagement() {
                   <th className="px-6 py-3 font-medium w-10">
                     <input
                       type="checkbox"
-                      className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
+                      className="w-4 h-4 rounded-md border-border text-primary focus:ring-primary cursor-pointer transition-all"
                       checked={filteredRequests?.length > 0 && Array.from(selectedRequestIds).length === filteredRequests?.filter(req => req.status === 'pending').length && filteredRequests?.filter(req => req.status === 'pending').length > 0}
                       onChange={(e) => {
                         if (e.target.checked) {
@@ -522,21 +522,24 @@ export default function RequestManagement() {
                     />
                   </th>
                   <th className="px-6 py-3 font-medium">Employee</th>
+                  <th className="px-6 py-3 font-medium">Requested At</th>
                   <th className="px-6 py-3 font-medium">Type</th>
                   <th className="px-6 py-3 font-medium">Reason</th>
-                  <th className="px-6 py-3 font-medium">Requested At</th>
                   <th className="px-6 py-3 font-medium">Status</th>
-                  <th className="px-6 py-3 font-medium text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {filteredRequests?.map((req) => (
-                  <tr key={req.id} className="hover:bg-muted/50 transition-colors">
-                    <td className="px-6 py-4">
+                  <tr 
+                    key={req.id} 
+                    onClick={() => openModal(req)}
+                    className="hover:bg-muted/50 transition-colors cursor-pointer"
+                  >
+                    <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                       {req.status === 'pending' ? (
                         <input
                           type="checkbox"
-                          className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
+                          className="w-4 h-4 rounded-md border-border text-primary focus:ring-primary cursor-pointer transition-all"
                           checked={selectedRequestIds.has(req.id)}
                           onChange={(e) => {
                             const newSet = new Set(selectedRequestIds);
@@ -573,6 +576,7 @@ export default function RequestManagement() {
                         <div className="font-medium text-foreground">{req.user_name}</div>
                       </div>
                     </td>
+                    <td className="px-6 py-4 font-mono text-xs text-muted-foreground">{formatRequestedAt(req.created_at)}</td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                         req.type === 'permission_to_leave' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
@@ -587,7 +591,6 @@ export default function RequestManagement() {
                       </span>
                     </td>
                     <td className="px-6 py-4 max-w-xs truncate" title={req.reason}>{req.reason}</td>
-                    <td className="px-6 py-4 font-mono text-xs text-muted-foreground">{formatRequestedAt(req.created_at)}</td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                         req.status === 'approved' ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' :
@@ -597,23 +600,6 @@ export default function RequestManagement() {
                       }`}>
                         {req.status.toUpperCase()}
                       </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      {req.status === 'pending' ? (
-                        <button
-                          onClick={() => openModal(req)}
-                          className="px-3 py-1.5 bg-primary text-primary-foreground text-xs font-medium rounded-md hover:bg-primary/90 transition-colors flex items-center gap-1 ml-auto"
-                        >
-                          <FileText className="w-3 h-3" /> Review
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => openModal(req)}
-                          className="px-3 py-1.5 bg-muted text-muted-foreground text-xs font-medium rounded-md hover:bg-muted/80 transition-colors flex items-center gap-1 ml-auto"
-                        >
-                          View Details
-                        </button>
-                      )}
                     </td>
                   </tr>
                 ))}
