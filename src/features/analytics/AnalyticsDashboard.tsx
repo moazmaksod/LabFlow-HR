@@ -31,7 +31,7 @@ import {
   CartesianGrid
 } from 'recharts';
 import { formatStatusLabel } from '../../lib/utils';
-import { formatDisplayTime, formatDisplayDate, getWebNow } from '../../lib/timeManager';
+import { formatDisplayTime, formatDisplayDate, getWebNow, resolveTimezone } from '../../lib/timeManager';
 import { useAuthStore } from '../../store/useAuthStore';
 
 // Type definitions
@@ -125,7 +125,7 @@ const getManagerLocalDateStr = (daysAgo: number, tz: string) => {
 export default function AnalyticsDashboard() {
   const navigate = useNavigate();
   const user = useAuthStore(state => state.user);
-  const displayTimezone = user?.display_timezone || 'UTC';
+  const displayTimezone = resolveTimezone(user?.display_timezone);
 
   // React Queries leveraging global cache
   const { data: logs, isLoading: logsLoading } = useQuery<AttendanceLog[]>({
