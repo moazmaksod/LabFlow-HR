@@ -22,19 +22,13 @@ export default function DashboardHeader({ userProfile, logout }: DashboardHeader
   const settings = useSettingsStore((state) => state.settings);
   const companyName = settings?.company_name || 'LabFlow';
 
-  const logoUri = useMemo(() => {
-    if (!settings?.company_logo_url) return null;
-    if (settings.company_logo_url.startsWith('http')) return settings.company_logo_url;
-    return `${BASE_URL}${settings.company_logo_url}`;
-  }, [settings?.company_logo_url]);
-
   const userName = user?.name || 'Employee';
   const roleText = userProfile?.job_title || user?.role?.toUpperCase() || 'Staff';
 
   const avatarUri = userProfile?.profile_picture_url
     ? (userProfile.profile_picture_url.startsWith('http')
-        ? userProfile.profile_picture_url
-        : `${BASE_URL}${userProfile.profile_picture_url}`)
+      ? userProfile.profile_picture_url
+      : `${BASE_URL}${userProfile.profile_picture_url}`)
     : null;
 
   // Initials for avatar fallback
@@ -50,7 +44,7 @@ export default function DashboardHeader({ userProfile, logout }: DashboardHeader
   return (
     <View style={styles.outerContainer}>
       <View style={styles.brandRow}>
-        <Text style={styles.brandText}>{companyName}</Text>
+        <Text style={styles.brandText}>{companyName} Dashboard</Text>
       </View>
       <View style={styles.headerContainer}>
         <View style={styles.profileSection}>
