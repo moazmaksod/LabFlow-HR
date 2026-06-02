@@ -66,13 +66,14 @@ export const getRequests = (req: AuthRequest, res: Response): void => {
             });
 
             requests = db.prepare(`
-                SELECT r.*, u.name as user_name, a.date as attendance_date, a.check_in as original_check_in, a.check_out as original_check_out, 
+                SELECT r.*, u.name as user_name, p.profile_picture_url, a.date as attendance_date, a.check_in as original_check_in, a.check_out as original_check_out, 
                        a.shift_id as attendance_shift_id,
                        (SELECT COALESCE(SUM(r2.paid_minutes), 0) FROM requests r2 WHERE r2.attendance_id = a.id AND r2.status = 'approved' AND r2.type = 'overtime_approval') as approved_overtime_minutes,
                        si.start_time as interruption_start_time, si.end_time as interruption_end_time,
                        s.id as shift_instance_id, s.start_time as shift_start_time, s.end_time as shift_end_time, s.logical_date as shift_logical_date
                 FROM requests r
                 JOIN users u ON r.user_id = u.id
+                LEFT JOIN profiles p ON u.id = p.user_id
                 LEFT JOIN attendance a ON r.attendance_id = a.id
                 LEFT JOIN shift_instances s ON (
                     (a.shift_id IS NOT NULL AND a.shift_id = s.id AND a.shift_id NOT LIKE 'US_%')
@@ -97,13 +98,14 @@ export const getRequests = (req: AuthRequest, res: Response): void => {
             `).all();
         } else {
             requests = db.prepare(`
-                SELECT r.*, u.name as user_name, a.date as attendance_date, a.check_in as original_check_in, a.check_out as original_check_out, 
+                SELECT r.*, u.name as user_name, p.profile_picture_url, a.date as attendance_date, a.check_in as original_check_in, a.check_out as original_check_out, 
                        a.shift_id as attendance_shift_id,
                        (SELECT COALESCE(SUM(r2.paid_minutes), 0) FROM requests r2 WHERE r2.attendance_id = a.id AND r2.status = 'approved' AND r2.type = 'overtime_approval') as approved_overtime_minutes,
                        si.start_time as interruption_start_time, si.end_time as interruption_end_time,
                        s.id as shift_instance_id, s.start_time as shift_start_time, s.end_time as shift_end_time, s.logical_date as shift_logical_date
                 FROM requests r
                 JOIN users u ON r.user_id = u.id
+                LEFT JOIN profiles p ON u.id = p.user_id
                 LEFT JOIN attendance a ON r.attendance_id = a.id
                 LEFT JOIN shift_instances s ON (
                     (a.shift_id IS NOT NULL AND a.shift_id = s.id AND a.shift_id NOT LIKE 'US_%')

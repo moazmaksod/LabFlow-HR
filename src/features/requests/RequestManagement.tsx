@@ -8,6 +8,7 @@ import { CheckCircle, XCircle, Clock, FileText, X, AlertCircle, RefreshCw } from
 interface RequestLog {
   id: number;
   user_name: string;
+  profile_picture_url?: string | null;
   reason: string;
   type: string | null;
   requested_check_in: string | null;
@@ -537,7 +538,27 @@ export default function RequestManagement() {
                         <div className="w-4 h-4" />
                       )}
                     </td>
-                    <td className="px-6 py-4 font-medium">{req.user_name}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="relative w-8 h-8 shrink-0">
+                          {req.profile_picture_url ? (
+                            <img
+                              src={req.profile_picture_url.startsWith('http') ? req.profile_picture_url : `${window.location.origin}${req.profile_picture_url}`}
+                              alt={req.user_name}
+                              className="w-8 h-8 rounded-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none';
+                                (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                              }}
+                            />
+                          ) : null}
+                          <div className={`w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary text-xs uppercase ${req.profile_picture_url ? 'hidden' : ''}`}>
+                            {req.user_name.split(' ').map((n: string) => n[0]).join('')}
+                          </div>
+                        </div>
+                        <div className="font-medium text-foreground">{req.user_name}</div>
+                      </div>
+                    </td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                         req.type === 'permission_to_leave' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
