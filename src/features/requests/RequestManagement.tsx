@@ -579,12 +579,12 @@ export default function RequestManagement() {
                     <td className="px-6 py-4 font-mono text-xs text-muted-foreground">{formatRequestedAt(req.created_at)}</td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                        req.type === 'permission_to_leave' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
+                        req.type === 'permission_to_leave' ? 'bg-teal-100 text-teal-700 dark:bg-teal-500/20 dark:text-teal-400' :
                         req.type === 'overtime_approval' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' :
                         req.type === 'early_leave_approval' ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400' :
-                        req.type === 'shift_interruption_review' ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400' :
+                        req.type === 'shift_interruption_review' ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-400' :
                         req.type === 'late_in_approval' ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400' :
-                        req.type === 'attendance_correction' ? 'bg-teal-100 text-teal-700 dark:bg-teal-500/20 dark:text-teal-400' :
+                        req.type === 'attendance_correction' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
                         'bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-400'
                       }`}>
                         {req.type?.replace(/_/g, ' ') || 'Manual Clock'}

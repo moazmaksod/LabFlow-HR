@@ -9,7 +9,7 @@ This document serves as the single source of truth for all attendance statuses u
 | `early_out`   | Employee clocked out before the scheduled end time (minus grace period).                          | Orange   | Check-out < (Schedule End - Grace Period)                                                  |
 | `half_day`    | Employee worked significantly less than their scheduled hours (e.g., less than 50% of the shift). | Purple   | Total worked hours < (Scheduled Hours / 2)                                                 |
 | `absent`      | Employee did not clock in for their scheduled shift.                                              | Red      | No check-in record exists for a scheduled workday (typically flagged by a daily cron job). |
-| `unscheduled` | Employee clocked in on a day or time not defined in their weekly schedule.                        | Blue     | No matching shift found in the employee's weekly schedule for the clock-in time.           |
+| `unscheduled` | Employee clocked in on a day or time not defined in their weekly schedule.                        | Indigo   | No matching shift found in the employee's weekly schedule for the clock-in time.           |
 
 ## Enforcement
 

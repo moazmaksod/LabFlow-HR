@@ -744,7 +744,7 @@ export default function AttendanceLogs() {
                         <td className={`px-6 py-4 font-mono font-semibold ${
                           log.checkin_status === 'on_time' ? 'text-emerald-600 dark:text-emerald-400' :
                           log.checkin_status === 'late_in' ? 'text-amber-500 dark:text-amber-400' :
-                          log.checkin_status === 'unscheduled' ? 'text-blue-500 dark:text-blue-400' :
+                          log.checkin_status === 'unscheduled' ? 'text-indigo-500 dark:text-indigo-400' :
                           'text-foreground'
                         }`}>
                           {formatTime(log.check_in)}
@@ -753,7 +753,7 @@ export default function AttendanceLogs() {
                           log.check_out ? (
                             log.checkout_status === 'on_time' ? 'text-emerald-600 dark:text-emerald-400' :
                             log.checkout_status === 'early_out' ? 'text-orange-500 dark:text-orange-400' :
-                            log.checkout_status === 'unscheduled' ? 'text-blue-500 dark:text-blue-400' :
+                            log.checkout_status === 'unscheduled' ? 'text-indigo-500 dark:text-indigo-400' :
                             'text-foreground'
                           ) : 'text-muted-foreground'
                         }`}>
@@ -784,7 +784,7 @@ export default function AttendanceLogs() {
                             displayStatus === 'late_in' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400' :
                             displayStatus === 'early_out' ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400' :
                             displayStatus === 'incomplete' ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400' :
-                            displayStatus === 'unscheduled' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
+                            displayStatus === 'unscheduled' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-400' :
                             'bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-400'
                           }`}>
                             {formatStatusLabel(displayStatus)}
@@ -1489,7 +1489,7 @@ export default function AttendanceLogs() {
                       getDisplayStatus(selectedLog) === 'late_in' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400' :
                       getDisplayStatus(selectedLog) === 'early_out' ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400' :
                       getDisplayStatus(selectedLog) === 'incomplete' ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400' :
-                      getDisplayStatus(selectedLog) === 'unscheduled' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
+                      getDisplayStatus(selectedLog) === 'unscheduled' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-400' :
                       'bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-400'
                     }`}>
                       {formatStatusLabel(getDisplayStatus(selectedLog))}

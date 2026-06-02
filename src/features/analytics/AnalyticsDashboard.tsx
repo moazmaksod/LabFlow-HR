@@ -89,7 +89,7 @@ const STATUS_COLORS: Record<string, string> = {
   'late_in': '#f59e0b',      // Amber Yellow
   'early_out': '#f97316',     // Orange
   'incomplete': '#ef4444',    // Rose Red
-  'unscheduled': '#3b82f6',   // Blue
+  'unscheduled': '#6366f1',   // Indigo
   'default': '#6366f1'       // Indigo
 };
 
@@ -611,7 +611,7 @@ export default function AnalyticsDashboard() {
                             status === 'late_in' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400' :
                             status === 'early_out' ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400' :
                             status === 'incomplete' ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400' :
-                            status === 'unscheduled' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
+                            status === 'unscheduled' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-400' :
                             'bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-400'
                           }`}>
                             {formatStatusLabel(status)}

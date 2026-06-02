@@ -227,34 +227,34 @@ export default function RequestsScreen() {
     if (isDark) {
       switch (type) {
         case 'permission_to_leave':
-          return { text: '#60a5fa', bg: '#1e3a8a', border: '#1e40af' };
+          return { text: '#2dd4bf', bg: '#115e59', border: '#134e4a' }; // Teal
         case 'overtime_approval':
           return { text: '#c084fc', bg: '#3b0764', border: '#581c87' };
         case 'early_leave_approval':
           return { text: '#f97316', bg: '#431407', border: '#7c2d12' };
         case 'shift_interruption_review':
-          return { text: '#fbbf24', bg: '#451a03', border: '#78350f' };
+          return { text: '#22d3ee', bg: '#083344', border: '#155e75' }; // Cyan
         case 'late_in_approval':
           return { text: '#f43f5e', bg: '#4c0519', border: '#881337' };
         case 'attendance_correction':
-          return { text: '#2dd4bf', bg: '#115e59', border: '#134e4a' };
+          return { text: '#60a5fa', bg: '#1e3a8a', border: '#1e40af' }; // Blue
         default:
           return { text: colors.text, bg: colors.card, border: colors.border };
       }
     } else {
       switch (type) {
         case 'permission_to_leave':
-          return { text: '#1d4ed8', bg: '#dbeafe', border: '#bfdbfe' };
+          return { text: '#0f766e', bg: '#ccfbf1', border: '#99f6e4' }; // Teal
         case 'overtime_approval':
           return { text: '#7e22ce', bg: '#f3e8ff', border: '#e9d5ff' };
         case 'early_leave_approval':
           return { text: '#c2410c', bg: '#ffedd5', border: '#fed7aa' };
         case 'shift_interruption_review':
-          return { text: '#b45309', bg: '#fef3c7', border: '#fde68a' };
+          return { text: '#0891b2', bg: '#ecfeff', border: '#cffafe' }; // Cyan
         case 'late_in_approval':
           return { text: '#be123c', bg: '#ffe4e6', border: '#fecdd3' };
         case 'attendance_correction':
-          return { text: '#0f766e', bg: '#ccfbf1', border: '#99f6e4' };
+          return { text: '#1d4ed8', bg: '#dbeafe', border: '#bfdbfe' }; // Blue
         default: // manual_clock
           return { text: '#374151', bg: '#f3f4f6', border: '#e5e7eb' };
       }
