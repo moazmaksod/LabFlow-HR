@@ -63,13 +63,24 @@ export type ThemeColors = typeof colors.light;
 export function useThemeColors() {
   const systemScheme = useColorScheme();
   const themeSetting = useSettingsStore((state) => state.theme) || 'system';
+  const settings = useSettingsStore((state) => state.settings);
   
   const isDark = themeSetting === 'system' 
     ? systemScheme === 'dark' 
     : themeSetting === 'dark';
     
+  const baseColors = isDark ? colors.dark : colors.light;
+  const brandPrimary = settings?.brand_primary_color || (isDark ? '#818cf8' : '#4f46e5');
+  const accentBg = brandPrimary.startsWith('#') && brandPrimary.length === 7
+    ? `${brandPrimary}${isDark ? '20' : '15'}`
+    : (isDark ? '#1e1b4b' : '#eef2ff');
+    
   return {
-    colors: isDark ? colors.dark : colors.light,
+    colors: {
+      ...baseColors,
+      accent: brandPrimary,
+      accentBg: accentBg,
+    },
     isDark,
     theme: themeSetting,
   };

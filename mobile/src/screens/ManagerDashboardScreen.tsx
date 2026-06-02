@@ -6,6 +6,7 @@ import api from '../lib/axios';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { useThemeColors } from '../hooks/useTheme';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 export default function ManagerDashboardScreen() {
   const [loading, setLoading] = useState(true);
@@ -32,6 +33,7 @@ export default function ManagerDashboardScreen() {
     try {
       const response = await api.get('/attendance/stats');
       setStats(response.data);
+      useSettingsStore.getState().fetchSettings();
     } catch (error: any) {
       if (!error.isNetworkError) {
         console.error('Error fetching manager stats:', error);

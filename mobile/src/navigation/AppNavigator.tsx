@@ -29,7 +29,7 @@ function MainTabs() {
       id="MainTabs"
       screenOptions={{ 
         headerShown: false,
-        tabBarActiveTintColor: colors.primary,
+        tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.subtext,
         tabBarStyle: {
           paddingBottom: 8,

@@ -30,6 +30,31 @@ export const getSettings = (req: Request, res: Response): void => {
     }
 };
 
+export const getPublicSettings = (req: Request, res: Response): void => {
+    try {
+        let settings = getSettingsCache();
+        if (!settings) {
+            settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+            if (settings) {
+                setSettingsCache(settings);
+            }
+        }
+        if (!settings) {
+            res.status(404).json({ error: 'Settings not found' });
+            return;
+        }
+
+        res.json({
+            company_name: settings.company_name,
+            company_logo_url: settings.company_logo_url,
+            brand_primary_color: settings.brand_primary_color
+        });
+    } catch (error) {
+        logger.error('Error fetching public settings:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const uploadFavicon = (req: AuthRequest, res: Response): void => {
     try {
         if (!req.file) {

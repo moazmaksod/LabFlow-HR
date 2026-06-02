@@ -119,7 +119,8 @@ export default function DashboardScreen() {
       await Promise.all([
         fetchStatus(),
         fetchProfile(),
-        useNetworkStore.getState().syncServerTime()
+        useNetworkStore.getState().syncServerTime(),
+        useSettingsStore.getState().fetchSettings()
       ]);
       checkUnsyncedLogs();
     } catch (error) {
@@ -135,6 +136,7 @@ export default function DashboardScreen() {
       fetchStatus();
       fetchProfile();
       useNetworkStore.getState().syncServerTime();
+      useSettingsStore.getState().fetchSettings();
     }, [checkUnsyncedLogs, fetchStatus, fetchProfile])
   );
 

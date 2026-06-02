@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView } from 'react-native';
 import api from '../../lib/axios';
 import { useForm, Controller } from 'react-hook-form';
@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { EmployeeRegistrationSchema } from '../../../../shared/validations';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useThemeColors } from '../../hooks/useTheme';
+import { useSettingsStore } from '../../store/useSettingsStore';
 
 export default function RegisterScreen({ navigation }: any) {
   const [loading, setLoading] = useState(false);
@@ -13,6 +14,12 @@ export default function RegisterScreen({ navigation }: any) {
   const scrollViewRef = useRef<ScrollView>(null);
   const { colors } = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const settings = useSettingsStore((state) => state.settings);
+  const companyName = settings?.company_name || 'LabFlow';
+
+  useEffect(() => {
+    useSettingsStore.getState().fetchPublicSettings();
+  }, []);
 
   const {
     control,
@@ -68,7 +75,7 @@ export default function RegisterScreen({ navigation }: any) {
   return (
     <ScrollView ref={scrollViewRef} contentContainerStyle={styles.container}>
       <Text style={styles.title}>Create Account</Text>
-      <Text style={styles.subtitle}>Join LabFlow HR</Text>
+      <Text style={styles.subtitle}>Join {companyName} HR</Text>
 
       <View style={styles.form}>
         <View>
@@ -148,7 +155,7 @@ export default function RegisterScreen({ navigation }: any) {
                 onBlur={onBlur}
                 onChangeText={onChange}
                 value={value}
-                placeholder="employee@labflow.com"
+                placeholder={`employee@${companyName.toLowerCase().replace(/\s+/g, '')}.com`}
                 placeholderTextColor={colors.subtext}
                 keyboardType="email-address"
                 autoCapitalize="none"
@@ -222,11 +229,11 @@ const createStyles = (colors: any) => StyleSheet.create({
   errorText: { color: 'red', fontSize: 12, marginTop: 4 },
   genderContainer: { flexDirection: 'row', gap: 8 },
   genderButton: { flex: 1, paddingVertical: 12, paddingHorizontal: 4, borderRadius: 8, borderWidth: 1, borderColor: colors.border, alignItems: 'center', backgroundColor: colors.surface, minHeight: 50, justifyContent: 'center' },
-  genderButtonActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  genderButtonActive: { backgroundColor: colors.accent, borderColor: colors.accent },
   genderButtonText: { fontSize: 14, color: colors.text, fontWeight: '500' },
-  genderButtonTextActive: { color: colors.primaryForeground },
-  button: { backgroundColor: colors.primary, padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 8 },
-  buttonText: { color: colors.primaryForeground, fontSize: 16, fontWeight: '600' },
+  genderButtonTextActive: { color: '#ffffff' },
+  button: { backgroundColor: colors.accent, padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 8 },
+  buttonText: { color: '#ffffff', fontSize: 16, fontWeight: '600' },
   linkButton: { alignItems: 'center', marginTop: 16 },
   linkText: { color: colors.subtext, fontSize: 14 },
 });

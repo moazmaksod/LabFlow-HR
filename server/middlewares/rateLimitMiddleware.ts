@@ -21,6 +21,7 @@ interface RateLimitEntry {
 // Separate stores for different endpoints to allow fine-grained control
 const loginAttempts = new Map<string, RateLimitEntry>();
 const registerAttempts = new Map<string, RateLimitEntry>();
+const publicSettingsAttempts = new Map<string, RateLimitEntry>();
 
 // Cleanup interval: purge expired entries every 10 minutes to prevent memory leaks
 const rateLimiterInterval = setInterval(() => {
@@ -30,6 +31,9 @@ const rateLimiterInterval = setInterval(() => {
     }
     for (const [key, entry] of registerAttempts.entries()) {
         if (entry.resetAt < now) registerAttempts.delete(key);
+    }
+    for (const [key, entry] of publicSettingsAttempts.entries()) {
+        if (entry.resetAt < now) publicSettingsAttempts.delete(key);
     }
 }, 10 * 60 * 1000);
 rateLimiterInterval.unref();
@@ -101,4 +105,15 @@ export const registerRateLimiter = createRateLimiter(
     5,               // max 5 registrations
     60 * 60 * 1000,  // per 1-hour window
     'Too many registration attempts. Please try again later.'
+);
+
+/**
+ * 🔒 Public Settings rate limiter: 60 requests per minute per IP.
+ * Prevents server flooding and DoS of config retrieval.
+ */
+export const publicSettingsRateLimiter = createRateLimiter(
+    publicSettingsAttempts,
+    60,              // max 60 attempts
+    60 * 1000,       // per 1-minute window
+    'Too many settings requests. Please try again in a minute.'
 );

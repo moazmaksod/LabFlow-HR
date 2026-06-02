@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Image } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { Fingerprint } from 'lucide-react-native';
@@ -7,6 +7,7 @@ import api from '../../lib/axios';
 import { useAuthStore } from '../../store/useAuthStore';
 import { getUniqueDeviceId } from '../../utils/device';
 import { useThemeColors } from '../../hooks/useTheme';
+import { useSettingsStore } from '../../store/useSettingsStore';
 
 const BIOMETRIC_CREDENTIALS_KEY = 'biometric_credentials';
 
@@ -19,9 +20,20 @@ export default function LoginScreen({ navigation }: any) {
   const login = useAuthStore((state) => state.login);
   const { colors } = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const settings = useSettingsStore((state) => state.settings);
+  const companyName = settings?.company_name || 'LabFlow';
+
+  const logoUri = useMemo(() => {
+    if (!settings?.company_logo_url) return null;
+    if (settings.company_logo_url.startsWith('http')) return settings.company_logo_url;
+    const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://YOUR_LOCAL_IP:3000/api';
+    const SERVER_URL = API_URL.replace('/api', '');
+    return `${SERVER_URL}${settings.company_logo_url}`;
+  }, [settings?.company_logo_url]);
 
   useEffect(() => {
     checkBiometrics();
+    useSettingsStore.getState().fetchPublicSettings();
   }, []);
 
   const checkBiometrics = async () => {
@@ -97,8 +109,13 @@ export default function LoginScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Welcome Back</Text>
-      <Text style={styles.subtitle}>Sign in to LabFlow HR</Text>
+      <View style={styles.header}>
+        {logoUri ? (
+          <Image source={{ uri: logoUri }} style={styles.logo} resizeMode="contain" />
+        ) : null}
+        <Text style={styles.title}>Welcome Back</Text>
+        <Text style={styles.subtitle}>Sign in to {companyName} HR</Text>
+      </View>
 
       <View style={styles.form}>
         <Text style={styles.label}>Email Address</Text>
@@ -106,7 +123,7 @@ export default function LoginScreen({ navigation }: any) {
           style={styles.input}
           value={email}
           onChangeText={setEmail}
-          placeholder="employee@labflow.com"
+          placeholder={`employee@${companyName.toLowerCase().replace(/\s+/g, '')}.com`}
           placeholderTextColor={colors.subtext}
           keyboardType="email-address"
           autoCapitalize="none"
@@ -143,13 +160,15 @@ export default function LoginScreen({ navigation }: any) {
 
 const createStyles = (colors: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, padding: 24, justifyContent: 'center' },
-  title: { fontSize: 32, fontWeight: 'bold', color: colors.text, marginBottom: 8 },
-  subtitle: { fontSize: 16, color: colors.subtext, marginBottom: 32 },
+  header: { alignItems: 'center', marginBottom: 24 },
+  logo: { width: 220, height: 90, alignSelf: 'center', marginBottom: 16 },
+  title: { fontSize: 32, fontWeight: 'bold', color: colors.text, marginBottom: 8, textAlign: 'center' },
+  subtitle: { fontSize: 16, color: colors.subtext, marginBottom: 16, textAlign: 'center' },
   form: { gap: 16 },
   label: { fontSize: 14, fontWeight: '500', color: colors.text, marginBottom: -8 },
   input: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 12, fontSize: 16, backgroundColor: colors.surface, color: colors.text },
-  button: { backgroundColor: colors.primary, padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 8 },
-  buttonText: { color: colors.primaryForeground, fontSize: 16, fontWeight: '600' },
+  button: { backgroundColor: colors.accent, padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 8 },
+  buttonText: { color: '#ffffff', fontSize: 16, fontWeight: '600' },
   biometricButton: {
     flexDirection: 'row',
     alignItems: 'center',

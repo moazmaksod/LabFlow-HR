@@ -2,8 +2,9 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import crypto from 'crypto';
-import { getSettings, updateSettings, uploadLogo, uploadFavicon } from '../controllers/settingsController.js';
+import { getSettings, getPublicSettings, updateSettings, uploadLogo, uploadFavicon } from '../controllers/settingsController.js';
 import { authenticate, requireRole } from '../middlewares/authMiddleware.js';
+import { publicSettingsRateLimiter } from '../middlewares/rateLimitMiddleware.js';
 import fs from 'fs';
 
 const router = express.Router();
@@ -41,6 +42,9 @@ const upload = multer({
     limits: imageUploadLimits,
     fileFilter: imageFileFilter
 });
+
+// Get public settings (no authentication required, rate-limited)
+router.get('/public', publicSettingsRateLimiter, getPublicSettings);
 
 // Get settings (authenticated users can read)
 router.get('/', authenticate, getSettings);
