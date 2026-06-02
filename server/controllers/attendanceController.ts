@@ -574,9 +574,24 @@ export const getMyLogs = (req: AuthRequest, res: Response): void => {
         const userId = req.user!.id;
         evaluateUserAttendance(userId);
         const logs = db.prepare(`
-            SELECT * FROM attendance
-            WHERE user_id = ?
-            ORDER BY date DESC, check_in DESC
+            SELECT a.*, s.start_time as shift_start_time, s.end_time as shift_end_time, s.status as shift_status
+            FROM attendance a
+            LEFT JOIN shift_instances s ON (
+                (a.shift_id IS NOT NULL AND a.shift_id = s.id AND a.shift_id NOT LIKE 'US_%')
+                OR
+                (
+                    (a.shift_id IS NULL OR a.shift_id LIKE 'US_%') 
+                    AND s.id = (
+                        SELECT id FROM shift_instances 
+                        WHERE user_id = a.user_id 
+                          AND logical_date = a.date
+                          AND status != 'Cancelled'
+                        LIMIT 1
+                    )
+                )
+            )
+            WHERE a.user_id = ?
+            ORDER BY a.date DESC, a.check_in DESC
         `).all(userId) as any[];
 
         if (logs.length > 0) {
@@ -635,11 +650,26 @@ export const getAttendanceLogs = (req: Request, res: Response): void => {
         }
 
         const logs = db.prepare(`
-            SELECT a.*, u.name as user_name, j.title as job_title
+            SELECT a.*, u.name as user_name, j.title as job_title, p.profile_picture_url,
+                   s.start_time as shift_start_time, s.end_time as shift_end_time, s.status as shift_status
             FROM attendance a
             JOIN users u ON a.user_id = u.id
             LEFT JOIN profiles p ON u.id = p.user_id
             LEFT JOIN jobs j ON p.job_id = j.id
+            LEFT JOIN shift_instances s ON (
+                (a.shift_id IS NOT NULL AND a.shift_id = s.id AND a.shift_id NOT LIKE 'US_%')
+                OR
+                (
+                    (a.shift_id IS NULL OR a.shift_id LIKE 'US_%') 
+                    AND s.id = (
+                        SELECT id FROM shift_instances 
+                        WHERE user_id = a.user_id 
+                          AND logical_date = a.date
+                          AND status != 'Cancelled'
+                        LIMIT 1
+                    )
+                )
+            )
             ORDER BY a.date DESC, a.check_in DESC
         `).all() as any[];
 
