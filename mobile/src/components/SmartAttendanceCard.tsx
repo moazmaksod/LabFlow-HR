@@ -445,7 +445,7 @@ export default function SmartAttendanceCard({
             {/* Stats Row */}
             <View style={styles.statsRow}>
               <View style={styles.statBox}>
-                <View style={[styles.statDot, { backgroundColor: isTimelineScheduled ? colors.success : colors.accent }]} />
+                <View style={[styles.statDot, { backgroundColor: isTimelineScheduled ? colors.success : colors.unscheduled }]} />
                 <View>
                   <Text style={styles.statLabel}>{isTimelineScheduled ? 'Worked' : 'Overtime'}</Text>
                   <Text style={styles.statValue}>{formatDuration(Math.floor(workedMins))}</Text>
@@ -655,7 +655,7 @@ const createStyles = (colors: any) => StyleSheet.create({
     backgroundColor: colors.successBg,
   },
   badgeUnscheduled: {
-    backgroundColor: colors.accentBg,
+    backgroundColor: colors.unscheduledBg,
   },
   shiftInfoBadgeText: {
     fontSize: 10,
@@ -666,7 +666,7 @@ const createStyles = (colors: any) => StyleSheet.create({
     color: colors.success,
   },
   badgeTextUnscheduled: {
-    color: colors.accent,
+    color: colors.unscheduled,
   },
   shiftInfoValue: {
     fontSize: 15,
@@ -727,7 +727,7 @@ const createStyles = (colors: any) => StyleSheet.create({
     backgroundColor: colors.timelineRemaining,
   },
   segmentOvertime: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.unscheduled,
   },
   segmentNone: {
     backgroundColor: colors.timelineNone,

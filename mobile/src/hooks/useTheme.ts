@@ -28,6 +28,8 @@ export const colors = {
     timelineTrackBg: '#f1f5f9',
     timelineMarker: '#cbd5e1',
     shadow: '#000000',
+    unscheduled: '#4f46e5',
+    unscheduledBg: '#eef2ff',
   },
   dark: {
     background: '#09090b',
@@ -55,6 +57,8 @@ export const colors = {
     timelineTrackBg: '#27272a',
     timelineMarker: '#52525b',
     shadow: '#000000',
+    unscheduled: '#818cf8',
+    unscheduledBg: '#1e1b4b',
   }
 };
 

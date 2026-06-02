@@ -288,14 +288,14 @@ export default function HistoryScreen() {
                 color={
                   item.checkin_status === 'on_time' ? colors.success :
                   item.checkin_status === 'late_in' ? colors.warning :
-                  item.checkin_status === 'unscheduled' ? colors.accent :
+                  item.checkin_status === 'unscheduled' ? colors.unscheduled :
                   colors.success
                 } 
               />
               <Text style={[styles.timeValue, 
                 item.checkin_status === 'on_time' ? { color: colors.success } : 
                 item.checkin_status === 'late_in' ? { color: colors.warning } : 
-                item.checkin_status === 'unscheduled' ? { color: colors.accent } : 
+                item.checkin_status === 'unscheduled' ? { color: colors.unscheduled } : 
                 styles.timeValue
               ]}>
                 {formatTime(item.check_in)}
@@ -312,7 +312,7 @@ export default function HistoryScreen() {
                   item.check_out ? (
                     item.checkout_status === 'on_time' ? colors.success :
                     item.checkout_status === 'early_out' ? colors.warning : 
-                    item.checkout_status === 'unscheduled' ? colors.accent :
+                    item.checkout_status === 'unscheduled' ? colors.unscheduled :
                     colors.warning
                   ) : colors.subtext
                 } 
@@ -321,7 +321,7 @@ export default function HistoryScreen() {
                 item.check_out ? (
                   item.checkout_status === 'on_time' ? { color: colors.success } :
                   item.checkout_status === 'early_out' ? { color: colors.warning } :
-                  item.checkout_status === 'unscheduled' ? { color: colors.accent } :
+                  item.checkout_status === 'unscheduled' ? { color: colors.unscheduled } :
                   styles.timeValue
                 ) : { color: colors.subtext }
               ]}>
@@ -673,7 +673,7 @@ const createStyles = (colors: any) => StyleSheet.create({
   lateInBadge: { backgroundColor: colors.warningBg },
   earlyOutBadge: { backgroundColor: colors.warningBg },
   halfDayBadge: { backgroundColor: colors.accentBg },
-  unscheduledBadge: { backgroundColor: colors.accentBg },
+  unscheduledBadge: { backgroundColor: colors.unscheduledBg },
   absentBadge: { backgroundColor: colors.dangerBg },
   incompleteBadge: { backgroundColor: colors.dangerBg },
   incompleteText: { color: colors.danger },
@@ -688,7 +688,7 @@ const createStyles = (colors: any) => StyleSheet.create({
   lateInText: { color: colors.warning },
   earlyOutText: { color: colors.warning },
   halfDayText: { color: colors.accent },
-  unscheduledText: { color: colors.accent },
+  unscheduledText: { color: colors.unscheduled },
   absentText: { color: colors.danger },
   logBody: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
   timeColumn: { flex: 1 },
@@ -711,7 +711,7 @@ const createStyles = (colors: any) => StyleSheet.create({
   extraInfoContainer: { marginTop: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border, gap: 6 },
   overtimeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   overtimeText: { fontSize: 12, color: colors.subtext },
-  overtimeValue: { fontWeight: '600', color: colors.accent },
+  overtimeValue: { fontWeight: '600', color: colors.unscheduled },
   noteRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
   noteText: { fontSize: 12, color: colors.subtext, flex: 1 },
   noteValue: { fontStyle: 'italic', color: colors.text },
