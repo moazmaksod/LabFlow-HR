@@ -64,6 +64,10 @@ export default function RequestManagement() {
   const [bulkManagerNote, setBulkManagerNote] = useState('');
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [isBulkRejecting, setIsBulkRejecting] = useState(false);
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [bulkActionType, setBulkActionType] = useState<'approve' | 'reject' | null>(null);
+  const [bulkPenalties, setBulkPenalties] = useState<Record<number, { apply: boolean; duration: string }>>({});
+  const [bulkModalError, setBulkModalError] = useState<string | null>(null);
 
   const formatToHHMM = (isoString: string | null | undefined) => {
     if (!isoString) return '--:--';
@@ -232,15 +236,18 @@ export default function RequestManagement() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         closeModal();
+        setShowBulkModal(false);
+        setBulkActionType(null);
+        setBulkModalError(null);
       }
     };
-    if (selectedRequest) {
+    if (selectedRequest || showBulkModal) {
       window.addEventListener('keydown', handleKeyDown);
     }
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [selectedRequest]);
+  }, [selectedRequest, showBulkModal]);
 
   const handleApproveClick = () => {
     if (!selectedRequest) return;
@@ -305,54 +312,27 @@ export default function RequestManagement() {
     });
   };
 
-  const handleBulkApprove = async () => {
+  const handleBulkActionClick = (actionType: 'approve' | 'reject') => {
     if (selectedRequestIds.size === 0) return;
     if (!bulkManagerNote.trim()) {
-      setBulkError("A manager note is mandatory to approve these requests.");
+      setBulkError(`A manager note is mandatory to ${actionType} these requests.`);
       return;
     }
     setBulkError(null);
-    for (const id of Array.from(selectedRequestIds)) {
+    setBulkModalError(null);
+
+    // Initialize bulk penalties for eligible requests
+    const initialPenalties: Record<number, { apply: boolean; duration: string }> = {};
+    selectedRequestIds.forEach(id => {
       const req = requests?.find(r => r.id === id);
-      let payload: any = { id: id as number, status: 'approved', manager_note: bulkManagerNote };
-
-      if (req?.type === 'overtime_approval') {
-        payload.approved_minutes = req.value || 0;
-      } else if (req?.type === 'early_leave_approval' || req?.type === 'attendance_correction') {
-        const missing = req.value || 0;
-        if (missing > 0) {
-            payload.paid_minutes = missing;
-        }
-      } else if (req?.type === 'permission_to_leave' || req?.type === 'shift_interruption_review') {
-        const duration = req.value || getDurationMins(req.interruption_start_time, req.interruption_end_time);
-        payload.paid_minutes = duration;
-      } else if (req?.type === 'late_in_approval') {
-        let missing = req.value || 0;
-        if (!missing && req.original_check_in && req.shift_start_time) {
-          missing = getDurationMins(req.shift_start_time, req.original_check_in);
-        }
-        payload.paid_minutes = missing;
+      if (req && ['permission_to_leave', 'shift_interruption_review', 'early_leave_approval', 'late_in_approval'].includes(req.type || '')) {
+        initialPenalties[id] = { apply: false, duration: '00:00' };
       }
-      await updateStatusMutation.mutateAsync(payload);
-    }
-    setSelectedRequestIds(new Set());
-    setBulkManagerNote('');
-  };
+    });
 
-  const handleBulkReject = async () => {
-    if (selectedRequestIds.size === 0) return;
-    if (!bulkManagerNote.trim()) {
-      setBulkError("A manager note is mandatory to reject these requests.");
-      return;
-    }
-    setBulkError(null);
-    for (const id of Array.from(selectedRequestIds)) {
-      let payload: any = { id: id as number, status: 'rejected', manager_note: bulkManagerNote };
-      await updateStatusMutation.mutateAsync(payload);
-    }
-    setSelectedRequestIds(new Set());
-    setBulkManagerNote('');
-    setIsBulkRejecting(false);
+    setBulkPenalties(initialPenalties);
+    setBulkActionType(actionType);
+    setShowBulkModal(true);
   };
 
 
@@ -380,39 +360,18 @@ export default function RequestManagement() {
               {bulkError && <p className="text-xs text-destructive mt-1 font-medium">{bulkError}</p>}
             </div>
             <div className="flex items-center gap-2 shrink-0 pt-6 md:pt-0">
-              {!isBulkRejecting ? (
-                <>
-                  <button
-                    onClick={() => setIsBulkRejecting(true)}
-                    className="px-4 py-2 bg-destructive/10 text-destructive text-sm font-medium rounded-lg hover:bg-destructive/20 transition-colors"
-                  >
-                    Reject Selected ({selectedRequestIds.size})
-                  </button>
-                  <button
-                    onClick={handleBulkApprove}
-                    disabled={updateStatusMutation.isPending}
-                    className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
-                  >
-                    Approve Selected ({selectedRequestIds.size})
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    onClick={() => setIsBulkRejecting(false)}
-                    className="px-4 py-2 bg-muted text-muted-foreground text-sm font-medium rounded-lg hover:bg-muted/80 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleBulkReject}
-                    disabled={updateStatusMutation.isPending}
-                    className="px-4 py-2 bg-destructive text-white text-sm font-medium rounded-lg hover:bg-destructive/90 transition-colors disabled:opacity-50"
-                  >
-                    Confirm Reject ({selectedRequestIds.size})
-                  </button>
-                </>
-              )}
+              <button
+                onClick={() => handleBulkActionClick('reject')}
+                className="px-4 py-2 bg-destructive/10 text-destructive text-sm font-medium rounded-lg hover:bg-destructive/20 transition-colors"
+              >
+                Reject Selected ({selectedRequestIds.size})
+              </button>
+              <button
+                onClick={() => handleBulkActionClick('approve')}
+                className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors"
+              >
+                Approve Selected ({selectedRequestIds.size})
+              </button>
             </div>
           </div>
         )}
@@ -1245,6 +1204,352 @@ export default function RequestManagement() {
                 )}
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {showBulkModal && bulkActionType && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-card w-full max-w-2xl rounded-xl shadow-2xl border border-border overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-4 border-b border-border flex justify-between items-center bg-muted/30">
+              <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
+                {bulkActionType === 'approve' ? (
+                  <CheckCircle className="w-5 h-5 text-emerald-500" />
+                ) : (
+                  <XCircle className="w-5 h-5 text-rose-500" />
+                )}
+                Bulk Action Preview & Confirmation ({selectedRequestIds.size} Requests)
+              </h3>
+              <button 
+                onClick={() => {
+                  setShowBulkModal(false);
+                  setBulkActionType(null);
+                  setBulkModalError(null);
+                }} 
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+              {/* Overall Summary Card */}
+              <div className="bg-muted/30 border border-border rounded-xl p-4 space-y-2">
+                <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                  Summary of Action: {bulkActionType === 'approve' ? 'Approve' : 'Reject'}
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-1">
+                  <div>
+                    <span className="text-[10px] text-muted-foreground block">Total Requests</span>
+                    <span className="text-lg font-black text-foreground">{selectedRequestIds.size}</span>
+                  </div>
+                  {bulkActionType === 'approve' ? (
+                    <div>
+                      <span className="text-[10px] text-muted-foreground block">Total Paid Duration</span>
+                      <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">
+                        {(() => {
+                          let totalMinutes = 0;
+                          selectedRequestIds.forEach(id => {
+                            const req = requests?.find(r => r.id === id);
+                            if (req) {
+                              if (req.type === 'overtime_approval') {
+                                totalMinutes += req.value || 0;
+                              } else if (req.type === 'early_leave_approval' || req.type === 'attendance_correction') {
+                                totalMinutes += req.value || 0;
+                              } else if (req.type === 'permission_to_leave' || req.type === 'shift_interruption_review') {
+                                totalMinutes += req.value || getDurationMins(req.interruption_start_time, req.interruption_end_time);
+                              } else if (req.type === 'late_in_approval') {
+                                let missing = req.value || 0;
+                                if (!missing && req.original_check_in && req.shift_start_time) {
+                                  missing = getDurationMins(req.shift_start_time, req.original_check_in);
+                                }
+                                totalMinutes += missing;
+                              }
+                            }
+                          });
+                          return formatDuration(totalMinutes);
+                        })()}
+                      </span>
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        <span className="text-[10px] text-muted-foreground block">Total Unpaid Absence</span>
+                        <span className="text-lg font-black text-rose-600 dark:text-rose-400">
+                          {(() => {
+                            let totalMinutes = 0;
+                            selectedRequestIds.forEach(id => {
+                              const req = requests?.find(r => r.id === id);
+                              if (req) {
+                                totalMinutes += getUnapprovedAbsenceDurationMinutes(req);
+                              }
+                            });
+                            return formatDuration(totalMinutes);
+                          })()}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-muted-foreground block">Total Penalty Deductions</span>
+                        <span className="text-lg font-black text-amber-600 dark:text-amber-400">
+                          {(() => {
+                            let totalMins = 0;
+                            selectedRequestIds.forEach(id => {
+                              const penalty = bulkPenalties[id];
+                              if (penalty?.apply) {
+                                totalMins += parseHHMMToMinutes(penalty.duration);
+                              }
+                            });
+                            return formatDuration(totalMins);
+                          })()}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Selected Requests List */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                  Affected Requests
+                </h4>
+                <div className="space-y-3 max-h-[30vh] overflow-y-auto pr-2 border border-border rounded-xl p-3 bg-muted/10 divide-y divide-border/50">
+                  {Array.from(selectedRequestIds).map((id, index) => {
+                    const req = requests?.find(r => r.id === id);
+                    if (!req) return null;
+                    const isPenaltyEligible = ['permission_to_leave', 'shift_interruption_review', 'early_leave_approval', 'late_in_approval'].includes(req.type || '');
+                    return (
+                      <div key={req.id} className={`py-3 ${index === 0 ? 'pt-0' : ''} space-y-2`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="relative w-8 h-8 shrink-0">
+                              {req.profile_picture_url ? (
+                                <img
+                                  src={req.profile_picture_url.startsWith('http') ? req.profile_picture_url : `${window.location.origin}${req.profile_picture_url}`}
+                                  alt={req.user_name}
+                                  className="w-8 h-8 rounded-full object-cover"
+                                />
+                              ) : null}
+                              <div className={`w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary text-xs uppercase ${req.profile_picture_url ? 'hidden' : ''}`}>
+                                {req.user_name.split(' ').map((n: string) => n[0]).join('')}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="font-bold text-sm text-foreground">{req.user_name}</div>
+                              <div className="text-[10px] text-muted-foreground">
+                                Reason: <span className="italic">"{req.reason}"</span>
+                              </div>
+                            </div>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            req.type === 'permission_to_leave' ? 'bg-teal-100 text-teal-700 dark:bg-teal-500/20 dark:text-teal-400' :
+                            req.type === 'overtime_approval' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' :
+                            req.type === 'early_leave_approval' ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400' :
+                            req.type === 'shift_interruption_review' ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-400' :
+                            req.type === 'late_in_approval' ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400' :
+                            req.type === 'attendance_correction' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
+                            'bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-400'
+                          }`}>
+                            {req.type?.replace(/_/g, ' ') || 'Manual Clock'}
+                          </span>
+                        </div>
+
+                        {/* Impact Details per Request */}
+                        <div className="pl-11 text-xs">
+                          {bulkActionType === 'approve' ? (
+                            req.type === 'attendance_correction' ? (
+                              <div className="text-muted-foreground flex gap-4">
+                                <div>Proposed Clock: <span className="font-mono font-semibold">{formatTime(req.requested_check_in || null)} - {formatTime(req.requested_check_out || null)}</span></div>
+                                <div>Duration: <span className="font-mono font-semibold">{formatDuration(getDurationMins(req.requested_check_in, req.requested_check_out))}</span></div>
+                              </div>
+                            ) : (
+                              <div className="text-muted-foreground">
+                                Paid Credit Duration: <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{(() => {
+                                  if (req.type === 'overtime_approval') {
+                                    return formatDuration(req.value || 0);
+                                  } else if (req.type === 'early_leave_approval' || req.type === 'attendance_correction') {
+                                    return formatDuration(req.value || 0);
+                                  } else if (req.type === 'permission_to_leave' || req.type === 'shift_interruption_review') {
+                                    return formatDuration(req.value || getDurationMins(req.interruption_start_time, req.interruption_end_time));
+                                  } else if (req.type === 'late_in_approval') {
+                                    let missing = req.value || 0;
+                                    if (!missing && req.original_check_in && req.shift_start_time) {
+                                      missing = getDurationMins(req.shift_start_time, req.original_check_in);
+                                    }
+                                    return formatDuration(missing);
+                                  }
+                                  return '00:00';
+                                })()}</span>
+                              </div>
+                            )
+                          ) : (
+                            <div className="space-y-2">
+                              <div className="text-muted-foreground">
+                                Unpaid Absence Duration: <span className="font-mono font-semibold">{formatDuration(getUnapprovedAbsenceDurationMinutes(req))}</span>
+                              </div>
+                              {isPenaltyEligible && (
+                                <div className="bg-destructive/5 p-3 rounded-lg border border-destructive/10 space-y-2">
+                                  <label className="flex items-center gap-2 cursor-pointer select-none font-medium text-destructive">
+                                    <input
+                                      type="checkbox"
+                                      checked={bulkPenalties[req.id]?.apply || false}
+                                      onChange={(e) => {
+                                        setBulkPenalties(prev => ({
+                                          ...prev,
+                                          [req.id]: {
+                                            apply: e.target.checked,
+                                            duration: prev[req.id]?.duration || '00:00'
+                                          }
+                                        }));
+                                      }}
+                                      className="w-3.5 h-3.5 rounded border-destructive/30 text-destructive focus:ring-destructive/20 bg-background"
+                                    />
+                                    <span>Apply Extra Disciplinary Penalty?</span>
+                                  </label>
+                                  {bulkPenalties[req.id]?.apply && (
+                                    <div className="flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
+                                      <span className="text-[11px] text-muted-foreground">Duration (HH:MM):</span>
+                                      <input
+                                        type="text"
+                                        value={bulkPenalties[req.id]?.duration || '00:00'}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          setBulkPenalties(prev => ({
+                                            ...prev,
+                                            [req.id]: {
+                                              ...prev[req.id],
+                                              duration: val
+                                            }
+                                          }));
+                                        }}
+                                        placeholder="01:00"
+                                        className="w-20 px-2 py-1 bg-background border border-destructive/30 rounded focus:ring-1 focus:ring-destructive/20 outline-none font-mono text-xs text-destructive"
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Manager Note Justification inside Modal */}
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-foreground">Manager Justification Note <span className="text-destructive">*</span></label>
+                <textarea
+                  value={bulkManagerNote}
+                  onChange={(e) => {
+                    setBulkManagerNote(e.target.value);
+                    if (e.target.value.trim()) setBulkModalError(null);
+                  }}
+                  placeholder="Explain the reason for this bulk decision..."
+                  className={`w-full px-3 py-2 bg-amber-50/30 dark:bg-amber-500/5 border-2 rounded-xl min-h-[80px] focus:ring-4 focus:ring-primary/10 outline-none resize-none transition-all ${
+                    bulkModalError && !bulkManagerNote.trim() ? 'border-destructive' : 'border-amber-200 dark:border-amber-500/20'
+                  }`}
+                />
+              </div>
+
+              {bulkModalError && (
+                <div className="p-3 bg-destructive/10 border border-destructive/20 text-destructive rounded-xl text-xs font-bold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  {bulkModalError}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-border bg-muted/30 flex gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setShowBulkModal(false);
+                  setBulkActionType(null);
+                  setBulkModalError(null);
+                }}
+                className="px-4 py-2 bg-muted text-muted-foreground font-bold rounded-xl hover:bg-muted/80 transition-all border border-border text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  // Validate manager note
+                  if (!bulkManagerNote.trim()) {
+                    setBulkModalError("A manager justification note is mandatory for this bulk action.");
+                    return;
+                  }
+
+                  // If rejecting, validate formats of any checked penalties
+                  if (bulkActionType === 'reject') {
+                    for (const id of Array.from(selectedRequestIds)) {
+                      const penalty = bulkPenalties[id];
+                      if (penalty?.apply) {
+                        if (!/^\d+:[0-5]\d$/.test(penalty.duration)) {
+                          const req = requests?.find(r => r.id === id);
+                          setBulkModalError(`Penalty duration for ${req?.user_name || 'request'} must be in HH:MM format (e.g., 01:00).`);
+                          return;
+                        }
+                      }
+                    }
+                  }
+
+                  setBulkModalError(null);
+
+                  // Execute status updates
+                  try {
+                    for (const id of Array.from(selectedRequestIds)) {
+                      const req = requests?.find(r => r.id === id);
+                      let payload: any = { id: id as number, manager_note: bulkManagerNote };
+
+                      if (bulkActionType === 'approve') {
+                        payload.status = 'approved';
+                        if (req?.type === 'overtime_approval') {
+                          payload.approved_minutes = req.value || 0;
+                        } else if (req?.type === 'early_leave_approval' || req?.type === 'attendance_correction') {
+                          const missing = req.value || 0;
+                          if (missing > 0) {
+                              payload.paid_minutes = missing;
+                          }
+                        } else if (req?.type === 'permission_to_leave' || req?.type === 'shift_interruption_review') {
+                          const duration = req.value || getDurationMins(req.interruption_start_time, req.interruption_end_time);
+                          payload.paid_minutes = duration;
+                        } else if (req?.type === 'late_in_approval') {
+                          let missing = req.value || 0;
+                          if (!missing && req.original_check_in && req.shift_start_time) {
+                            missing = getDurationMins(req.shift_start_time, req.original_check_in);
+                          }
+                          payload.paid_minutes = missing;
+                        }
+                      } else {
+                        payload.status = 'rejected';
+                        const penalty = bulkPenalties[id];
+                        payload.penalty_minutes = penalty?.apply ? parseHHMMToMinutes(penalty.duration) : 0;
+                      }
+
+                      await updateStatusMutation.mutateAsync(payload);
+                    }
+
+                    // Success cleanup
+                    setSelectedRequestIds(new Set());
+                    setBulkManagerNote('');
+                    setShowBulkModal(false);
+                    setBulkActionType(null);
+                  } catch (err: any) {
+                    setBulkModalError(err?.message || "Failed to update status for some requests.");
+                  }
+                }}
+                disabled={updateStatusMutation.isPending}
+                className={`px-6 py-2 text-white font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 text-sm ${
+                  bulkActionType === 'approve' 
+                    ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/20' 
+                    : 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/20'
+                }`}
+              >
+                <CheckCircle className="w-4 h-4" /> Confirm & Submit
+              </button>
+            </div>
           </div>
         </div>
       )}
