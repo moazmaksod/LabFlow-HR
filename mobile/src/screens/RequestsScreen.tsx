@@ -495,7 +495,7 @@ export default function RequestsScreen() {
             </Text>
             {item.penalty_minutes !== undefined && item.penalty_minutes > 0 && (
               <Text style={[styles.outcomeText, { color: '#b91c1c', marginTop: 4, fontWeight: '600' }]}>
-                Disciplinary penalty applied: {(item.penalty_minutes / 60).toFixed(1)} Hours
+                Disciplinary penalty applied: {formatDuration(item.penalty_minutes)}
               </Text>
             )}
           </View>

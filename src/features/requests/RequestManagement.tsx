@@ -1085,10 +1085,10 @@ export default function RequestManagement() {
                                 <span className="font-mono font-medium">{formatDuration(parsedDetails.paid_permission_minutes)}</span>
                               </div>
                             )}
-                            {selectedRequest.status === 'rejected' && parsedDetails.penalty_hours !== undefined && parsedDetails.penalty_hours > 0 && (
+                            {selectedRequest.status === 'rejected' && selectedRequest.penalty_minutes !== undefined && selectedRequest.penalty_minutes > 0 && (
                               <div className="flex justify-between text-destructive">
                                 <span className="text-xs">Disciplinary Penalty Applied:</span>
-                                <span className="font-mono font-bold">{parsedDetails.penalty_hours} Hours</span>
+                                <span className="font-mono font-bold">{formatDuration(selectedRequest.penalty_minutes)}</span>
                               </div>
                             )}
                           </div>

@@ -1352,10 +1352,10 @@ export default function AttendanceLogs() {
                                 <span className="font-mono font-semibold">{formatDuration(parsedDetails.paid_permission_minutes)}</span>
                               </div>
                             )}
-                            {unifiedReq.status === 'rejected' && parsedDetails.penalty_hours !== undefined && parsedDetails.penalty_hours > 0 && (
+                            {unifiedReq.status === 'rejected' && unifiedReq.penalty_minutes !== undefined && unifiedReq.penalty_minutes > 0 && (
                               <div className="flex justify-between text-destructive">
                                 <span>Disciplinary Penalty:</span>
-                                <span className="font-mono font-bold">{parsedDetails.penalty_hours} Hours</span>
+                                <span className="font-mono font-bold">{formatDuration(unifiedReq.penalty_minutes)}</span>
                               </div>
                             )}
                           </div>
