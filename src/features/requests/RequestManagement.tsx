@@ -1314,127 +1314,149 @@ export default function RequestManagement() {
                   Affected Requests
                 </h4>
                 <div className="space-y-3 max-h-[30vh] overflow-y-auto pr-2 border border-border rounded-xl p-3 bg-muted/10 divide-y divide-border/50">
-                  {Array.from(selectedRequestIds).map((id, index) => {
-                    const req = requests?.find(r => r.id === id);
-                    if (!req) return null;
-                    const isPenaltyEligible = ['permission_to_leave', 'shift_interruption_review', 'early_leave_approval', 'late_in_approval'].includes(req.type || '');
-                    return (
-                      <div key={req.id} className={`py-3 ${index === 0 ? 'pt-0' : ''} space-y-2`}>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="relative w-8 h-8 shrink-0">
-                              {req.profile_picture_url ? (
-                                <img
-                                  src={req.profile_picture_url.startsWith('http') ? req.profile_picture_url : `${window.location.origin}${req.profile_picture_url}`}
-                                  alt={req.user_name}
-                                  className="w-8 h-8 rounded-full object-cover"
-                                />
-                              ) : null}
-                              <div className={`w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary text-xs uppercase ${req.profile_picture_url ? 'hidden' : ''}`}>
-                                {req.user_name.split(' ').map((n: string) => n[0]).join('')}
-                              </div>
-                            </div>
-                            <div>
-                              <div className="font-bold text-sm text-foreground">{req.user_name}</div>
-                              <div className="text-[10px] text-muted-foreground">
-                                Reason: <span className="italic">"{req.reason}"</span>
-                              </div>
-                            </div>
-                          </div>
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                            req.type === 'permission_to_leave' ? 'bg-teal-100 text-teal-700 dark:bg-teal-500/20 dark:text-teal-400' :
-                            req.type === 'overtime_approval' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' :
-                            req.type === 'early_leave_approval' ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400' :
-                            req.type === 'shift_interruption_review' ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-400' :
-                            req.type === 'late_in_approval' ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400' :
-                            req.type === 'attendance_correction' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
-                            'bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-400'
-                          }`}>
-                            {req.type?.replace(/_/g, ' ') || 'Manual Clock'}
-                          </span>
-                        </div>
+                  {(() => {
+                    const selectedRequestsList = Array.from(selectedRequestIds)
+                      .map(id => requests?.find(r => r.id === id))
+                      .filter((req): req is RequestLog => !!req);
 
-                        {/* Impact Details per Request */}
-                        <div className="pl-11 text-xs">
-                          {bulkActionType === 'approve' ? (
-                            req.type === 'attendance_correction' ? (
-                              <div className="text-muted-foreground flex gap-4">
-                                <div>Proposed Clock: <span className="font-mono font-semibold">{formatTime(req.requested_check_in || null)} - {formatTime(req.requested_check_out || null)}</span></div>
-                                <div>Duration: <span className="font-mono font-semibold">{formatDuration(getDurationMins(req.requested_check_in, req.requested_check_out))}</span></div>
+                    const sortedRequests = [...selectedRequestsList].sort((a, b) => {
+                      const nameA = a.user_name.toLowerCase();
+                      const nameB = b.user_name.toLowerCase();
+                      if (nameA !== nameB) {
+                        return nameA.localeCompare(nameB);
+                      }
+                      
+                      const typeA = (a.type || '').toLowerCase();
+                      const typeB = (b.type || '').toLowerCase();
+                      if (typeA !== typeB) {
+                        return typeA.localeCompare(typeB);
+                      }
+                      
+                      const dateA = new Date(a.created_at).getTime();
+                      const dateB = new Date(b.created_at).getTime();
+                      return dateA - dateB;
+                    });
+
+                    return sortedRequests.map((req, index) => {
+                      const isPenaltyEligible = ['permission_to_leave', 'shift_interruption_review', 'early_leave_approval', 'late_in_approval'].includes(req.type || '');
+                      return (
+                        <div key={req.id} className={`py-3 ${index === 0 ? 'pt-0' : ''} space-y-2`}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="relative w-8 h-8 shrink-0">
+                                {req.profile_picture_url ? (
+                                  <img
+                                    src={req.profile_picture_url.startsWith('http') ? req.profile_picture_url : `${window.location.origin}${req.profile_picture_url}`}
+                                    alt={req.user_name}
+                                    className="w-8 h-8 rounded-full object-cover"
+                                  />
+                                ) : null}
+                                <div className={`w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary text-xs uppercase ${req.profile_picture_url ? 'hidden' : ''}`}>
+                                  {req.user_name.split(' ').map((n: string) => n[0]).join('')}
+                                </div>
                               </div>
-                            ) : (
-                              <div className="text-muted-foreground">
-                                Paid Credit Duration: <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{(() => {
-                                  if (req.type === 'overtime_approval') {
-                                    return formatDuration(req.value || 0);
-                                  } else if (req.type === 'early_leave_approval' || req.type === 'attendance_correction') {
-                                    return formatDuration(req.value || 0);
-                                  } else if (req.type === 'permission_to_leave' || req.type === 'shift_interruption_review') {
-                                    return formatDuration(req.value || getDurationMins(req.interruption_start_time, req.interruption_end_time));
-                                  } else if (req.type === 'late_in_approval') {
-                                    let missing = req.value || 0;
-                                    if (!missing && req.original_check_in && req.shift_start_time) {
-                                      missing = getDurationMins(req.shift_start_time, req.original_check_in);
+                              <div>
+                                <div className="font-bold text-sm text-foreground">{req.user_name}</div>
+                                <div className="text-[10px] text-muted-foreground">
+                                  Reason: <span className="italic">"{req.reason}"</span>
+                                </div>
+                              </div>
+                            </div>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              req.type === 'permission_to_leave' ? 'bg-teal-100 text-teal-700 dark:bg-teal-500/20 dark:text-teal-400' :
+                              req.type === 'overtime_approval' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' :
+                              req.type === 'early_leave_approval' ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400' :
+                              req.type === 'shift_interruption_review' ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-400' :
+                              req.type === 'late_in_approval' ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400' :
+                              req.type === 'attendance_correction' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
+                              'bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-400'
+                            }`}>
+                              {req.type?.replace(/_/g, ' ') || 'Manual Clock'}
+                            </span>
+                          </div>
+
+                          {/* Impact Details per Request */}
+                          <div className="pl-11 text-xs">
+                            {bulkActionType === 'approve' ? (
+                              req.type === 'attendance_correction' ? (
+                                <div className="text-muted-foreground flex gap-4">
+                                  <div>Proposed Clock: <span className="font-mono font-semibold">{formatTime(req.requested_check_in || null)} - {formatTime(req.requested_check_out || null)}</span></div>
+                                  <div>Duration: <span className="font-mono font-semibold">{formatDuration(getDurationMins(req.requested_check_in, req.requested_check_out))}</span></div>
+                                </div>
+                              ) : (
+                                <div className="text-muted-foreground">
+                                  Paid Credit Duration: <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{(() => {
+                                    if (req.type === 'overtime_approval') {
+                                      return formatDuration(req.value || 0);
+                                    } else if (req.type === 'early_leave_approval' || req.type === 'attendance_correction') {
+                                      return formatDuration(req.value || 0);
+                                    } else if (req.type === 'permission_to_leave' || req.type === 'shift_interruption_review') {
+                                      return formatDuration(req.value || getDurationMins(req.interruption_start_time, req.interruption_end_time));
+                                    } else if (req.type === 'late_in_approval') {
+                                      let missing = req.value || 0;
+                                      if (!missing && req.original_check_in && req.shift_start_time) {
+                                        missing = getDurationMins(req.shift_start_time, req.original_check_in);
+                                      }
+                                      return formatDuration(missing);
                                     }
-                                    return formatDuration(missing);
-                                  }
-                                  return '00:00';
-                                })()}</span>
-                              </div>
-                            )
-                          ) : (
-                            <div className="space-y-2">
-                              <div className="text-muted-foreground">
-                                Unpaid Absence Duration: <span className="font-mono font-semibold">{formatDuration(getUnapprovedAbsenceDurationMinutes(req))}</span>
-                              </div>
-                              {isPenaltyEligible && (
-                                <div className="bg-destructive/5 p-3 rounded-lg border border-destructive/10 space-y-2">
-                                  <label className="flex items-center gap-2 cursor-pointer select-none font-medium text-destructive">
-                                    <input
-                                      type="checkbox"
-                                      checked={bulkPenalties[req.id]?.apply || false}
-                                      onChange={(e) => {
-                                        setBulkPenalties(prev => ({
-                                          ...prev,
-                                          [req.id]: {
-                                            apply: e.target.checked,
-                                            duration: prev[req.id]?.duration || '00:00'
-                                          }
-                                        }));
-                                      }}
-                                      className="w-3.5 h-3.5 rounded border-destructive/30 text-destructive focus:ring-destructive/20 bg-background"
-                                    />
-                                    <span>Apply Extra Disciplinary Penalty?</span>
-                                  </label>
-                                  {bulkPenalties[req.id]?.apply && (
-                                    <div className="flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
-                                      <span className="text-[11px] text-muted-foreground">Duration (HH:MM):</span>
+                                    return '00:00';
+                                  })()}</span>
+                                </div>
+                              )
+                            ) : (
+                              <div className="space-y-2">
+                                <div className="text-muted-foreground">
+                                  Unpaid Absence Duration: <span className="font-mono font-semibold">{formatDuration(getUnapprovedAbsenceDurationMinutes(req))}</span>
+                                </div>
+                                {isPenaltyEligible && (
+                                  <div className="bg-destructive/5 p-3 rounded-lg border border-destructive/10 space-y-2">
+                                    <label className="flex items-center gap-2 cursor-pointer select-none font-medium text-destructive">
                                       <input
-                                        type="text"
-                                        value={bulkPenalties[req.id]?.duration || '00:00'}
+                                        type="checkbox"
+                                        checked={bulkPenalties[req.id]?.apply || false}
                                         onChange={(e) => {
-                                          const val = e.target.value;
                                           setBulkPenalties(prev => ({
                                             ...prev,
                                             [req.id]: {
-                                              ...prev[req.id],
-                                              duration: val
+                                              apply: e.target.checked,
+                                              duration: prev[req.id]?.duration || '00:00'
                                             }
                                           }));
                                         }}
-                                        placeholder="01:00"
-                                        className="w-20 px-2 py-1 bg-background border border-destructive/30 rounded focus:ring-1 focus:ring-destructive/20 outline-none font-mono text-xs text-destructive"
+                                        className="w-3.5 h-3.5 rounded border-destructive/30 text-destructive focus:ring-destructive/20 bg-background"
                                       />
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          )}
+                                      <span>Apply Extra Disciplinary Penalty?</span>
+                                    </label>
+                                    {bulkPenalties[req.id]?.apply && (
+                                      <div className="flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
+                                        <span className="text-[11px] text-muted-foreground">Duration (HH:MM):</span>
+                                        <input
+                                          type="text"
+                                          value={bulkPenalties[req.id]?.duration || '00:00'}
+                                          onChange={(e) => {
+                                            const val = e.target.value;
+                                            setBulkPenalties(prev => ({
+                                              ...prev,
+                                              [req.id]: {
+                                                ...prev[req.id],
+                                                duration: val
+                                              }
+                                            }));
+                                          }}
+                                          placeholder="01:00"
+                                          className="w-20 px-2 py-1 bg-background border border-destructive/30 rounded focus:ring-1 focus:ring-destructive/20 outline-none font-mono text-xs text-destructive"
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    });
+                  })()}
                 </div>
               </div>
 
