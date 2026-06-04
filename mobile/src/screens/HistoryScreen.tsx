@@ -566,7 +566,7 @@ export default function HistoryScreen() {
                       </Text>
                       {r.type === 'attendance_correction' && (
                         <Text style={styles.requestDetailsText}>
-                          Proposed: {formatTime(r.requested_check_in)} - {formatTime(r.requested_check_out)}
+                          Proposed: {formatTime(r.requested_check_in || item.check_in)} - {formatTime(r.requested_check_out || item.check_out)}
                         </Text>
                       )}
                       {r.type === 'permission_to_leave' && r.shift_interruption_id && (() => {

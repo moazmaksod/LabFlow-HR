@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/axios';
 import { Download, Calendar as CalendarIcon, DollarSign, Play } from 'lucide-react';
-import { formatDisplayTime, getLocalizedMonths, getLocalDateParts, DateFormats } from '../../lib/timeManager';
+import { formatDisplayTime, getLocalDateParts, DateFormats } from '../../lib/timeManager';
 import { useAuthStore } from '../../store/useAuthStore';
 
 interface PayrollRecord {
@@ -34,15 +34,19 @@ interface PayrollTransaction {
 export default function PayrollView() {
   const user = useAuthStore(state => state.user);
   const queryClient = useQueryClient();
+  
   const { month: defaultMonth, year: defaultYear } = getLocalDateParts(user?.display_timezone);
-  const [selectedMonth, setSelectedMonth] = useState(defaultMonth);
-  const [selectedYear, setSelectedYear] = useState(defaultYear);
+  const initialStart = `${defaultYear}-${String(defaultMonth).padStart(2, '0')}-01`;
+  const initialEnd = `${defaultYear}-${String(defaultMonth).padStart(2, '0')}-${String(new Date(defaultYear, defaultMonth, 0).getDate()).padStart(2, '0')}`;
+  
+  const [startDate, setStartDate] = useState(initialStart);
+  const [endDate, setEndDate] = useState(initialEnd);
   const [selectedPayrollId, setSelectedPayrollId] = useState<number | null>(null);
 
   const { data: payrolls, isLoading } = useQuery<PayrollRecord[]>({
-    queryKey: ['payrolls', selectedMonth, selectedYear],
+    queryKey: ['payrolls', startDate, endDate],
     queryFn: async () => {
-      const res = await api.get(`/payroll/records?month=${selectedMonth}&year=${selectedYear}`);
+      const res = await api.get(`/payroll/records?startDate=${startDate}&endDate=${endDate}`);
       return res.data;
     },
   });
@@ -59,7 +63,7 @@ export default function PayrollView() {
 
   const generateDraftMutation = useMutation({
     mutationFn: async () => {
-      const res = await api.post(`/payroll/generate?month=${selectedMonth}&year=${selectedYear}`);
+      const res = await api.post(`/payroll/generate?startDate=${startDate}&endDate=${endDate}`);
       return res.data;
     },
     onSuccess: () => {
@@ -101,7 +105,7 @@ export default function PayrollView() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `payroll_${selectedYear}_${selectedMonth}.csv`);
+    link.setAttribute('download', `payroll_${startDate}_to_${endDate}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -141,24 +145,22 @@ export default function PayrollView() {
         <div className="md:col-span-2 bg-card border border-border rounded-xl p-4 shadow-sm flex flex-col sm:flex-row gap-4 items-center">
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <CalendarIcon className="w-5 h-5 text-muted-foreground" />
-            <span className="text-sm font-medium">Period:</span>
+            <span className="text-sm font-medium">From:</span>
           </div>
-          <select 
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(Number(e.target.value))}
-            className="w-full sm:w-auto px-3 py-2 bg-background border border-border rounded-lg text-sm"
-          >
-            {getLocalizedMonths().map(m => (
-              <option key={m.value} value={m.value}>{m.label}</option>
-            ))}
-          </select>
           <input 
-            type="number" 
-            value={selectedYear}
-            onChange={(e) => setSelectedYear(Number(e.target.value))}
-            className="w-full sm:w-auto px-3 py-2 bg-background border border-border rounded-lg text-sm"
-            min="2000"
-            max="2100"
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="w-full sm:w-auto px-3 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+          <div className="flex items-center gap-2 w-full sm:w-auto sm:ml-4">
+            <span className="text-sm font-medium">To:</span>
+          </div>
+          <input 
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="w-full sm:w-auto px-3 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
 

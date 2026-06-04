@@ -136,8 +136,6 @@ CREATE TABLE IF NOT EXISTS settings (
     support_contact TEXT,
 
     -- Payroll
-    payroll_cycle_type TEXT NOT NULL DEFAULT 'calendar_month',
-    custom_payroll_cycle_days INTEGER NOT NULL DEFAULT 0,
     overtime_rate_percent REAL NOT NULL DEFAULT 150.0,
     weekend_rate_percent REAL NOT NULL DEFAULT 200.0,
     attendance_bonus_amount REAL NOT NULL DEFAULT 0.0,
@@ -231,6 +229,21 @@ CREATE TABLE IF NOT EXISTS attendance_heartbeats (
 
 CREATE INDEX IF NOT EXISTS idx_attendance_heartbeats_user_id_timestamp ON attendance_heartbeats(user_id, timestamp);
 
+CREATE TABLE IF NOT EXISTS daily_attendance (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    date DATE NOT NULL,
+    scheduled_working_minutes REAL NOT NULL DEFAULT 0,
+    scheduled_non_working_minutes REAL NOT NULL DEFAULT 0,
+    unscheduled_working_minutes REAL NOT NULL DEFAULT 0,
+    deduction_minutes REAL NOT NULL DEFAULT 0,
+    status TEXT NOT NULL CHECK(status IN ('pending', 'processed')) DEFAULT 'pending',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, date)
+);
+
 -- Performance Indexes for Foreign Keys
 CREATE INDEX IF NOT EXISTS idx_profiles_user_id ON profiles(user_id);
 CREATE INDEX IF NOT EXISTS idx_profiles_job_id ON profiles(job_id);
@@ -243,6 +256,8 @@ CREATE INDEX IF NOT EXISTS idx_shift_interruptions_attendance_id ON shift_interr
 CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_name, entity_id);
 CREATE INDEX IF NOT EXISTS idx_shift_instances_user_id ON shift_instances(user_id);
 CREATE INDEX IF NOT EXISTS idx_shift_instances_status ON shift_instances(status);
+CREATE INDEX IF NOT EXISTS idx_daily_attendance_user_id ON daily_attendance(user_id);
+CREATE INDEX IF NOT EXISTS idx_daily_attendance_date ON daily_attendance(date);
 
 -- Triggers for updated_at (with safety condition to prevent infinite loops)
 CREATE TRIGGER IF NOT EXISTS update_users_updated_at AFTER UPDATE ON users
@@ -284,4 +299,8 @@ BEGIN UPDATE payrolls SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;
 CREATE TRIGGER IF NOT EXISTS update_payroll_transactions_updated_at AFTER UPDATE ON payroll_transactions
 FOR EACH ROW WHEN NEW.updated_at <= OLD.updated_at
 BEGIN UPDATE payroll_transactions SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;
+
+CREATE TRIGGER IF NOT EXISTS update_daily_attendance_updated_at AFTER UPDATE ON daily_attendance
+FOR EACH ROW WHEN NEW.updated_at <= OLD.updated_at
+BEGIN UPDATE daily_attendance SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;
 `;

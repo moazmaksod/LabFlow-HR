@@ -37,6 +37,10 @@ app.use('/api/audit', auditRoutes);
 import db from './db/index.js';
 
 import { evaluateUserAttendance } from './services/attendanceEvaluationService.js';
+import { initCronJobs } from './services/cronService.js';
+
+// Initialize Scheduled Tasks
+initCronJobs();
 
 // Global Missed Shift Cleanup Interval (30 minutes) -> Replaced with real-time 1-minute Active Attendance Evaluator
 const evaluationInterval = setInterval(() => {

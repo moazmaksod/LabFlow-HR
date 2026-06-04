@@ -245,7 +245,7 @@ export const createAttendanceCorrection = (req: AuthRequest, res: Response): voi
             VALUES (?, ?, 'attendance_correction', ?, ?, ?, ?, 'pending')
         `);
 
-        const info = insert.run(userId, attendance_id, new_clock_in || null, new_clock_out || null, reason, missingMinutes);
+        const info = insert.run(userId, attendance_id, checkIn || null, checkOut || null, reason, missingMinutes);
         const newReq = db.prepare('SELECT * FROM requests WHERE id = ?').get(info.lastInsertRowid);
 
         res.status(201).json(newReq);

@@ -10,7 +10,8 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "test": "jest",
-    "bench": "npx ts-node server/benchmarks/runAll.ts"
+    "bench": "npx ts-node server/benchmarks/runAll.ts",
+    "seed:test": "tsx server/db/populateTestData.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
@@ -36,6 +37,7 @@
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "multer": "^2.1.1",
+    "node-cron": "^4.2.1",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-hook-form": "^7.72.1",
@@ -57,6 +59,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.1.0",
     "@types/node": "^22.14.0",
+    "@types/node-cron": "^3.0.11",
     "@types/supertest": "^7.2.0",
     "autoprefixer": "^10.4.21",
     "identity-obj-proxy": "^3.0.0",

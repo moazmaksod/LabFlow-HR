@@ -3,130 +3,61 @@ import db from '../db/index.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
 import { logAudit } from '../services/auditService.js';
 import logger from '../utils/logger.js';
+import { generateDailyAttendance } from '../services/dailyAttendanceService.js';
 
-const calculateUserPayroll = (user: any, start_date: string, end_date: string, prefetchedLogs?: any[], prefetchedBreaksMap?: Map<number, any[]>) => {
+export const recalculateDailyAttendance = (req: Request, res: Response): void => {
+    try {
+        const { date } = req.body;
+        if (!date) {
+            res.status(400).json({ error: 'Missing required parameter: date' });
+            return;
+        }
+        generateDailyAttendance(date);
+        res.json({ message: `Successfully recalculated daily attendance for ${date}` });
+    } catch (error) {
+        logger.error('Error in recalculateDailyAttendance:', error);
+        res.status(500).json({ error: 'Failed to recalculate daily attendance' });
+    }
+};
+
+const calculateUserPayroll = (user: any, start_date: string, end_date: string) => {
     const hourlyRate = user.hourly_rate || 0;
-    const schedule = user.weekly_schedule ? JSON.parse(user.weekly_schedule) : {};
+    const settings = db.prepare('SELECT overtime_rate_percent FROM settings WHERE id = 1').get() as any;
+    const overtimeRate = (settings?.overtime_rate_percent || 150) / 100;
+    
+    const dailyRecords = db.prepare(`
+        SELECT * FROM daily_attendance 
+        WHERE user_id = ? AND date BETWEEN ? AND ?
+    `).all(user.id, start_date, end_date) as any[];
 
-    // Use prefetched logs or fetch Attendance Logs for the period
-    const logs = prefetchedLogs || (db.prepare(`
-        SELECT a.*,
-          COALESCE((SELECT SUM(r.paid_minutes) FROM requests r WHERE r.attendance_id = a.id AND r.status = 'approved' AND r.type != 'overtime_approval'), 0) as paid_minutes,
-          COALESCE((SELECT SUM(r.paid_minutes) FROM requests r WHERE r.attendance_id = a.id AND r.status = 'approved' AND r.type = 'overtime_approval'), 0) as approved_overtime_minutes
-        FROM attendance a
-        WHERE a.user_id = ? AND a.date BETWEEN ? AND ?
-        ORDER BY a.date ASC
-    `).all(user.id, start_date, end_date) as any[]);
+    let scheduledWorkMin = 0;
+    let scheduledNonWorkMin = 0;
+    let unscheduledWorkMin = 0;
+    let deductionMin = 0;
 
-    let totalExpectedMinutes = 0;
-    let totalActualWorkedMinutes = 0;
-    let totalPaidMinutes = 0;
-    let totalMissingMinutes = 0;
-    let totalApprovedOvertimeMinutes = 0;
- 
-    const start = new Date(start_date as string);
-    const end = new Date(end_date as string);
-    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
- 
-    // Use prefetched breaks or fetch all breaks in one query
-    const breaksMap = prefetchedBreaksMap || new Map<number, any[]>();
- 
-    if (!prefetchedBreaksMap) {
-        const logIds = logs.map(l => l.id);
-        if (logIds.length > 0) {
-            const placeholders = logIds.map(() => '?').join(',');
-            const allBreaks = db.prepare(`
-                SELECT attendance_id, start_time, end_time
-                FROM shift_interruptions
-                WHERE attendance_id IN (${placeholders})
-            `).all(...logIds) as any[];
- 
-            allBreaks.forEach(b => {
-                if (!breaksMap.has(b.attendance_id)) {
-                    breaksMap.set(b.attendance_id, []);
-                }
-                breaksMap.get(b.attendance_id)!.push(b);
-            });
-        }
+    for (const record of dailyRecords) {
+        scheduledWorkMin += record.scheduled_working_minutes;
+        scheduledNonWorkMin += record.scheduled_non_working_minutes;
+        unscheduledWorkMin += record.unscheduled_working_minutes;
+        deductionMin += record.deduction_minutes;
     }
- 
-    // Calculate expected minutes for the whole period
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const dayName = days[d.getDay()];
-        const dayShifts = schedule[dayName] || [];
- 
-        dayShifts.forEach((shift: any) => {
-            const [startH, startM] = shift.start.split(':').map(Number);
-            const [endH, endM] = shift.end.split(':').map(Number);
-            totalExpectedMinutes += (endH * 60 + endM) - (startH * 60 + startM);
-        });
-    }
- 
-    logs.forEach(log => {
-        const d = new Date(log.date);
-        const dayName = days[d.getDay()];
-        const dayShifts = schedule[dayName] || [];
-        let expectedForDay = 0;
-        dayShifts.forEach((shift: any) => {
-            const [startH, startM] = shift.start.split(':').map(Number);
-            const [endH, endM] = shift.end.split(':').map(Number);
-            expectedForDay += (endH * 60 + endM) - (startH * 60 + startM);
-        });
- 
-        let workedMinutes = 0;
-        if (log.check_in && log.check_out) {
-            const checkIn = new Date(log.check_in);
-            const checkOut = new Date(log.check_out);
-            workedMinutes = (checkOut.getTime() - checkIn.getTime()) / (1000 * 60);
- 
-            const breaks = breaksMap.get(log.id) || [];
-            breaks.forEach(b => {
-                if (b.start_time && b.end_time) {
-                    workedMinutes -= (new Date(b.end_time).getTime() - new Date(b.start_time).getTime()) / (1000 * 60);
-                }
-            });
-        }
- 
-        workedMinutes = Math.max(0, workedMinutes);
-        totalApprovedOvertimeMinutes += log.approved_overtime_minutes || 0;
- 
-        totalActualWorkedMinutes += workedMinutes;
-        totalMissingMinutes += Math.max(0, expectedForDay - workedMinutes);
-        totalPaidMinutes += log.paid_minutes || 0;
-    });
- 
-    // Add missing days that weren't in logs but had expected shifts
-    const logDates = new Set(logs.map(l => l.date));
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const dateStr = d.toISOString().split('T')[0];
-        if (!logDates.has(dateStr)) {
-            const dayName = days[d.getDay()];
-            const dayShifts = schedule[dayName] || [];
-            dayShifts.forEach((shift: any) => {
-                const [startH, startM] = shift.start.split(':').map(Number);
-                const [endH, endM] = shift.end.split(':').map(Number);
-                totalMissingMinutes += (endH * 60 + endM) - (startH * 60 + startM);
-            });
-        }
-    }
- 
-    const unpaidMinutes = Math.max(0, totalMissingMinutes - totalPaidMinutes);
-    const netWorkedMinutes = Math.max(0, totalActualWorkedMinutes - unpaidMinutes);
-    const finalNetSalary = (netWorkedMinutes / 60) * hourlyRate;
- 
-    const grossBasePay = (totalActualWorkedMinutes / 60) * hourlyRate;
-    const totalDeductions = (unpaidMinutes / 60) * hourlyRate;
-    const overtimeBonus = (totalApprovedOvertimeMinutes / 60) * (hourlyRate * 1.5);
-    const netSalaryWithOvertime = finalNetSalary + overtimeBonus;
- 
+
+    const totalPaidMinutes = scheduledWorkMin + scheduledNonWorkMin;
+    const grossBasePay = (totalPaidMinutes / 60) * hourlyRate;
+    
+    const totalDeductions = (deductionMin / 60) * hourlyRate;
+    const overtimeBonus = (unscheduledWorkMin / 60) * (hourlyRate * overtimeRate);
+    
+    const netSalaryWithOvertime = grossBasePay - totalDeductions + overtimeBonus;
+
     return {
         user: { id: user.id, name: user.name, job_title: user.job_title, hourly_rate: hourlyRate },
         time_metrics: {
-            expected_hours: Number((totalExpectedMinutes / 60).toFixed(2)),
-            actual_worked_hours: Number((totalActualWorkedMinutes / 60).toFixed(2)),
+            expected_hours: Number(((scheduledWorkMin + deductionMin) / 60).toFixed(2)),
+            actual_worked_hours: Number(((scheduledWorkMin + unscheduledWorkMin) / 60).toFixed(2)),
             paid_hours: Number((totalPaidMinutes / 60).toFixed(2)),
-            missing_unpaid_minutes: Math.round(unpaidMinutes),
-            approved_overtime_minutes: totalApprovedOvertimeMinutes
+            missing_unpaid_minutes: deductionMin,
+            approved_overtime_minutes: unscheduledWorkMin
         },
         financial_metrics: {
             gross_base_pay: Number(grossBasePay.toFixed(2)),
@@ -147,7 +78,7 @@ export const getPayrollSummary = (req: Request, res: Response): void => {
         }
 
         const user = db.prepare(`
-            SELECT u.id, u.name, p.hourly_rate, p.weekly_schedule, p.max_overtime_hours, j.title as job_title
+            SELECT u.id, u.name, p.hourly_rate, j.title as job_title
             FROM users u
             JOIN profiles p ON u.id = p.user_id
             LEFT JOIN jobs j ON p.job_id = j.id
@@ -181,7 +112,7 @@ export const getAllPayroll = (req: Request, res: Response): void => {
         }
 
         const users = db.prepare(`
-            SELECT u.id, u.name, p.hourly_rate, p.weekly_schedule, p.max_overtime_hours, j.title as job_title
+            SELECT u.id, u.name, p.hourly_rate, j.title as job_title
             FROM users u
             JOIN profiles p ON u.id = p.user_id
             LEFT JOIN jobs j ON p.job_id = j.id
@@ -193,53 +124,8 @@ export const getAllPayroll = (req: Request, res: Response): void => {
             return;
         }
 
-        // 1. Bulk Fetch Attendance Logs
-        const userIds = users.map(u => u.id);
-        const placeholders = userIds.map(() => '?').join(',');
-
-        const allLogs = db.prepare(`
-            SELECT a.*,
-              COALESCE((SELECT SUM(r.paid_minutes) FROM requests r WHERE r.attendance_id = a.id AND r.status = 'approved' AND r.type != 'overtime_approval'), 0) as paid_minutes,
-              COALESCE((SELECT SUM(r.paid_minutes) FROM requests r WHERE r.attendance_id = a.id AND r.status = 'approved' AND r.type = 'overtime_approval'), 0) as approved_overtime_minutes
-            FROM attendance a
-            WHERE a.user_id IN (${placeholders}) AND a.date BETWEEN ? AND ?
-            ORDER BY a.date ASC
-        `).all(...userIds, startDate, endDate) as any[];
-
-        const logsMap = new Map<number, any[]>();
-        for (const log of allLogs) {
-            if (!logsMap.has(log.user_id)) logsMap.set(log.user_id, []);
-            logsMap.get(log.user_id)!.push(log);
-        }
-
-        // 2. Bulk Fetch Shift Interruptions (Breaks)
-        const allBreaksMap = new Map<number, any[]>();
-        const logIds = allLogs.map(l => l.id);
-
-        if (logIds.length > 0) {
-            // Chunk log IDs to avoid SQLite parameter limit errors (usually max 999 or 32766)
-            const CHUNK_SIZE = 900;
-            for (let i = 0; i < logIds.length; i += CHUNK_SIZE) {
-                const chunk = logIds.slice(i, i + CHUNK_SIZE);
-                const chunkPlaceholders = chunk.map(() => '?').join(',');
-                const chunkBreaks = db.prepare(`
-                    SELECT attendance_id, start_time, end_time
-                    FROM shift_interruptions
-                    WHERE attendance_id IN (${chunkPlaceholders})
-                `).all(...chunk) as any[];
-
-                for (const b of chunkBreaks) {
-                    if (!allBreaksMap.has(b.attendance_id)) {
-                        allBreaksMap.set(b.attendance_id, []);
-                    }
-                    allBreaksMap.get(b.attendance_id)!.push(b);
-                }
-            }
-        }
-
         const results = users.map(user => {
-            const userLogs = logsMap.get(user.id) || [];
-            const summary = calculateUserPayroll(user, startDate as string, endDate as string, userLogs, allBreaksMap);
+            const summary = calculateUserPayroll(user, startDate as string, endDate as string);
             return {
                 user_id: user.id,
                 user_name: user.name,
@@ -258,17 +144,14 @@ export const getAllPayroll = (req: Request, res: Response): void => {
     }
 };
 
-// Helper to get or create a draft payroll for a user for a specific month
 export function getOrCreateDraftPayroll(userId: number, dateStr: string, actorId?: number): number {
     const date = new Date(dateStr);
     const year = date.getFullYear();
     const month = date.getMonth();
 
-    // Start and end of month
     const startDate = new Date(year, month, 1).toISOString().split('T')[0];
     const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
 
-    // Check if draft payroll exists
     const existing = db.prepare(`
         SELECT id FROM payrolls
         WHERE user_id = ? AND start_date = ? AND end_date = ? AND status = 'draft'
@@ -295,18 +178,24 @@ export function getOrCreateDraftPayroll(userId: number, dateStr: string, actorId
 
 export const generateDraftPayroll = (req: AuthRequest, res: Response) => {
     try {
-        const { month, year } = req.query;
+        const { month, year, startDate: qStartDate, endDate: qEndDate } = req.query;
         const actorId = req.user!.id;
 
-        if (!month || !year) {
-            return res.status(400).json({ error: 'Month and year are required' });
+        let startDate: string;
+        let endDate: string;
+
+        if (qStartDate && qEndDate) {
+            startDate = qStartDate as string;
+            endDate = qEndDate as string;
+        } else {
+            if (!month || !year) {
+                return res.status(400).json({ error: 'Month and year are required' });
+            }
+            startDate = new Date(Number(year), Number(month) - 1, 1).toISOString().split('T')[0];
+            endDate = new Date(Number(year), Number(month), 0).toISOString().split('T')[0];
         }
 
-        const startDate = new Date(Number(year), Number(month) - 1, 1).toISOString().split('T')[0];
-        const endDate = new Date(Number(year), Number(month), 0).toISOString().split('T')[0];
-
-        // Fetch all users
-        const users = db.prepare("SELECT id FROM users WHERE role = 'employee' OR role = 'manager'").all() as any[];
+        const users = db.prepare("SELECT id FROM users WHERE role = 'employee'").all() as any[];
         const userIds = users.map(u => u.id);
 
         if (userIds.length === 0) {
@@ -318,16 +207,12 @@ export const generateDraftPayroll = (req: AuthRequest, res: Response) => {
         const generateTransaction = db.transaction(() => {
             const placeholders = userIds.map(() => '?').join(',');
 
-            // 1. Bulk get or create draft payrolls
-            // First, find existing drafts for the period
             const existingPayrolls = db.prepare(`
                 SELECT id, user_id FROM payrolls
                 WHERE user_id IN (${placeholders}) AND start_date = ? AND end_date = ? AND status = 'draft'
             `).all(...userIds, startDate, endDate) as any[];
 
             const payrollMap = new Map<number, number>(existingPayrolls.map(p => [p.user_id, p.id]));
-
-            // Identify users who need a new draft payroll
             const missingUsers = users.filter((user: any) => !payrollMap.has(user.id));
 
             if (missingUsers.length > 0) {
@@ -338,35 +223,18 @@ export const generateDraftPayroll = (req: AuthRequest, res: Response) => {
                 `);
 
                 const newPayrolls: any[] = [];
-                const insertTx = db.transaction((usersToInsert) => {
-                    for (const user of usersToInsert) {
-                        const payroll = insertStmt.get(user.id, startDate, endDate);
-                        newPayrolls.push(payroll);
-                    }
-                });
-                insertTx(missingUsers);
+                for (const user of missingUsers) {
+                    const payroll = insertStmt.get(user.id, startDate, endDate);
+                    newPayrolls.push(payroll);
+                }
 
-                // Audit log creation for all new payrolls
                 const auditStmt = db.prepare(`
                     INSERT INTO audit_logs (entity_name, entity_id, action, actor_id, old_values, new_values)
                     VALUES (?, ?, ?, ?, ?, ?)
                 `);
 
-                const auditTx = db.transaction((payrolls) => {
-                    for (const p of payrolls) {
-                        auditStmt.run(
-                            'payrolls',
-                            p.id,
-                            'CREATE',
-                            actorId,
-                            null,
-                            JSON.stringify(p)
-                        );
-                    }
-                });
-                auditTx(newPayrolls);
-
                 for (const p of newPayrolls) {
+                    auditStmt.run('payrolls', p.id, 'CREATE', actorId, null, JSON.stringify(p));
                     payrollMap.set(p.user_id, p.id);
                 }
             }
@@ -374,16 +242,13 @@ export const generateDraftPayroll = (req: AuthRequest, res: Response) => {
             const allPayrollIds = Array.from(payrollMap.values());
             const payrollPlaceholders = allPayrollIds.map(() => '?').join(',');
 
-            // 2. Bulk fetch profiles and jobs
             const profiles = db.prepare(`
-                SELECT p.user_id, p.hourly_rate, j.required_hours_per_week
+                SELECT p.user_id, p.hourly_rate
                 FROM profiles p
-                LEFT JOIN jobs j ON p.job_id = j.id
                 WHERE p.user_id IN (${placeholders})
             `).all(...userIds) as any[];
             const profileMap = new Map(profiles.map(p => [p.user_id, p]));
 
-            // 3. Bulk fetch applied transactions
             const allTransactions = db.prepare(`
                 SELECT payroll_id, type, amount, status
                 FROM payroll_transactions
@@ -403,18 +268,23 @@ export const generateDraftPayroll = (req: AuthRequest, res: Response) => {
                     agg.deductions += tx.amount;
                 }
             }
+            
+            const settings = db.prepare('SELECT overtime_rate_percent FROM settings WHERE id = 1').get() as any;
+            const overtimeRate = (settings?.overtime_rate_percent || 150) / 100;
 
-            // 4. Bulk fetch old payroll states for audit logging
             const oldPayrolls = db.prepare(`
                 SELECT * FROM payrolls WHERE id IN (${payrollPlaceholders})
             `).all(...allPayrollIds) as any[];
             const oldPayrollMap = new Map(oldPayrolls.map(p => [p.id, p]));
 
-            // Prepared statements for loop
             const updateStmt = db.prepare(`
                 UPDATE payrolls
                 SET base_salary = ?, total_additions = ?, total_deductions = ?, net_salary = ?
                 WHERE id = ?
+            `);
+            
+            const dailyRecordsStmt = db.prepare(`
+                SELECT * FROM daily_attendance WHERE user_id = ? AND date BETWEEN ? AND ?
             `);
 
             for (const user of users) {
@@ -422,24 +292,33 @@ export const generateDraftPayroll = (req: AuthRequest, res: Response) => {
                 const oldPayroll = oldPayrollMap.get(payrollId);
                 const profile = profileMap.get(user.id);
 
-                let baseSalary = 0;
-                if (profile && profile.hourly_rate && profile.required_hours_per_week) {
-                    // Approximate monthly salary: weekly hours * 4 weeks * hourly rate
-                    baseSalary = profile.required_hours_per_week * 4 * profile.hourly_rate;
-                }
+                const dailyRecords = dailyRecordsStmt.all(user.id, startDate, endDate) as any[];
 
-                // Retrieve aggregated transactions from map
+                let scheduledWorkMin = 0;
+                let scheduledNonWorkMin = 0;
+                let deductionMin = 0;
+                let unscheduledWorkMin = 0;
+
+                for (const record of dailyRecords) {
+                    scheduledWorkMin += record.scheduled_working_minutes;
+                    scheduledNonWorkMin += record.scheduled_non_working_minutes;
+                    deductionMin += record.deduction_minutes;
+                    unscheduledWorkMin += record.unscheduled_working_minutes;
+                }
+                
+                const hourlyRate = profile?.hourly_rate || 0;
+                const baseSalary = ((scheduledWorkMin + scheduledNonWorkMin) / 60) * hourlyRate;
+                const timeDeductions = (deductionMin / 60) * hourlyRate;
+                const timeOvertime = (unscheduledWorkMin / 60) * (hourlyRate * overtimeRate);
+
                 const agg = transactionMap.get(payrollId) || { additions: 0, deductions: 0 };
-                const totalAdditions = agg.additions;
-                const totalDeductions = agg.deductions;
+                const totalAdditions = agg.additions + timeOvertime;
+                const totalDeductions = agg.deductions + timeDeductions;
 
                 const netSalary = baseSalary + totalAdditions - totalDeductions;
 
-                // Update payroll using prepared statement
                 updateStmt.run(baseSalary, totalAdditions, totalDeductions, netSalary, payrollId);
 
-                // Use the updated data for generatedPayrolls and audit log
-                // Since we're in a transaction, we can just construct the "updated" state
                 const updatedPayroll = {
                     ...oldPayroll,
                     base_salary: baseSalary,
@@ -472,7 +351,7 @@ export const generateDraftPayroll = (req: AuthRequest, res: Response) => {
 
 export const getPayrolls = (req: Request, res: Response) => {
     try {
-        const { month, year, user_id } = req.query;
+        const { month, year, startDate, endDate, user_id } = req.query;
 
         let query = `
             SELECT p.*, u.name as user_name, u.email as user_email
@@ -482,7 +361,10 @@ export const getPayrolls = (req: Request, res: Response) => {
         `;
         const params: any[] = [];
 
-        if (month && year) {
+        if (startDate && endDate) {
+            query += ` AND p.start_date >= ? AND p.end_date <= ?`;
+            params.push(startDate, endDate);
+        } else if (month && year) {
             const formattedMonth = String(month).padStart(2, '0');
             query += ` AND STRFTIME('%m', p.start_date) = ? AND STRFTIME('%Y', p.start_date) = ?`;
             params.push(formattedMonth, String(year));
@@ -517,7 +399,7 @@ export const getPayrollTransactions = (req: Request, res: Response) => {
 export const getMyPayrolls = (req: AuthRequest, res: Response) => {
     try {
         const userId = req.user!.id;
-        const { month, year } = req.query;
+        const { month, year, startDate, endDate } = req.query;
 
         let query = `
             SELECT p.*, u.name as user_name, u.email as user_email
@@ -527,11 +409,11 @@ export const getMyPayrolls = (req: AuthRequest, res: Response) => {
         `;
         const params: any[] = [userId];
 
-        if (month && year) {
-            // Format the month to ensure it's two digits (e.g., "01" for January)
+        if (startDate && endDate) {
+            query += ` AND p.start_date >= ? AND p.end_date <= ?`;
+            params.push(startDate, endDate);
+        } else if (month && year) {
             const formattedMonth = String(month).padStart(2, '0');
-            
-            // Use SQLite's STRFTIME to filter by month and year
             query += ` AND STRFTIME('%m', p.start_date) = ? AND STRFTIME('%Y', p.start_date) = ?`;
             params.push(formattedMonth, String(year));
         }
@@ -549,7 +431,6 @@ export const getMyPayrollTransactions = (req: AuthRequest, res: Response) => {
         const userId = req.user!.id;
         const { payroll_id } = req.params;
 
-        // Verify ownership
         const payroll = db.prepare('SELECT user_id FROM payrolls WHERE id = ?').get(payroll_id) as any;
         if (!payroll || payroll.user_id !== userId) {
             return res.status(403).json({ error: 'Access denied' });

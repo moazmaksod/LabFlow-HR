@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getPayrollSummary, getAllPayroll, generateDraftPayroll, getPayrolls, getPayrollTransactions, updatePayrollStatus, getMyPayrolls, getMyPayrollTransactions } from '../controllers/payrollController.js';
+import { recalculateDailyAttendance, getPayrollSummary, getAllPayroll, generateDraftPayroll, getPayrolls, getPayrollTransactions, updatePayrollStatus, getMyPayrolls, getMyPayrollTransactions } from '../controllers/payrollController.js';
 import { authenticate, requireRole } from '../middlewares/authMiddleware.js';
 
 const router = Router();
@@ -9,6 +9,7 @@ router.get('/', requireRole(['manager']), getAllPayroll);
 router.get('/summary', requireRole(['manager']), getPayrollSummary);
 
 // New persistent payroll endpoints
+router.post('/recalculate-daily', requireRole(['manager']), recalculateDailyAttendance);
 router.post('/generate', requireRole(['manager']), generateDraftPayroll);
 router.get('/records', requireRole(['manager']), getPayrolls);
 router.get('/records/:payroll_id/transactions', requireRole(['manager']), getPayrollTransactions);

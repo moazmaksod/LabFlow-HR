@@ -306,8 +306,10 @@ export default function RequestsScreen() {
         );
 
       case 'attendance_correction':
+        const propIn = item.requested_check_in || item.original_check_in;
+        const propOut = item.requested_check_out || item.original_check_out;
         const origDuration = getDurationMins(item.original_check_in, item.original_check_out);
-        const propDuration = getDurationMins(item.requested_check_in, item.requested_check_out);
+        const propDuration = getDurationMins(propIn, propOut);
         return (
           <View style={styles.detailsTable}>
             <Text style={styles.detailsHeader}>Attendance Correction</Text>
@@ -336,11 +338,11 @@ export default function RequestsScreen() {
                 <Text style={styles.correctionBoxTitle}>PROPOSED (AFTER)</Text>
                 <View style={styles.correctionRow}>
                   <Text style={styles.correctionLabel}>In:</Text>
-                  <Text style={styles.correctionTimeText}>{formatTime(item.requested_check_in)}</Text>
+                  <Text style={styles.correctionTimeText}>{formatTime(propIn)}</Text>
                 </View>
                 <View style={styles.correctionRow}>
                   <Text style={styles.correctionLabel}>Out:</Text>
-                  <Text style={styles.correctionTimeText}>{formatTime(item.requested_check_out)}</Text>
+                  <Text style={styles.correctionTimeText}>{formatTime(propOut)}</Text>
                 </View>
                 <View style={[styles.correctionRow, styles.correctionBorderTop]}>
                   <Text style={styles.correctionLabel}>Dur:</Text>

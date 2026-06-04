@@ -13,8 +13,6 @@ interface Settings {
   company_favicon_url: string;
   brand_primary_color: string;
   support_contact: string;
-  payroll_cycle_type: string;
-  custom_payroll_cycle_days: number;
   overtime_rate_percent: number;
   weekend_rate_percent: number;
   attendance_bonus_amount: number;
@@ -207,7 +205,7 @@ export default function SettingsView() {
 
     // Convert to float/int where necessary to ensure type safety in backend
     const numericFields = [
-      'custom_payroll_cycle_days', 'overtime_rate_percent', 'weekend_rate_percent', 'attendance_bonus_amount',
+      'overtime_rate_percent', 'weekend_rate_percent', 'attendance_bonus_amount',
       'office_lat', 'office_lng', 'geofence_radius', 'time_sync_interval',
       'max_drift_threshold', 'accuracy_meters', 'step_away_grace_period',
       'late_grace_period', 'max_monthly_permissions'
@@ -339,31 +337,6 @@ export default function SettingsView() {
                   <h2 className="text-lg font-semibold text-foreground mb-4 border-b border-border pb-2">Payroll Settings</h2>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label className="block text-sm font-medium text-muted-foreground mb-2">Payroll Cycle Type</label>
-                      <select
-                        name="payroll_cycle_type"
-                        value={formData.payroll_cycle_type || 'calendar_month'}
-                        onChange={handleChange}
-                        className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
-                      >
-                        <option value="calendar_month">Calendar Month</option>
-                        <option value="fixed_30">Fixed 30 Days</option>
-                        <option value="custom">Custom</option>
-                      </select>
-                      {formData.payroll_cycle_type === 'custom' && (
-                        <div className="mt-4">
-                          <label className="block text-sm font-medium text-muted-foreground mb-2">Custom Cycle Days</label>
-                          <input
-                            type="number"
-                            name="custom_payroll_cycle_days"
-                            value={formData.custom_payroll_cycle_days ?? 0}
-                            onChange={handleChange}
-                            className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
-                          />
-                        </div>
-                      )}
-                    </div>
                     <div>
                       <label className="block text-sm font-medium text-muted-foreground mb-2">Overtime Rate (%)</label>
                       <input

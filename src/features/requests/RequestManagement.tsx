@@ -621,19 +621,22 @@ export default function RequestManagement() {
                             <div className="flex justify-between items-center">
                               <span className="text-muted-foreground">New Clock In:</span>
                               <span className="font-mono font-semibold text-foreground">
-                                {formatTime(selectedRequest.requested_check_in || null)}
+                                {formatTime(selectedRequest.requested_check_in || selectedRequest.original_check_in || null)}
                               </span>
                             </div>
                             <div className="flex justify-between items-center">
                               <span className="text-muted-foreground">New Clock Out:</span>
                               <span className="font-mono font-semibold text-foreground">
-                                {formatTime(selectedRequest.requested_check_out || null)}
+                                {formatTime(selectedRequest.requested_check_out || selectedRequest.original_check_out || null)}
                               </span>
                             </div>
                             <div className="flex justify-between items-center border-t border-emerald-500/10 pt-1.5 mt-1">
                               <span className="font-bold text-emerald-800 dark:text-emerald-300">New Duration:</span>
                               <span className="font-mono font-black text-emerald-600 dark:text-emerald-400 text-base">
-                                {formatDuration(getDurationMins(selectedRequest.requested_check_in, selectedRequest.requested_check_out))}
+                                {formatDuration(getDurationMins(
+                                  selectedRequest.requested_check_in || selectedRequest.original_check_in,
+                                  selectedRequest.requested_check_out || selectedRequest.original_check_out
+                                ))}
                               </span>
                             </div>
                           </div>
@@ -765,8 +768,8 @@ export default function RequestManagement() {
                 <div className="p-6 overflow-y-auto flex-1 space-y-4">
                   {(() => {
                     const parsedDetails = {
-                      new_clock_in: selectedRequest.requested_check_in,
-                      new_clock_out: selectedRequest.requested_check_out,
+                      new_clock_in: selectedRequest.requested_check_in || selectedRequest.original_check_in,
+                      new_clock_out: selectedRequest.requested_check_out || selectedRequest.original_check_out,
                       missing_minutes: selectedRequest.value,
                       early_leave_minutes: selectedRequest.value,
                       late_in_minutes: selectedRequest.value,
@@ -1380,8 +1383,8 @@ export default function RequestManagement() {
                             {bulkActionType === 'approve' ? (
                               req.type === 'attendance_correction' ? (
                                 <div className="text-muted-foreground flex gap-4">
-                                  <div>Proposed Clock: <span className="font-mono font-semibold">{formatTime(req.requested_check_in || null)} - {formatTime(req.requested_check_out || null)}</span></div>
-                                  <div>Duration: <span className="font-mono font-semibold">{formatDuration(getDurationMins(req.requested_check_in, req.requested_check_out))}</span></div>
+                                  <div>Proposed Clock: <span className="font-mono font-semibold">{formatTime(req.requested_check_in || req.original_check_in || null)} - {formatTime(req.requested_check_out || req.original_check_out || null)}</span></div>
+                                  <div>Duration: <span className="font-mono font-semibold">{formatDuration(getDurationMins(req.requested_check_in || req.original_check_in, req.requested_check_out || req.original_check_out))}</span></div>
                                 </div>
                               ) : (
                                 <div className="text-muted-foreground">

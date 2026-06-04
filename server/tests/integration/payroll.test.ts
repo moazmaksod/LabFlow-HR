@@ -85,6 +85,21 @@ describe('Payroll API', () => {
       '2023-10-01',
       'on_time'
     );
+
+    // Mock daily_attendance
+    const insertDailyAttendance = db.prepare(`
+      INSERT INTO daily_attendance (user_id, date, scheduled_working_minutes, scheduled_non_working_minutes, unscheduled_working_minutes, deduction_minutes, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    insertDailyAttendance.run(
+      employeeId,
+      '2023-10-01',
+      540, // 9 hours (540 minutes)
+      0,
+      0,
+      0,
+      'processed'
+    );
   });
   it('should calculate payroll correctly for a given date range', async () => {
     const res = await request(app)

@@ -66,6 +66,72 @@ export function initDb() {
       db.exec("ALTER TABLE settings ADD COLUMN company_wifi_bssid TEXT;");
     }
 
+    // Drop payroll cycle settings if they exist
+    const settingsColsAfterWifi = db.prepare("PRAGMA table_info(settings)").all() as any[];
+    if (settingsColsAfterWifi.some(c => c.name === 'payroll_cycle_type')) {
+      db.exec(`
+        PRAGMA foreign_keys=off;
+        BEGIN TRANSACTION;
+        CREATE TABLE settings_temp (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            company_name TEXT NOT NULL DEFAULT 'LabFlow',
+            company_logo_url TEXT,
+            company_favicon_url TEXT,
+            brand_primary_color TEXT NOT NULL DEFAULT '#4f46e5',
+            support_contact TEXT,
+            overtime_rate_percent REAL NOT NULL DEFAULT 150.0,
+            weekend_rate_percent REAL NOT NULL DEFAULT 200.0,
+            attendance_bonus_amount REAL NOT NULL DEFAULT 0.0,
+            show_salary_estimate BOOLEAN NOT NULL DEFAULT 1,
+            geofence_toggle BOOLEAN NOT NULL DEFAULT 1,
+            office_lat REAL NOT NULL DEFAULT 0,
+            office_lng REAL NOT NULL DEFAULT 0,
+            geofence_radius REAL NOT NULL DEFAULT 50,
+            time_sync_interval INTEGER NOT NULL DEFAULT 300,
+            max_drift_threshold INTEGER NOT NULL DEFAULT 10,
+            wifi_validation_toggle BOOLEAN NOT NULL DEFAULT 0,
+            company_wifi_ssid TEXT,
+            company_wifi_bssid TEXT,
+            accuracy_meters INTEGER NOT NULL DEFAULT 100,
+            device_binding_enforced BOOLEAN NOT NULL DEFAULT 1,
+            auto_checkout BOOLEAN NOT NULL DEFAULT 0,
+            step_away_grace_period INTEGER NOT NULL DEFAULT 5,
+            late_grace_period INTEGER NOT NULL DEFAULT 15,
+            max_monthly_permissions INTEGER NOT NULL DEFAULT 3,
+            enable_reminders BOOLEAN NOT NULL DEFAULT 1,
+            send_daily_report BOOLEAN NOT NULL DEFAULT 0,
+            maintenance_mode BOOLEAN NOT NULL DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO settings_temp (
+            id, company_name, company_logo_url, company_favicon_url, brand_primary_color, support_contact,
+            overtime_rate_percent, weekend_rate_percent, attendance_bonus_amount, show_salary_estimate,
+            geofence_toggle, office_lat, office_lng, geofence_radius, time_sync_interval, max_drift_threshold,
+            wifi_validation_toggle, company_wifi_ssid, company_wifi_bssid, accuracy_meters, device_binding_enforced,
+            auto_checkout, step_away_grace_period, late_grace_period, max_monthly_permissions, enable_reminders,
+            send_daily_report, maintenance_mode, created_at, updated_at
+        )
+        SELECT 
+            id, company_name, company_logo_url, company_favicon_url, brand_primary_color, support_contact,
+            overtime_rate_percent, weekend_rate_percent, attendance_bonus_amount, show_salary_estimate,
+            geofence_toggle, office_lat, office_lng, geofence_radius, time_sync_interval, max_drift_threshold,
+            wifi_validation_toggle, company_wifi_ssid, company_wifi_bssid, accuracy_meters, device_binding_enforced,
+            auto_checkout, step_away_grace_period, late_grace_period, max_monthly_permissions, enable_reminders,
+            send_daily_report, maintenance_mode, created_at, updated_at
+        FROM settings;
+        DROP TABLE settings;
+        ALTER TABLE settings_temp RENAME TO settings;
+        
+        CREATE TRIGGER IF NOT EXISTS update_settings_updated_at AFTER UPDATE ON settings
+        FOR EACH ROW WHEN NEW.updated_at <= OLD.updated_at
+        BEGIN UPDATE settings SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;
+        
+        COMMIT;
+        PRAGMA foreign_keys=on;
+      `);
+    }
+
     // Jobs migrations
     if (!jobColumns.some(c => c.name === 'required_hours_per_week')) {
       db.exec("ALTER TABLE jobs ADD COLUMN required_hours_per_week INTEGER;");
