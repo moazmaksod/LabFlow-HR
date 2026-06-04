@@ -1,10 +1,11 @@
 import bcrypt from 'bcryptjs';
-import db from './index.js';
+import db, { initDb } from './index.js';
 import { generateDailyAttendance } from '../services/dailyAttendanceService.js';
 import logger from '../utils/logger.js';
 
 async function populate() {
   logger.info('Starting test data population...');
+  initDb();
   
   // Clear existing test data
   db.exec(`
@@ -18,7 +19,6 @@ async function populate() {
     DELETE FROM shift_instances;
     DELETE FROM daily_attendance;
     DELETE FROM payrolls;
-    DELETE FROM payroll_transactions;
     DELETE FROM audit_logs;
     DELETE FROM notifications;
     PRAGMA foreign_keys = ON;
@@ -178,7 +178,7 @@ async function populate() {
         db.prepare(`
           INSERT INTO requests (user_id, attendance_id, shift_interruption_id, reason, type, value, paid_minutes, status)
           VALUES (?, ?, ?, ?, 'permission_to_leave', 90, 0, 'approved')
-        `).run(bobId, logId, interId, 'Personal errand', 'Unpaid permission');
+        `).run(bobId, logId, interId, 'Personal errand');
       } else {
         // Normal day
         const logId = insertAttendance.run(bobId, `${dateStr}T09:00:00.000Z`, `${dateStr}T17:00:00.000Z`, dateStr, 'on_time', 'on_time').lastInsertRowid;
