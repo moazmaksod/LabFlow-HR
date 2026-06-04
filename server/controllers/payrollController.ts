@@ -4,6 +4,7 @@ import { AuthRequest } from '../middlewares/authMiddleware.js';
 import { logAudit } from '../services/auditService.js';
 import logger from '../utils/logger.js';
 import { generateDailyAttendance } from '../services/dailyAttendanceService.js';
+import { getDifferenceInMinutes } from '../utils/timeManager.js';
 
 export const recalculateDailyAttendance = (req: Request, res: Response): void => {
     try {
@@ -21,50 +22,95 @@ export const recalculateDailyAttendance = (req: Request, res: Response): void =>
 };
 
 const calculateUserPayroll = (user: any, start_date: string, end_date: string) => {
-    const hourlyRate = user.hourly_rate || 0;
+    // Check if there is an existing payment record in the payrolls ledger
+    const existingPayment = db.prepare(`
+        SELECT p.*, u.name as paid_by_name
+        FROM payrolls p
+        LEFT JOIN users u ON p.paid_by = u.id
+        WHERE p.user_id = ? AND p.start_date = ? AND p.end_date = ? AND p.status = 'paid'
+    `).get(user.id, start_date, end_date) as any;
+
     const settings = db.prepare('SELECT overtime_rate_percent FROM settings WHERE id = 1').get() as any;
-    const overtimeRate = (settings?.overtime_rate_percent || 150) / 100;
-    
-    const dailyRecords = db.prepare(`
-        SELECT * FROM daily_attendance 
-        WHERE user_id = ? AND date BETWEEN ? AND ?
-    `).all(user.id, start_date, end_date) as any[];
+    const currentOvertimeRatePercent = settings?.overtime_rate_percent || 150;
 
-    let scheduledWorkMin = 0;
-    let scheduledNonWorkMin = 0;
-    let unscheduledWorkMin = 0;
-    let deductionMin = 0;
+    let hourly_rate = user.hourly_rate || 0;
+    let scheduled_working_minutes = 0;
+    let scheduled_non_working_minutes = 0;
+    let overtime_minutes = 0;
+    let overtime_rate_percent = currentOvertimeRatePercent;
+    let deduction_minutes = 0;
+    let net_salary = 0;
+    let status = 'unpaid';
+    let paid_by_name = null;
+    let paid_at = null;
 
-    for (const record of dailyRecords) {
-        scheduledWorkMin += record.scheduled_working_minutes;
-        scheduledNonWorkMin += record.scheduled_non_working_minutes;
-        unscheduledWorkMin += record.unscheduled_working_minutes;
-        deductionMin += record.deduction_minutes;
+    if (existingPayment) {
+        hourly_rate = existingPayment.hourly_rate;
+        scheduled_working_minutes = existingPayment.scheduled_working_minutes;
+        scheduled_non_working_minutes = existingPayment.scheduled_non_working_minutes;
+        overtime_minutes = existingPayment.overtime_minutes;
+        overtime_rate_percent = existingPayment.overtime_rate_percent;
+        deduction_minutes = existingPayment.deduction_minutes;
+        net_salary = existingPayment.net_salary;
+        status = 'paid';
+        paid_by_name = existingPayment.paid_by_name || 'System';
+        paid_at = existingPayment.created_at;
+    } else {
+        const dailyRecords = db.prepare(`
+            SELECT * FROM daily_attendance 
+            WHERE user_id = ? AND date BETWEEN ? AND ?
+        `).all(user.id, start_date, end_date) as any[];
+
+        for (const record of dailyRecords) {
+            scheduled_working_minutes += record.scheduled_working_minutes;
+            scheduled_non_working_minutes += record.scheduled_non_working_minutes;
+            overtime_minutes += record.unscheduled_working_minutes;
+            deduction_minutes += record.deduction_minutes;
+        }
+
+        const totalPaidMinutes = scheduled_working_minutes + scheduled_non_working_minutes;
+        const basePay = (totalPaidMinutes / 60) * hourly_rate;
+        const overtimePay = (overtime_minutes / 60) * (hourly_rate * (overtime_rate_percent / 100));
+        const deductionAmount = (deduction_minutes / 60) * hourly_rate;
+        
+        net_salary = basePay + overtimePay - deductionAmount;
     }
 
-    const totalPaidMinutes = scheduledWorkMin + scheduledNonWorkMin;
-    const grossBasePay = (totalPaidMinutes / 60) * hourlyRate;
-    
-    const totalDeductions = (deductionMin / 60) * hourlyRate;
-    const overtimeBonus = (unscheduledWorkMin / 60) * (hourlyRate * overtimeRate);
-    
-    const netSalaryWithOvertime = grossBasePay - totalDeductions + overtimeBonus;
+    const base_salary = ((scheduled_working_minutes + scheduled_non_working_minutes) / 60) * hourly_rate;
+    const total_additions = (overtime_minutes / 60) * (hourly_rate * (overtime_rate_percent / 100));
+    const total_deductions = (deduction_minutes / 60) * hourly_rate;
+
+    // Fetch count of pending requests for this user in this range or related to calculated shifts
+    const pendingRequests = db.prepare(`
+        SELECT COUNT(*) as count 
+        FROM requests r
+        LEFT JOIN attendance a ON r.attendance_id = a.id
+        WHERE r.user_id = ? AND r.status = 'pending'
+          AND (
+              (r.attendance_id IS NOT NULL AND a.date BETWEEN ? AND ?)
+              OR
+              (r.attendance_id IS NULL AND (substr(r.requested_check_in, 1, 10) BETWEEN ? AND ? OR (r.requested_check_in IS NULL AND substr(r.created_at, 1, 10) BETWEEN ? AND ?)))
+          )
+    `).get(user.id, start_date, end_date, start_date, end_date, start_date, end_date) as any;
 
     return {
-        user: { id: user.id, name: user.name, job_title: user.job_title, hourly_rate: hourlyRate },
-        time_metrics: {
-            expected_hours: Number(((scheduledWorkMin + deductionMin) / 60).toFixed(2)),
-            actual_worked_hours: Number(((scheduledWorkMin + unscheduledWorkMin) / 60).toFixed(2)),
-            paid_hours: Number((totalPaidMinutes / 60).toFixed(2)),
-            missing_unpaid_minutes: deductionMin,
-            approved_overtime_minutes: unscheduledWorkMin
-        },
-        financial_metrics: {
-            gross_base_pay: Number(grossBasePay.toFixed(2)),
-            total_deductions: Number(totalDeductions.toFixed(2)),
-            overtime_bonus: Number(overtimeBonus.toFixed(2)),
-            final_net_salary: Number(netSalaryWithOvertime.toFixed(2))
-        }
+        user_id: user.id,
+        user_name: user.name,
+        job_title: user.job_title || 'No Job',
+        hourly_rate: Number(hourly_rate.toFixed(2)),
+        overtime_rate_percent,
+        scheduled_working_minutes,
+        scheduled_non_working_minutes,
+        overtime_minutes,
+        deduction_minutes,
+        base_salary: Number(base_salary.toFixed(2)),
+        total_additions: Number(total_additions.toFixed(2)),
+        total_deductions: Number(total_deductions.toFixed(2)),
+        net_salary: Number(net_salary.toFixed(2)),
+        status,
+        paid_by_name,
+        paid_at,
+        pending_requests_count: pendingRequests?.count || 0
     };
 };
 
@@ -93,7 +139,13 @@ export const getPayrollSummary = (req: Request, res: Response): void => {
         const summary = calculateUserPayroll(user, start_date as string, end_date as string);
         res.json({
             period: { start: start_date, end: end_date },
-            ...summary
+            user: { id: user.id, name: user.name, hourly_rate: user.hourly_rate },
+            time_metrics: {
+                actual_worked_hours: Number(((summary.scheduled_working_minutes + summary.overtime_minutes) / 60).toFixed(2))
+            },
+            financial_metrics: {
+                final_net_salary: summary.net_salary
+            }
         });
 
     } catch (error) {
@@ -127,12 +179,25 @@ export const getAllPayroll = (req: Request, res: Response): void => {
         const results = users.map(user => {
             const summary = calculateUserPayroll(user, startDate as string, endDate as string);
             return {
-                user_id: user.id,
-                user_name: user.name,
-                job_title: user.job_title || 'No Job',
-                hourly_rate: user.hourly_rate || 0,
-                total_hours: summary.time_metrics.actual_worked_hours,
-                total_pay: summary.financial_metrics.final_net_salary
+                id: summary.user_id, // For key indexing on UI
+                user_id: summary.user_id,
+                user_name: summary.user_name,
+                job_title: summary.job_title,
+                hourly_rate: summary.hourly_rate,
+                scheduled_working_minutes: summary.scheduled_working_minutes,
+                scheduled_non_working_minutes: summary.scheduled_non_working_minutes,
+                overtime_minutes: summary.overtime_minutes,
+                deduction_minutes: summary.deduction_minutes,
+                base_salary: summary.base_salary,
+                total_additions: summary.total_additions,
+                total_deductions: summary.total_deductions,
+                total_hours: Number(((summary.scheduled_working_minutes + summary.overtime_minutes) / 60).toFixed(2)),
+                total_pay: summary.net_salary,
+                net_salary: summary.net_salary,
+                status: summary.status,
+                paid_by_name: summary.paid_by_name,
+                paid_at: summary.paid_at,
+                pending_requests_count: summary.pending_requests_count
             };
         });
 
@@ -144,208 +209,171 @@ export const getAllPayroll = (req: Request, res: Response): void => {
     }
 };
 
-export function getOrCreateDraftPayroll(userId: number, dateStr: string, actorId?: number): number {
-    const date = new Date(dateStr);
-    const year = date.getFullYear();
-    const month = date.getMonth();
-
-    const startDate = new Date(year, month, 1).toISOString().split('T')[0];
-    const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
-
-    const existing = db.prepare(`
-        SELECT id FROM payrolls
-        WHERE user_id = ? AND start_date = ? AND end_date = ? AND status = 'draft'
-    `).get(userId, startDate, endDate) as any;
-
-    if (existing) {
-        return existing.id;
-    }
-
-    const result = db.prepare(`
-        INSERT INTO payrolls (user_id, start_date, end_date, base_salary, status)
-        VALUES (?, ?, ?, 0, 'draft')
-    `).run(userId, startDate, endDate);
-
-    const newPayrollId = result.lastInsertRowid as number;
-    const newPayroll = db.prepare('SELECT * FROM payrolls WHERE id = ?').get(newPayrollId);
-
-    if (actorId) {
-        logAudit('payrolls', newPayrollId, 'CREATE', actorId, null, newPayroll);
-    }
-
-    return newPayrollId;
-}
-
-export const generateDraftPayroll = (req: AuthRequest, res: Response) => {
+export const getPayrollDetails = (req: Request, res: Response): void => {
     try {
-        const { month, year, startDate: qStartDate, endDate: qEndDate } = req.query;
-        const actorId = req.user!.id;
+        const { user_id } = req.params;
+        const { startDate, endDate } = req.query;
 
-        let startDate: string;
-        let endDate: string;
-
-        if (qStartDate && qEndDate) {
-            startDate = qStartDate as string;
-            endDate = qEndDate as string;
-        } else {
-            if (!month || !year) {
-                return res.status(400).json({ error: 'Month and year are required' });
-            }
-            startDate = new Date(Number(year), Number(month) - 1, 1).toISOString().split('T')[0];
-            endDate = new Date(Number(year), Number(month), 0).toISOString().split('T')[0];
+        if (!user_id || !startDate || !endDate) {
+            res.status(400).json({ error: 'Missing required parameters: user_id, startDate, endDate' });
+            return;
         }
 
-        const users = db.prepare("SELECT id FROM users WHERE role = 'employee'").all() as any[];
-        const userIds = users.map(u => u.id);
+        const user = db.prepare(`
+            SELECT u.id, u.name, p.hourly_rate, j.title as job_title
+            FROM users u
+            JOIN profiles p ON u.id = p.user_id
+            LEFT JOIN jobs j ON p.job_id = j.id
+            WHERE u.id = ?
+        `).get(user_id) as any;
 
-        if (userIds.length === 0) {
-            return res.json({ message: 'No eligible users for payroll generation', payrolls: [] });
+        if (!user) {
+            res.status(404).json({ error: 'User not found' });
+            return;
         }
 
-        const generatedPayrolls: any[] = [];
+        const summary = calculateUserPayroll(user, startDate as string, endDate as string);
 
-        const generateTransaction = db.transaction(() => {
-            const placeholders = userIds.map(() => '?').join(',');
+        // Fetch daily records
+        const dailyRecords = db.prepare(`
+            SELECT * FROM daily_attendance
+            WHERE user_id = ? AND date BETWEEN ? AND ?
+            ORDER BY date ASC
+        `).all(user_id, startDate, endDate) as any[];
 
-            const existingPayrolls = db.prepare(`
-                SELECT id, user_id FROM payrolls
-                WHERE user_id IN (${placeholders}) AND start_date = ? AND end_date = ? AND status = 'draft'
-            `).all(...userIds, startDate, endDate) as any[];
+        // Fetch pending requests
+        const pendingRequests = db.prepare(`
+            SELECT r.*, a.date as attendance_date
+            FROM requests r
+            LEFT JOIN attendance a ON r.attendance_id = a.id
+            WHERE r.user_id = ? AND r.status = 'pending'
+              AND (
+                  (r.attendance_id IS NOT NULL AND a.date BETWEEN ? AND ?)
+                  OR
+                  (r.attendance_id IS NULL AND (substr(r.requested_check_in, 1, 10) BETWEEN ? AND ? OR (r.requested_check_in IS NULL AND substr(r.created_at, 1, 10) BETWEEN ? AND ?)))
+              )
+            ORDER BY r.created_at DESC
+        `).all(user_id, startDate, endDate, startDate, endDate, startDate, endDate) as any[];
 
-            const payrollMap = new Map<number, number>(existingPayrolls.map(p => [p.user_id, p.id]));
-            const missingUsers = users.filter((user: any) => !payrollMap.has(user.id));
+        // Fetch processed requests
+        const processedRequests = db.prepare(`
+            SELECT r.*, a.date as attendance_date
+            FROM requests r
+            LEFT JOIN attendance a ON r.attendance_id = a.id
+            WHERE r.user_id = ? AND r.status != 'pending'
+              AND (
+                  (r.attendance_id IS NOT NULL AND a.date BETWEEN ? AND ?)
+                  OR
+                  (r.attendance_id IS NULL AND (substr(r.requested_check_in, 1, 10) BETWEEN ? AND ? OR (r.requested_check_in IS NULL AND substr(r.created_at, 1, 10) BETWEEN ? AND ?)))
+              )
+            ORDER BY r.created_at DESC
+        `).all(user_id, startDate, endDate, startDate, endDate, startDate, endDate) as any[];
 
-            if (missingUsers.length > 0) {
-                const insertStmt = db.prepare(`
-                    INSERT INTO payrolls (user_id, start_date, end_date, base_salary, status)
-                    VALUES (?, ?, ?, 0, 'draft')
-                    RETURNING *
-                `);
+        // Calculate Missed Shifts
+        const shifts = db.prepare(`
+            SELECT * FROM shift_instances
+            WHERE user_id = ? AND logical_date BETWEEN ? AND ? AND status != 'Cancelled'
+        `).all(user_id, startDate, endDate) as any[];
 
-                const newPayrolls: any[] = [];
-                for (const user of missingUsers) {
-                    const payroll = insertStmt.get(user.id, startDate, endDate);
-                    newPayrolls.push(payroll);
-                }
+        const missedShifts: any[] = [];
+        const nowStr = new Date().toISOString();
+        for (const shift of shifts) {
+            const hasAttendance = db.prepare(`
+                SELECT id FROM attendance
+                WHERE user_id = ? AND shift_id = ?
+            `).get(user_id, shift.id.toString());
 
-                const auditStmt = db.prepare(`
-                    INSERT INTO audit_logs (entity_name, entity_id, action, actor_id, old_values, new_values)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                `);
-
-                for (const p of newPayrolls) {
-                    auditStmt.run('payrolls', p.id, 'CREATE', actorId, null, JSON.stringify(p));
-                    payrollMap.set(p.user_id, p.id);
-                }
-            }
-
-            const allPayrollIds = Array.from(payrollMap.values());
-            const payrollPlaceholders = allPayrollIds.map(() => '?').join(',');
-
-            const profiles = db.prepare(`
-                SELECT p.user_id, p.hourly_rate
-                FROM profiles p
-                WHERE p.user_id IN (${placeholders})
-            `).all(...userIds) as any[];
-            const profileMap = new Map(profiles.map(p => [p.user_id, p]));
-
-            const allTransactions = db.prepare(`
-                SELECT payroll_id, type, amount, status
-                FROM payroll_transactions
-                WHERE payroll_id IN (${payrollPlaceholders}) AND status = 'applied'
-            `).all(...allPayrollIds) as any[];
-
-            const transactionMap = new Map<number, { additions: number; deductions: number }>();
-            for (const tx of allTransactions) {
-                let agg = transactionMap.get(tx.payroll_id);
-                if (!agg) {
-                    agg = { additions: 0, deductions: 0 };
-                    transactionMap.set(tx.payroll_id, agg);
-                }
-                if (tx.type === 'overtime' || tx.type === 'bonus') {
-                    agg.additions += tx.amount;
-                } else if (tx.type === 'late_deduction' || tx.type === 'step_away_unpaid' || tx.type === 'deduction' || tx.type === 'disciplinary_penalty') {
-                    agg.deductions += tx.amount;
+            if (!hasAttendance) {
+                if (new Date(shift.end_time) < new Date(nowStr)) {
+                    const duration = getDifferenceInMinutes(shift.start_time, shift.end_time);
+                    missedShifts.push({
+                        id: shift.id,
+                        date: shift.logical_date,
+                        start_time: shift.start_time,
+                        end_time: shift.end_time,
+                        duration_minutes: duration
+                    });
                 }
             }
-            
-            const settings = db.prepare('SELECT overtime_rate_percent FROM settings WHERE id = 1').get() as any;
-            const overtimeRate = (settings?.overtime_rate_percent || 150) / 100;
+        }
 
-            const oldPayrolls = db.prepare(`
-                SELECT * FROM payrolls WHERE id IN (${payrollPlaceholders})
-            `).all(...allPayrollIds) as any[];
-            const oldPayrollMap = new Map(oldPayrolls.map(p => [p.id, p]));
-
-            const updateStmt = db.prepare(`
-                UPDATE payrolls
-                SET base_salary = ?, total_additions = ?, total_deductions = ?, net_salary = ?
-                WHERE id = ?
-            `);
-            
-            const dailyRecordsStmt = db.prepare(`
-                SELECT * FROM daily_attendance WHERE user_id = ? AND date BETWEEN ? AND ?
-            `);
-
-            for (const user of users) {
-                const payrollId = payrollMap.get(user.id)!;
-                const oldPayroll = oldPayrollMap.get(payrollId);
-                const profile = profileMap.get(user.id);
-
-                const dailyRecords = dailyRecordsStmt.all(user.id, startDate, endDate) as any[];
-
-                let scheduledWorkMin = 0;
-                let scheduledNonWorkMin = 0;
-                let deductionMin = 0;
-                let unscheduledWorkMin = 0;
-
-                for (const record of dailyRecords) {
-                    scheduledWorkMin += record.scheduled_working_minutes;
-                    scheduledNonWorkMin += record.scheduled_non_working_minutes;
-                    deductionMin += record.deduction_minutes;
-                    unscheduledWorkMin += record.unscheduled_working_minutes;
-                }
-                
-                const hourlyRate = profile?.hourly_rate || 0;
-                const baseSalary = ((scheduledWorkMin + scheduledNonWorkMin) / 60) * hourlyRate;
-                const timeDeductions = (deductionMin / 60) * hourlyRate;
-                const timeOvertime = (unscheduledWorkMin / 60) * (hourlyRate * overtimeRate);
-
-                const agg = transactionMap.get(payrollId) || { additions: 0, deductions: 0 };
-                const totalAdditions = agg.additions + timeOvertime;
-                const totalDeductions = agg.deductions + timeDeductions;
-
-                const netSalary = baseSalary + totalAdditions - totalDeductions;
-
-                updateStmt.run(baseSalary, totalAdditions, totalDeductions, netSalary, payrollId);
-
-                const updatedPayroll = {
-                    ...oldPayroll,
-                    base_salary: baseSalary,
-                    total_additions: totalAdditions,
-                    total_deductions: totalDeductions,
-                    net_salary: netSalary
-                };
-
-                logAudit('payrolls', payrollId, 'UPDATE', actorId, oldPayroll, updatedPayroll);
-
-                generatedPayrolls.push({
-                    payroll_id: payrollId,
-                    user_id: user.id,
-                    base_salary: baseSalary,
-                    total_additions: totalAdditions,
-                    total_deductions: totalDeductions,
-                    net_salary: netSalary
-                });
-            }
+        res.json({
+            summary,
+            daily_records: dailyRecords,
+            pending_requests: pendingRequests,
+            processed_requests: processedRequests,
+            missed_shifts: missedShifts
         });
 
-        generateTransaction();
-
-        res.json({ message: 'Draft payrolls generated successfully', payrolls: generatedPayrolls });
     } catch (error) {
-        logger.error('Error generating draft payroll:', error);
-        res.status(500).json({ error: 'Failed to generate draft payroll' });
+        logger.error('Error fetching payroll details:', error);
+        res.status(500).json({ error: 'Failed to fetch payroll details' });
+    }
+};
+
+export const recordPayment = (req: AuthRequest, res: Response): void => {
+    try {
+        const { user_id, startDate, endDate } = req.body;
+        const actorId = req.user!.id;
+
+        if (!user_id || !startDate || !endDate) {
+            res.status(400).json({ error: 'Missing required fields: user_id, startDate, endDate' });
+            return;
+        }
+
+        const user = db.prepare(`
+            SELECT u.id, u.name, p.hourly_rate, j.title as job_title
+            FROM users u
+            JOIN profiles p ON u.id = p.user_id
+            LEFT JOIN jobs j ON p.job_id = j.id
+            WHERE u.id = ?
+        `).get(user_id) as any;
+
+        if (!user) {
+            res.status(404).json({ error: 'User not found' });
+            return;
+        }
+
+        const existingPayment = db.prepare(`
+            SELECT id FROM payrolls
+            WHERE user_id = ? AND start_date = ? AND end_date = ? AND status = 'paid'
+        `).get(user_id, startDate, endDate);
+
+        if (existingPayment) {
+            res.status(400).json({ error: 'This period has already been paid for this employee.' });
+            return;
+        }
+
+        // Calculate metrics dynamically to save in the ledger
+        const summary = calculateUserPayroll(user, startDate, endDate);
+
+        const newPayment = db.transaction(() => {
+            const insert = db.prepare(`
+                INSERT INTO payrolls (
+                    user_id, start_date, end_date, hourly_rate,
+                    scheduled_working_minutes, scheduled_non_working_minutes,
+                    overtime_minutes, overtime_rate_percent, deduction_minutes,
+                    net_salary, status, paid_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?)
+                RETURNING *
+            `);
+            const record = insert.get(
+                user_id, startDate, endDate, summary.hourly_rate,
+                summary.scheduled_working_minutes, summary.scheduled_non_working_minutes,
+                summary.overtime_minutes, summary.overtime_rate_percent, summary.deduction_minutes,
+                summary.net_salary, actorId
+            ) as any;
+
+            logAudit('payrolls', record.id, 'CREATE', actorId, null, record);
+            return record;
+        });
+
+        const record = newPayment();
+        res.json({ message: 'Payment recorded successfully', record });
+
+    } catch (error) {
+        logger.error('Error recording payment:', error);
+        res.status(500).json({ error: 'Failed to record payment' });
     }
 };
 
@@ -383,19 +411,6 @@ export const getPayrolls = (req: Request, res: Response) => {
     }
 };
 
-export const getPayrollTransactions = (req: Request, res: Response) => {
-    try {
-        const { payroll_id } = req.params;
-        const transactions = db.prepare(`
-            SELECT * FROM payroll_transactions WHERE payroll_id = ? ORDER BY created_at DESC
-        `).all(payroll_id);
-        res.json(transactions);
-    } catch (error) {
-        logger.error('Error fetching payroll transactions:', error);
-        res.status(500).json({ error: 'Failed to fetch payroll transactions' });
-    }
-};
-
 export const getMyPayrolls = (req: AuthRequest, res: Response) => {
     try {
         const userId = req.user!.id;
@@ -423,64 +438,5 @@ export const getMyPayrolls = (req: AuthRequest, res: Response) => {
     } catch (error) {
         logger.error('Error in getMyPayrolls:', error);
         res.status(500).json({ error: 'Failed to fetch your payroll records' });
-    }
-};
-
-export const getMyPayrollTransactions = (req: AuthRequest, res: Response) => {
-    try {
-        const userId = req.user!.id;
-        const { payroll_id } = req.params;
-
-        const payroll = db.prepare('SELECT user_id FROM payrolls WHERE id = ?').get(payroll_id) as any;
-        if (!payroll || payroll.user_id !== userId) {
-            return res.status(403).json({ error: 'Access denied' });
-        }
-
-        const transactions = db.prepare(`
-            SELECT * FROM payroll_transactions WHERE payroll_id = ? ORDER BY created_at DESC
-        `).all(payroll_id);
-        res.json(transactions);
-    } catch (error) {
-        logger.error('Error in getMyPayrollTransactions:', error);
-        res.status(500).json({ error: 'Failed to fetch your payroll transactions' });
-    }
-};
-
-export const updatePayrollStatus = (req: AuthRequest, res: Response): void => {
-    try {
-        const { id } = req.params;
-        const { status } = req.body;
-        const actorId = req.user!.id;
-
-        if (!['draft', 'finalized', 'paid'].includes(status)) {
-            res.status(400).json({ error: 'Invalid status' });
-            return;
-        }
-
-        const updateTransaction = db.transaction(() => {
-            const oldPayroll = db.prepare('SELECT * FROM payrolls WHERE id = ?').get(id);
-            if (!oldPayroll) {
-                return null;
-            }
-
-            db.prepare('UPDATE payrolls SET status = ? WHERE id = ?').run(status, id);
-
-            const updatedPayroll = db.prepare('SELECT * FROM payrolls WHERE id = ?').get(id);
-            logAudit('payrolls', Number(id), 'UPDATE', actorId, oldPayroll, updatedPayroll);
-
-            return updatedPayroll;
-        });
-
-        const result = updateTransaction();
-
-        if (!result) {
-            res.status(404).json({ error: 'Payroll not found' });
-            return;
-        }
-
-        res.json(result);
-    } catch (error) {
-        logger.error('Error updating payroll status:', error);
-        res.status(500).json({ error: 'Internal server error' });
     }
 };

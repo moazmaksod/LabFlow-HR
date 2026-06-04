@@ -172,28 +172,19 @@ CREATE TABLE IF NOT EXISTS payrolls (
     user_id INTEGER NOT NULL,
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
-    base_salary REAL NOT NULL DEFAULT 0,
-    total_additions REAL NOT NULL DEFAULT 0,
-    total_deductions REAL NOT NULL DEFAULT 0,
-    net_salary REAL NOT NULL DEFAULT 0,
-    status TEXT NOT NULL CHECK(status IN ('draft', 'finalized', 'paid')) DEFAULT 'draft',
+    hourly_rate REAL NOT NULL,
+    scheduled_working_minutes REAL NOT NULL DEFAULT 0,
+    scheduled_non_working_minutes REAL NOT NULL DEFAULT 0,
+    overtime_minutes REAL NOT NULL DEFAULT 0,
+    overtime_rate_percent REAL NOT NULL DEFAULT 150.0,
+    deduction_minutes REAL NOT NULL DEFAULT 0,
+    net_salary REAL NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('paid')) DEFAULT 'paid',
+    paid_by INTEGER NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS payroll_transactions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    payroll_id INTEGER NOT NULL,
-    reference_id INTEGER, -- Can be attendance_id or request_id
-    type TEXT NOT NULL, -- 'overtime', 'late_deduction', 'step_away_unpaid', 'bonus', 'deduction'
-    hours REAL NOT NULL DEFAULT 0,
-    amount REAL NOT NULL DEFAULT 0,
-    status TEXT NOT NULL CHECK(status IN ('applied', 'rejected', 'voided')) DEFAULT 'applied',
-    manager_notes TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (payroll_id) REFERENCES payrolls(id) ON DELETE CASCADE
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (paid_by) REFERENCES users(id) ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS shift_instances (
@@ -296,9 +287,7 @@ CREATE TRIGGER IF NOT EXISTS update_payrolls_updated_at AFTER UPDATE ON payrolls
 FOR EACH ROW WHEN NEW.updated_at <= OLD.updated_at
 BEGIN UPDATE payrolls SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;
 
-CREATE TRIGGER IF NOT EXISTS update_payroll_transactions_updated_at AFTER UPDATE ON payroll_transactions
-FOR EACH ROW WHEN NEW.updated_at <= OLD.updated_at
-BEGIN UPDATE payroll_transactions SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;
+
 
 CREATE TRIGGER IF NOT EXISTS update_daily_attendance_updated_at AFTER UPDATE ON daily_attendance
 FOR EACH ROW WHEN NEW.updated_at <= OLD.updated_at

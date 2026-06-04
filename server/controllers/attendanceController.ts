@@ -106,13 +106,6 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                                 manager_note = COALESCE(manager_note, '') || '\nSYSTEM: Auto-canceled because the employee returned. Replaced by a shift interruption request.'
                             WHERE id = ?
                         `).run(oldRequest.id);
-
-                        // 2. Payroll Ledger Reversal
-                        db.prepare(`
-                            UPDATE payroll_transactions
-                            SET status = 'voided', amount = 0, manager_notes = COALESCE(manager_notes, '') || '\nSYSTEM: Voided due to employee return'
-                            WHERE reference_id = ?
-                        `).run(oldRequest.id);
                     }
 
                     const insertInterruption = db.prepare(`

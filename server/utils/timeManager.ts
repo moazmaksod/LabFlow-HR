@@ -74,4 +74,11 @@ export const generateUnscheduledShiftId = (userId: number, timestamp: string | D
     return `US_${dd}${mm}${yyyy}_${hh}${min}_${userId}_${random}`;
 };
 
+export const formatMinutesToHHMM = (totalMins: number): string => {
+    if (!totalMins || totalMins < 0) return '00:00';
+    const hours = Math.floor(totalMins / 60);
+    const mins = Math.round(totalMins % 60);
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+};
+
 

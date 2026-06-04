@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import db from '../db/index.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
 
-import { getOrCreateDraftPayroll } from './payrollController.js';
+import { recalculateUserDailyAttendance } from '../services/dailyAttendanceService.js';
 import { logAudit } from '../services/auditService.js';
 import logger from '../utils/logger.js';
 import { evaluateUserAttendance } from '../services/attendanceEvaluationService.js';
@@ -474,9 +474,7 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                                 }
                                 if (lateMins > gracePeriod) {
                                     db.prepare("UPDATE requests SET status = 'pending', value = ?, paid_minutes = 0 WHERE id = ?").run(lateMins, relReq.id);
-                                    db.prepare("DELETE FROM payroll_transactions WHERE reference_id = ?").run(relReq.id);
                                 } else {
-                                    db.prepare("DELETE FROM payroll_transactions WHERE reference_id = ?").run(relReq.id);
                                     db.prepare("DELETE FROM requests WHERE id = ?").run(relReq.id);
                                 }
                             } else if (relReq.type === 'early_leave_approval') {
@@ -490,9 +488,7 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                                 }
                                 if (earlyMins > gracePeriod) {
                                     db.prepare("UPDATE requests SET status = 'pending', value = ?, paid_minutes = 0 WHERE id = ?").run(earlyMins, relReq.id);
-                                    db.prepare("DELETE FROM payroll_transactions WHERE reference_id = ?").run(relReq.id);
                                 } else {
-                                    db.prepare("DELETE FROM payroll_transactions WHERE reference_id = ?").run(relReq.id);
                                     db.prepare("DELETE FROM requests WHERE id = ?").run(relReq.id);
                                 }
                             } else if (relReq.type === 'overtime_approval') {
@@ -520,9 +516,7 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
 
                                 if (newOtMinutes > 0) {
                                     db.prepare("UPDATE requests SET status = 'pending', value = ?, paid_minutes = 0 WHERE id = ?").run(newOtMinutes, relReq.id);
-                                    db.prepare("DELETE FROM payroll_transactions WHERE reference_id = ?").run(relReq.id);
                                 } else {
-                                    db.prepare("DELETE FROM payroll_transactions WHERE reference_id = ?").run(relReq.id);
                                     db.prepare("DELETE FROM requests WHERE id = ?").run(relReq.id);
                                 }
                             }
@@ -678,51 +672,22 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                 }
             }
 
-            // --- Payroll Ledger Integration ---
-            const userProfile = db.prepare('SELECT hourly_rate FROM profiles WHERE user_id = ?').get(requestRecord.user_id) as any;
-            const hourlyRate = userProfile?.hourly_rate || 0;
-            const dateStr = new Date().toISOString().split('T')[0]; // Use current date for the payroll period
-            const payrollId = getOrCreateDraftPayroll(requestRecord.user_id, dateStr, actorId);
-
-            if (requestRecord.type === 'overtime_approval') {
-                const requestedMinutes = requestRecord.value || 0;
-                const minutes = status === 'approved' ? (approved_minutes !== undefined ? approved_minutes : requestedMinutes) : requestedMinutes;
-                const hours = isNaN(minutes) || minutes === null ? 0 : minutes / 60;
-                const amount = status === 'approved' ? hours * (hourlyRate * 1.5) : 0; // Overtime is 1.5x
-
-                db.prepare(`
-                    INSERT INTO payroll_transactions (payroll_id, reference_id, type, hours, amount, status, manager_notes)
-                    VALUES (?, ?, 'overtime', ?, ?, ?, ?)
-                `).run(payrollId, id, hours, amount, status === 'approved' ? 'applied' : 'rejected', manager_note);
-            } else if (requestRecord.type === 'permission_to_leave') {
-                const finalPaidMinutes = paid_minutes || 0;
-                const finalPaidHours = finalPaidMinutes / 60;
-                const totalHours = (requestRecord.value || 0) / 60;
-                const unpaidHours = Math.max(0, totalHours - finalPaidHours);
-
-                if (status === 'approved' && unpaidHours > 0) {
-                    const amount = unpaidHours * hourlyRate;
-                    db.prepare(`
-                        INSERT INTO payroll_transactions (payroll_id, reference_id, type, hours, amount, status, manager_notes)
-                        VALUES (?, ?, 'step_away_unpaid', ?, ?, 'applied', ?)
-                    `).run(payrollId, id, unpaidHours, amount, manager_note);
-                } else if (status === 'rejected') {
-                    db.prepare(`
-                        INSERT INTO payroll_transactions (payroll_id, reference_id, type, hours, amount, status, manager_notes)
-                        VALUES (?, ?, 'step_away_unpaid', ?, 0, 'rejected', ?)
-                    `).run(payrollId, id, totalHours, manager_note);
+            // --- Recalculate and Seal Daily Attendance ---
+            let requestDate = null;
+            if (requestRecord.attendance_id) {
+                const att = db.prepare('SELECT date FROM attendance WHERE id = ?').get(requestRecord.attendance_id) as any;
+                if (att) {
+                    requestDate = att.date;
                 }
             }
+            if (!requestDate) {
+                requestDate = requestRecord.requested_check_in 
+                    ? requestRecord.requested_check_in.split('T')[0] 
+                    : requestRecord.created_at.split('T')[0];
+            }
 
-            // Disciplinary Penalty Logic
-            const finalPenaltyMinutes = penalty_minutes !== undefined ? penalty_minutes : (requestRecord.penalty_minutes || 0);
-            if (status === 'rejected' && finalPenaltyMinutes > 0) {
-                const penaltyHours = finalPenaltyMinutes / 60;
-                const penaltyAmount = penaltyHours * hourlyRate;
-                db.prepare(`
-                    INSERT INTO payroll_transactions (payroll_id, reference_id, type, hours, amount, status, manager_notes)
-                    VALUES (?, ?, 'disciplinary_penalty', ?, ?, 'applied', ?)
-                `).run(payrollId, id, penaltyHours, penaltyAmount, manager_note);
+            if (requestDate) {
+                recalculateUserDailyAttendance(requestRecord.user_id, requestDate);
             }
         });
 

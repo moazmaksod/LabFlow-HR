@@ -27,6 +27,20 @@ export function initDb() {
     if (!isTestEnv) {
       logger.info('Initializing database schema...');
     }
+    
+    // Drop old payroll_transactions if they exist
+    db.exec("DROP TABLE IF EXISTS payroll_transactions;");
+
+    // Drop old payrolls if it has the legacy schema
+    try {
+      const payrollColumns = db.prepare("PRAGMA table_info(payrolls)").all() as any[];
+      if (payrollColumns.length > 0 && !payrollColumns.some(c => c.name === 'paid_by')) {
+        db.exec("DROP TABLE IF EXISTS payrolls;");
+      }
+    } catch (e) {
+      // payrolls table doesn't exist yet, ignore
+    }
+
     db.exec(schema);
 
     // Migration: Add new columns to jobs and profiles
