@@ -178,7 +178,7 @@ describe('Requests API', () => {
     expect(attendance.check_out).toBeDefined();
   });
 
-  it('should cascade delete or update related requests and payroll transactions when attendance correction is approved', async () => {
+  it('should cascade delete or update related requests when attendance correction is approved', async () => {
     // 1. Create a shift instance (Scheduled)
     const testDate = '2026-05-24';
     const shiftStart = '2026-05-24T09:00:00.000Z';
@@ -219,17 +219,6 @@ describe('Requests API', () => {
     `).run(employeeId, attendanceId);
     const earlyReqId = earlyReqInsert.lastInsertRowid;
 
-    // Create payroll transactions linked to these approved requests
-    db.prepare(`
-      INSERT INTO payroll_transactions (payroll_id, reference_id, type, hours, amount, status)
-      VALUES (1, ?, 'late_deduction', 0.75, 15, 'applied')
-    `).run(lateReqId);
-
-    db.prepare(`
-      INSERT INTO payroll_transactions (payroll_id, reference_id, type, hours, amount, status)
-      VALUES (1, ?, 'step_away_unpaid', 0.75, 15, 'applied')
-    `).run(earlyReqId);
-
     // 5. Submit an attendance correction request correcting check_in to 09:00 (on time) and check_out to 17:00 (on time)
     const correctionRes = await request(app)
       .post('/api/requests/attendance-correction')
@@ -256,12 +245,6 @@ describe('Requests API', () => {
 
     const earlyReq = db.prepare('SELECT * FROM requests WHERE id = ?').get(earlyReqId);
     expect(earlyReq).toBeUndefined();
-
-    // Verify payroll transactions are deleted
-    const lateTx = db.prepare('SELECT * FROM payroll_transactions WHERE reference_id = ?').get(lateReqId);
-    expect(lateTx).toBeUndefined();
-    const earlyTx = db.prepare('SELECT * FROM payroll_transactions WHERE reference_id = ?').get(earlyReqId);
-    expect(earlyTx).toBeUndefined();
   });
 
   it('should reset value and status to pending for related requests when corrected times still exceed grace period', async () => {
@@ -269,7 +252,6 @@ describe('Requests API', () => {
     db.prepare('DELETE FROM shift_instances').run();
     db.prepare('DELETE FROM attendance').run();
     db.prepare('DELETE FROM requests').run();
-    db.prepare('DELETE FROM payroll_transactions').run();
 
     const testDate = '2026-05-24';
     const shiftStart = '2026-05-24T09:00:00.000Z';
@@ -296,12 +278,6 @@ describe('Requests API', () => {
     `).run(employeeId, attendanceId);
     const lateReqId = lateReqInsert.lastInsertRowid;
 
-    // Create payroll transaction
-    db.prepare(`
-      INSERT INTO payroll_transactions (payroll_id, reference_id, type, hours, amount, status)
-      VALUES (1, ?, 'late_deduction', 0.75, 15, 'applied')
-    `).run(lateReqId);
-
     // Correct to 09:30 (still late by 30 mins, exceeding grace period of 15 mins)
     const correctionRes = await request(app)
       .post('/api/requests/attendance-correction')
@@ -326,10 +302,6 @@ describe('Requests API', () => {
     expect(lateReq).toBeDefined();
     expect(lateReq.status).toBe('pending');
     expect(lateReq.value).toBe(30);
-
-    // Verify payroll transaction was deleted
-    const lateTx = db.prepare('SELECT * FROM payroll_transactions WHERE reference_id = ?').get(lateReqId);
-    expect(lateTx).toBeUndefined();
   });
 
   it('should prevent approving a request if the approved minutes exceed the maximum duration', async () => {

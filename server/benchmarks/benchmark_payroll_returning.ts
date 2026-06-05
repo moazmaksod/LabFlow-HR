@@ -1,6 +1,5 @@
 import db, { initDb } from '../db/index.js';
 import { logAudit } from '../services/auditService.js';
-import { getOrCreateDraftPayroll } from '../controllers/payrollController.js';
 
 // Setup DB
 initDb();
@@ -32,17 +31,17 @@ for (let i = 0; i < N_USERS; i++) {
 function fastReturningInsert() {
     const missingUsers = userIds; // in real life, we would filter this list
 
-    // Bulk insert missing drafts and return them
+    // Bulk insert missing paid records and return them
     const insertStmt = db.prepare(`
-        INSERT INTO payrolls (user_id, start_date, end_date, base_salary, status)
-        VALUES (?, ?, ?, 0, 'draft')
+        INSERT INTO payrolls (user_id, start_date, end_date, hourly_rate, scheduled_working_minutes, net_salary, status, paid_by)
+        VALUES (?, ?, ?, 25.0, 0, 0, 'paid', ?)
         RETURNING *
     `);
 
     let newPayrolls: any[] = [];
     const insertTx = db.transaction((users) => {
         for (const userId of users) {
-            const payroll = insertStmt.get(userId, startDate, endDate);
+            const payroll = insertStmt.get(userId, startDate, endDate, actorId);
             newPayrolls.push(payroll);
         }
     });

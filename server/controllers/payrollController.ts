@@ -163,6 +163,25 @@ export const getAllPayroll = (req: Request, res: Response): void => {
             return;
         }
 
+        // Regenerate daily attendance on-the-fly for any of yesterday, today, or tomorrow falling in the query range
+        const todayStr = new Date().toISOString().split('T')[0];
+        const yesterdayDate = new Date();
+        yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+        const yesterdayStr = yesterdayDate.toISOString().split('T')[0];
+        const tomorrowDate = new Date();
+        tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+        const tomorrowStr = tomorrowDate.toISOString().split('T')[0];
+
+        if (startDate <= todayStr && endDate >= todayStr) {
+            generateDailyAttendance(todayStr);
+        }
+        if (startDate <= yesterdayStr && endDate >= yesterdayStr) {
+            generateDailyAttendance(yesterdayStr);
+        }
+        if (startDate <= tomorrowStr && endDate >= tomorrowStr) {
+            generateDailyAttendance(tomorrowStr);
+        }
+
         const users = db.prepare(`
             SELECT u.id, u.name, p.hourly_rate, j.title as job_title
             FROM users u
@@ -217,6 +236,25 @@ export const getPayrollDetails = (req: Request, res: Response): void => {
         if (!user_id || !startDate || !endDate) {
             res.status(400).json({ error: 'Missing required parameters: user_id, startDate, endDate' });
             return;
+        }
+
+        // Regenerate daily attendance on-the-fly for any of yesterday, today, or tomorrow falling in the query range
+        const todayStr = new Date().toISOString().split('T')[0];
+        const yesterdayDate = new Date();
+        yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+        const yesterdayStr = yesterdayDate.toISOString().split('T')[0];
+        const tomorrowDate = new Date();
+        tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+        const tomorrowStr = tomorrowDate.toISOString().split('T')[0];
+
+        if (startDate <= todayStr && endDate >= todayStr) {
+            generateDailyAttendance(todayStr);
+        }
+        if (startDate <= yesterdayStr && endDate >= yesterdayStr) {
+            generateDailyAttendance(yesterdayStr);
+        }
+        if (startDate <= tomorrowStr && endDate >= tomorrowStr) {
+            generateDailyAttendance(tomorrowStr);
         }
 
         const user = db.prepare(`

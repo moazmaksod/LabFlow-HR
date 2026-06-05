@@ -83,7 +83,7 @@ async function populate() {
     VALUES (?, ?, ?, ?, ?, ?, 'working')
   `);
 
-  const daysToSeed = 14;
+  const daysToSeed = 30;
   logger.info(`Seeding schedule shifts and attendance logs for the last ${daysToSeed} days...`);
 
   for (let i = daysToSeed; i >= 1; i--) {
@@ -190,7 +190,28 @@ async function populate() {
     generateDailyAttendance(dateStr);
   }
 
-  // 6. Seed some pending requests to display in the dashboards
+  // 6. Seed historical payroll payments in the payrolls ledger
+  logger.info('Seeding historical payroll records...');
+  const insertPayrollRecord = db.prepare(`
+    INSERT INTO payrolls (
+      user_id, start_date, end_date, hourly_rate, 
+      scheduled_working_minutes, scheduled_non_working_minutes, 
+      overtime_minutes, overtime_rate_percent, deduction_minutes, 
+      net_salary, status, paid_by, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 150.0, ?, ?, 'paid', ?, ?)
+  `);
+
+  // Insert May 2026 payrolls (paid)
+  insertPayrollRecord.run(johnId, '2026-05-01', '2026-05-31', 35.00, 9600, 0, 180, 0, 5705.00, janeId, '2026-05-31T17:00:00.000Z');
+  insertPayrollRecord.run(aliceId, '2026-05-01', '2026-05-31', 25.00, 9600, 120, 0, 0, 4050.00, janeId, '2026-05-31T17:00:00.000Z');
+  insertPayrollRecord.run(bobId, '2026-05-01', '2026-05-31', 45.00, 9600, 0, 0, 90, 7132.50, janeId, '2026-05-31T17:00:00.000Z');
+
+  // Insert April 2026 payrolls (paid)
+  insertPayrollRecord.run(johnId, '2026-04-01', '2026-04-30', 35.00, 9600, 0, 240, 0, 5740.00, janeId, '2026-04-30T17:00:00.000Z');
+  insertPayrollRecord.run(aliceId, '2026-04-01', '2026-04-30', 25.00, 9600, 0, 0, 0, 4000.00, janeId, '2026-04-30T17:00:00.000Z');
+  insertPayrollRecord.run(bobId, '2026-04-01', '2026-04-30', 45.00, 9600, 0, 0, 0, 7200.00, janeId, '2026-04-30T17:00:00.000Z');
+
+  // 7. Seed some pending requests to display in the dashboards
 
   db.prepare(`
     INSERT INTO requests (user_id, reason, type, value, status, created_at)
