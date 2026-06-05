@@ -77,6 +77,11 @@ export default function LoginScreen({ navigation }: any) {
           'Account Suspended',
           `Reason: ${errorData.suspension_reason || 'No reason provided.'}`
         );
+      } else if (errorData?.error === 'System Offline: The platform is currently undergoing scheduled maintenance. Please try again later.') {
+        Alert.alert(
+          'System Offline',
+          'System Offline: The platform is currently undergoing scheduled maintenance. Please try again later.'
+        );
       } else {
         const message = error.isNetworkError
           ? 'Network unavailable. Please check your connection and try again.'

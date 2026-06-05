@@ -32,12 +32,33 @@ export const createRequest = (req: AuthRequest, res: Response): void => {
             }
         }
 
+        let status = 'pending';
+        let managerNote = null;
+        const settings = db.prepare('SELECT min_overtime_minutes FROM settings WHERE id = 1').get() as any;
+        if (requestType === 'overtime_approval' && settings) {
+            const minOT = settings.min_overtime_minutes || 0;
+            if ((value || 0) < minOT) {
+                status = 'rejected';
+                managerNote = 'Auto-rejected: request duration is less than the minimum overtime period.';
+            }
+        }
+
         const insert = db.prepare(`
-            INSERT INTO requests (user_id, attendance_id, requested_check_in, requested_check_out, type, reason, value, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+            INSERT INTO requests (user_id, attendance_id, requested_check_in, requested_check_out, type, reason, value, status, manager_note)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
-        const info = insert.run(userId, attendance_id || null, requested_check_in || null, requested_check_out || null, requestType, reason, value || 0);
+        const info = insert.run(
+            userId,
+            attendance_id || null,
+            requested_check_in || null,
+            requested_check_out || null,
+            requestType,
+            reason,
+            value || 0,
+            status,
+            managerNote
+        );
         const newReq = db.prepare('SELECT * FROM requests WHERE id = ?').get(info.lastInsertRowid);
 
         logAudit('requests', info.lastInsertRowid as number, 'CREATE', userId, null, newReq);

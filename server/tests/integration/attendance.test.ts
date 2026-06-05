@@ -127,7 +127,7 @@ describe('Attendance API - Schedule Driven Architecture', () => {
     const employeeId2 = empInsert2.lastInsertRowid;
 
     const weekly_schedule = JSON.stringify({ wednesday: [{ start: "09:00", end: "17:00" }] });
-    db.prepare(`INSERT INTO profiles (user_id, status, job_id, weekly_schedule, device_id) VALUES (?, ?, ?, ?, ?)`).run(employeeId2, 'active', 1, weekly_schedule, 'test-device-early');
+    db.prepare(`INSERT INTO profiles (user_id, status, job_id, weekly_schedule, device_id, allow_overtime, max_overtime_hours) VALUES (?, ?, ?, ?, ?, 1, 10)`).run(employeeId2, 'active', 1, weekly_schedule, 'test-device-early');
 
     // Seed Wednesday shift: 2023-10-25 09:00 NY -> 13:00 UTC, 17:00 NY -> 21:00 UTC
     db.prepare(`INSERT INTO shift_instances (user_id, start_time, end_time, logical_date, status) VALUES (?, ?, ?, ?, 'Scheduled')`).run(employeeId2, '2023-10-25T13:00:00Z', '2023-10-25T21:00:00Z', '2023-10-25');

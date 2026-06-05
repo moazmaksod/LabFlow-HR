@@ -7,6 +7,53 @@ import { getAppNow, getDifferenceInMinutes, generateUnscheduledShiftId } from '.
 import { AuthRequest } from '../middlewares/authMiddleware.js';
 import { logAudit } from '../services/auditService.js';
 import { getSettingsCache, setSettingsCache } from '../utils/cache.js';
+import { recalculateUserDailyAttendance } from "../services/dailyAttendanceService.js";
+
+// Helper to insert overtime request with min overtime check
+function insertOvertimeRequest(userId: number, attendanceId: number | null, reason: string, value: number) {
+    let settings = getSettingsCache();
+    if (!settings) {
+        settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+        setSettingsCache(settings);
+    }
+    const minOT = settings?.min_overtime_minutes || 0;
+    const status = value < minOT ? 'rejected' : 'pending';
+    const managerNote = value < minOT ? 'Auto-rejected: request duration is less than the minimum overtime period.' : null;
+    
+    db.prepare(`
+        INSERT INTO requests (user_id, attendance_id, type, reason, value, status, manager_note)
+        VALUES (?, ?, 'overtime_approval', ?, ?, ?, ?)
+    `).run(userId, attendanceId, reason, value, status, managerNote);
+}
+
+// Helper to insert late in or early leave request with grace period check
+function insertLateInOrEarlyLeaveRequest(userId: number, attendanceId: number, type: 'late_in_approval' | 'early_leave_approval', reason: string, value: number) {
+    let settings = getSettingsCache();
+    if (!settings) {
+        settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+        setSettingsCache(settings);
+    }
+    const grace = settings?.late_grace_period || 0;
+    const status = value <= grace ? 'approved' : 'pending';
+    const managerNote = value <= grace ? 'Auto-approved: within late grace period.' : null;
+    
+    db.prepare(`
+        INSERT INTO requests (user_id, attendance_id, type, reason, value, status, manager_note)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(userId, attendanceId, type, reason, value, status, managerNote);
+    
+    if (status === 'approved') {
+        if (type === 'late_in_approval') {
+            db.prepare("UPDATE attendance SET checkin_status = 'on_time' WHERE id = ?").run(attendanceId);
+        } else {
+            db.prepare("UPDATE attendance SET checkout_status = 'on_time' WHERE id = ?").run(attendanceId);
+        }
+        const att = db.prepare("SELECT date FROM attendance WHERE id = ?").get(attendanceId) as any;
+        if (att) {
+            recalculateUserDailyAttendance(userId, att.date);
+        }
+    }
+}
 
 // Haversine formula to calculate distance between two points in meters
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -47,6 +94,60 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
 
         // Generate an unscheduled ID if there's no shift instance
         let shiftId = shiftInstance ? shiftInstance.id.toString() : generateUnscheduledShiftId(userId, timestamp);
+
+        // Check if unscheduled clock in is allowed
+        let isUnscheduled = false;
+        if (!shiftInstance || !scheduledTime) {
+            isUnscheduled = true;
+        } else {
+            const clockInTime = new Date(timestamp);
+            if (clockInTime < scheduledTime) {
+                const diffMinutes = getDifferenceInMinutes(clockInTime, scheduledTime);
+                if (diffMinutes > gracePeriod) {
+                    isUnscheduled = true;
+                }
+            }
+        }
+
+        if (isUnscheduled) {
+            if (!userProfile.allow_overtime) {
+                return { status: 403, error: 'Unscheduled check-in blocked: Overtime is not allowed for this employee.' };
+            }
+            const date = new Date(timestamp);
+            const day = date.getUTCDay();
+            const diffToMonday = day === 0 ? -6 : 1 - day;
+            
+            const monday = new Date(date);
+            monday.setUTCDate(date.getUTCDate() + diffToMonday);
+            monday.setUTCHours(0, 0, 0, 0);
+            
+            const sunday = new Date(monday);
+            sunday.setUTCDate(monday.getUTCDate() + 6);
+            sunday.setUTCHours(23, 59, 59, 999);
+            
+            const startStr = monday.toISOString().split('T')[0];
+            const endStr = sunday.toISOString().split('T')[0];
+            
+            const otSum = db.prepare(`
+                SELECT COALESCE(SUM(r.value), 0) as total_ot
+                FROM requests r
+                LEFT JOIN attendance a ON r.attendance_id = a.id
+                WHERE r.user_id = ?
+                  AND r.type = 'overtime_approval'
+                  AND r.status IN ('approved', 'pending')
+                  AND (
+                      (a.date IS NOT NULL AND a.date >= ? AND a.date <= ?)
+                      OR
+                      (a.date IS NULL AND substr(r.created_at, 1, 10) >= ? AND substr(r.created_at, 1, 10) <= ?)
+                  )
+            `).get(userId, startStr, endStr, startStr, endStr) as any;
+            
+            const totalOtMinutes = otSum ? otSum.total_ot : 0;
+            const maxOtMinutes = (userProfile.max_overtime_hours || 0) * 60;
+            if (totalOtMinutes >= maxOtMinutes) {
+                return { status: 403, error: 'Unscheduled check-in blocked: You have reached your maximum allowed overtime for this week.' };
+            }
+        }
 
         // Re-entry logic: Is there already a closed attendance for this user and logical date?
         const existingAttendance = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ? ORDER BY check_in DESC LIMIT 1').get(userId, logicalDate) as any;
@@ -130,7 +231,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
 
         // Normal Check-in logic
         let status = 'on_time';
-        let isUnscheduled = false;
+        isUnscheduled = false;
         let otMinutes = 0;
 
         // Pure Schedule-Driven Logic:
@@ -170,12 +271,10 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
 
             if (status === 'late_in') {
                 const lateMinutes = getDifferenceInMinutes(scheduledTime, clockInTime);
-                db.prepare(`
-                    INSERT INTO requests (user_id, type, attendance_id, reason, value, status)
-                    VALUES (?, 'late_in_approval', ?, ?, ?, 'pending')
-                `).run(
+                insertLateInOrEarlyLeaveRequest(
                     userId,
                     newId,
+                    'late_in_approval',
                     `Late check-in by ${lateMinutes} minutes.`,
                     lateMinutes
                 );
@@ -184,11 +283,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             if (otMinutes > 0 && !isUnscheduled) {
                 const maxOtMinutes = (userProfile.max_overtime_hours || 0) * 60;
                 const requestedOtMinutes = maxOtMinutes > 0 ? Math.min(otMinutes, maxOtMinutes) : otMinutes;
-
-                db.prepare(`
-                    INSERT INTO requests (user_id, type, attendance_id, reason, value, status)
-                    VALUES (?, 'overtime_approval', ?, ?, ?, 'pending')
-                `).run(
+                insertOvertimeRequest(
                     userId,
                     newId,
                     `Early clock-in by ${otMinutes} minutes`,
@@ -262,10 +357,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
 
                 const otMins = getDifferenceInMinutes(checkInTime, checkOutTime);
                 if (otMins > 0) {
-                    db.prepare(`
-                        INSERT INTO requests (user_id, type, attendance_id, reason, value, status)
-                        VALUES (?, 'overtime_approval', ?, 'Unscheduled Check-in', ?, 'pending')
-                    `).run(userId, activeSession.id, otMins);
+                    insertOvertimeRequest(userId, activeSession.id, 'Unscheduled Check-in', otMins);
                 }
                 return;
             }
@@ -288,10 +380,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
 
                 const otMins = getDifferenceInMinutes(checkInTime, checkOutTime);
                 if (otMins > 0) {
-                    db.prepare(`
-                        INSERT INTO requests (user_id, type, attendance_id, reason, value, status)
-                        VALUES (?, 'overtime_approval', ?, 'Unscheduled Session', ?, 'pending')
-                    `).run(userId, activeSession.id, otMins);
+                    insertOvertimeRequest(userId, activeSession.id, 'Unscheduled Session', otMins);
                 }
                 return;
             }
@@ -359,10 +448,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                         earlyShiftId
                     );
 
-                    db.prepare(`
-                        INSERT INTO requests (user_id, type, attendance_id, reason, value, status)
-                        VALUES (?, 'overtime_approval', ?, 'Early Clock-in (Unscheduled)', ?, 'pending')
-                    `).run(userId, info.lastInsertRowid, earlyMins);
+                    insertOvertimeRequest(userId, Number(info.lastInsertRowid), 'Early Clock-in (Unscheduled)', earlyMins);
                 }
             }
 
@@ -387,10 +473,7 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                         lateShiftId
                     );
 
-                    db.prepare(`
-                        INSERT INTO requests (user_id, type, attendance_id, reason, value, status)
-                        VALUES (?, 'overtime_approval', ?, 'Late Clock-out (Unscheduled)', ?, 'pending')
-                    `).run(userId, info.lastInsertRowid, lateMins);
+                    insertOvertimeRequest(userId, Number(info.lastInsertRowid), 'Late Clock-out (Unscheduled)', lateMins);
                 }
             }
         });
@@ -429,18 +512,6 @@ function handleClockAction(userId: number, type: string, lat: number, lng: numbe
         return { status: 403, error: 'REASON: SUSPENDED' };
     }
 
-    // 3. Device Binding Security Check
-    if (!userProfile.device_id) {
-        // First time clocking in, bind device
-        const existingDevice = db.prepare('SELECT user_id FROM profiles WHERE device_id = ?').get(deviceId) as any;
-        if (existingDevice && existingDevice.user_id !== userId) {
-            return { status: 403, error: 'Security Alert: This device is already registered to another employee.' };
-        }
-        db.prepare('UPDATE profiles SET device_id = ? WHERE user_id = ?').run(deviceId, userId);
-    } else if (userProfile.device_id !== deviceId) {
-        return { status: 403, error: 'Security Alert: Unauthorized device.' };
-    }
-
     // Check for prefetched settings first, then fall back to global cache
     let settings = (typeof prefetchedSettings !== 'undefined' ? prefetchedSettings : null) || getSettingsCache();
 
@@ -450,6 +521,23 @@ function handleClockAction(userId: number, type: string, lat: number, lng: numbe
         if (settings) {
             // Hydrate the global cache for subsequent requests
             setSettingsCache(settings);
+        }
+    }
+
+    // 3. Device Binding Security Check
+    const isWhitelisted = settings && settings.whitelist_device_ids && 
+        settings.whitelist_device_ids.split(',').map((id: string) => id.trim()).includes(deviceId);
+
+    if (!isWhitelisted && (!settings || settings.device_binding_enforced === 1)) {
+        if (!userProfile.device_id) {
+            // First time clocking in, bind device
+            const existingDevice = db.prepare('SELECT user_id FROM profiles WHERE device_id = ?').get(deviceId) as any;
+            if (existingDevice && existingDevice.user_id !== userId) {
+                return { status: 403, error: 'Security Alert: This device is already registered to another employee.' };
+            }
+            db.prepare('UPDATE profiles SET device_id = ? WHERE user_id = ?').run(deviceId, userId);
+        } else if (userProfile.device_id !== deviceId) {
+            return { status: 403, error: 'Security Alert: Unauthorized device.' };
         }
     }
 
@@ -771,10 +859,23 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
         // Device Binding Security Check
         const profile = db.prepare('SELECT device_id FROM profiles WHERE user_id = ?').get(userId) as any;
         logger.debug('[stepAway] profile=', profile);
-        if (!profile.device_id || profile.device_id !== deviceId) {
-            logger.debug('[stepAway] Security Alert: Unauthorized device.');
-            res.status(403).json({ error: 'Security Alert: Unauthorized device.' });
-            return;
+        
+        let settings = getSettingsCache();
+        if (!settings) {
+            settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+            if (settings) {
+                setSettingsCache(settings);
+            }
+        }
+        const isWhitelisted = settings && settings.whitelist_device_ids && 
+            settings.whitelist_device_ids.split(',').map((id: string) => id.trim()).includes(deviceId);
+
+        if (!isWhitelisted && (!settings || settings.device_binding_enforced === 1)) {
+            if (!profile.device_id || profile.device_id !== deviceId) {
+                logger.debug('[stepAway] Security Alert: Unauthorized device.');
+                res.status(403).json({ error: 'Security Alert: Unauthorized device.' });
+                return;
+            }
         }
 
         const activeAttendance = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND check_out IS NULL ORDER BY check_in DESC LIMIT 1').get(userId) as any;
@@ -907,9 +1008,22 @@ export const resumeWork = (req: AuthRequest, res: Response): void => {
 
         // Device Binding Security Check
         const profile = db.prepare('SELECT device_id FROM profiles WHERE user_id = ?').get(userId) as any;
-        if (!profile.device_id || profile.device_id !== deviceId) {
-            res.status(403).json({ error: 'Security Alert: Unauthorized device.' });
-            return;
+        
+        let settings = getSettingsCache();
+        if (!settings) {
+            settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+            if (settings) {
+                setSettingsCache(settings);
+            }
+        }
+        const isWhitelisted = settings && settings.whitelist_device_ids && 
+            settings.whitelist_device_ids.split(',').map((id: string) => id.trim()).includes(deviceId);
+
+        if (!isWhitelisted && (!settings || settings.device_binding_enforced === 1)) {
+            if (!profile.device_id || profile.device_id !== deviceId) {
+                res.status(403).json({ error: 'Security Alert: Unauthorized device.' });
+                return;
+            }
         }
 
         const activeAttendance = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND check_out IS NULL ORDER BY check_in DESC LIMIT 1').get(userId) as any;

@@ -20,6 +20,7 @@ import DashboardHeader from '../components/DashboardHeader';
 import UpcomingShiftCard from '../components/UpcomingShiftCard';
 import OfflineSyncCard from '../components/OfflineSyncCard';
 import { useThemeColors } from '../hooks/useTheme';
+import SalaryEstimateCard from '../components/SalaryEstimateCard';
 
 export default function DashboardScreen() {
   const { colors } = useThemeColors();
@@ -28,6 +29,7 @@ export default function DashboardScreen() {
   const [loading, setLoading] = useState(false);
   const [unsyncedCount, setUnsyncedCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [salaryEstimate, setSalaryEstimate] = useState<any>(null);
   const { isSyncing, syncOfflineRecords, isConnected } = useNetworkStore();
 
   const {
@@ -42,7 +44,7 @@ export default function DashboardScreen() {
     setActiveSession,
     setTodayLogs
   } = useAttendanceStore();
-  const userTimezone = useSettingsStore((state) => state.userTimezone);
+  const { settings, userTimezone } = useSettingsStore();
 
   useEffect(() => {
     // Initialize local SQLite database
@@ -102,10 +104,20 @@ export default function DashboardScreen() {
       }
     } catch (error: any) {
       if (!error.isNetworkError) {
-        console.error('Error fetching status:', error);
+        // Silent failure by design
       }
     }
   }, [isConnected, setActiveSession, setStatus, setConsumedBreakMinutes, setTodayLogs, userTimezone, user?.display_timezone]);
+
+  const fetchSalaryEstimate = useCallback(async () => {
+    if (!isConnected) return;
+    try {
+      const response = await api.get('/payroll/estimate');
+      setSalaryEstimate(response.data);
+    } catch (error) {
+      // Silent failure by design
+    }
+  }, [isConnected]);
 
   const checkUnsyncedLogs = useCallback(() => {
     const logs = getUnsyncedLogs();
@@ -119,25 +131,27 @@ export default function DashboardScreen() {
       await Promise.all([
         fetchStatus(),
         fetchProfile(),
+        fetchSalaryEstimate(),
         useNetworkStore.getState().syncServerTime(),
         useSettingsStore.getState().fetchSettings()
       ]);
       checkUnsyncedLogs();
     } catch (error) {
-      console.error('Error refreshing dashboard:', error);
+      // Silent failure by design
     } finally {
       setRefreshing(false);
     }
-  }, [fetchStatus, fetchProfile, checkUnsyncedLogs]);
+  }, [fetchStatus, fetchProfile, fetchSalaryEstimate, checkUnsyncedLogs]);
 
   useFocusEffect(
     useCallback(() => {
       checkUnsyncedLogs();
       fetchStatus();
       fetchProfile();
+      fetchSalaryEstimate();
       useNetworkStore.getState().syncServerTime();
       useSettingsStore.getState().fetchSettings();
-    }, [checkUnsyncedLogs, fetchStatus, fetchProfile])
+    }, [checkUnsyncedLogs, fetchStatus, fetchProfile, fetchSalaryEstimate])
   );
 
   useEffect(() => {
@@ -484,6 +498,11 @@ export default function DashboardScreen() {
     >
       {/* Redesigned Dashboard Header */}
       <DashboardHeader userProfile={userProfile} logout={logout} />
+
+      {/* Salary Estimate Card */}
+      {settings?.show_salary_estimate === 1 && salaryEstimate && (
+        <SalaryEstimateCard estimate={salaryEstimate} />
+      )}
 
       {/* Live Server Clock */}
       <LiveServerClock />

@@ -162,6 +162,8 @@ CREATE TABLE IF NOT EXISTS settings (
     enable_reminders BOOLEAN NOT NULL DEFAULT 1,
     send_daily_report BOOLEAN NOT NULL DEFAULT 0,
     maintenance_mode BOOLEAN NOT NULL DEFAULT 0,
+    min_overtime_minutes INTEGER NOT NULL DEFAULT 0,
+    whitelist_device_ids TEXT NOT NULL DEFAULT '',
 
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -178,6 +180,7 @@ CREATE TABLE IF NOT EXISTS payrolls (
     overtime_minutes REAL NOT NULL DEFAULT 0,
     overtime_rate_percent REAL NOT NULL DEFAULT 150.0,
     deduction_minutes REAL NOT NULL DEFAULT 0,
+    attendance_bonus REAL NOT NULL DEFAULT 0.0,
     net_salary REAL NOT NULL,
     status TEXT NOT NULL CHECK(status IN ('paid')) DEFAULT 'paid',
     paid_by INTEGER NOT NULL,

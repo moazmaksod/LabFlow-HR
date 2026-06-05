@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import { getSettingsCache, setSettingsCache, clearSettingsCache } from '../utils/cache.js';
 import logger from '../utils/logger.js';
+import { recalculateUserDailyAttendance } from '../services/dailyAttendanceService.js';
 
 export const getSettings = (req: Request, res: Response): void => {
     try {
@@ -145,7 +146,37 @@ export const updateSettings = (req: AuthRequest, res: Response): void => {
             const updatedSettings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
             logAudit('settings', 1, 'UPDATE', req.user!.id, oldSettings, updatedSettings);
 
+            // Auto-approve pending late/early-leave requests if grace period increased
+            if (updatedSettings.late_grace_period !== oldSettings.late_grace_period) {
+                const newGrace = updatedSettings.late_grace_period;
+                const pendingRequests = db.prepare(`
+                    SELECT * FROM requests 
+                    WHERE status = 'pending' 
+                      AND type IN ('late_in_approval', 'early_leave_approval') 
+                      AND value <= ?
+                `).all(newGrace) as any[];
 
+                for (const r of pendingRequests) {
+                    db.prepare(`
+                        UPDATE requests 
+                        SET status = 'approved', 
+                            manager_note = 'Auto-approved: within new late grace period.' 
+                        WHERE id = ?
+                    `).run(r.id);
+
+                    if (r.attendance_id) {
+                        if (r.type === 'late_in_approval') {
+                            db.prepare("UPDATE attendance SET checkin_status = 'on_time' WHERE id = ?").run(r.attendance_id);
+                        } else if (r.type === 'early_leave_approval') {
+                            db.prepare("UPDATE attendance SET checkout_status = 'on_time' WHERE id = ?").run(r.attendance_id);
+                        }
+                        const att = db.prepare("SELECT date FROM attendance WHERE id = ?").get(r.attendance_id) as any;
+                        if (att) {
+                            recalculateUserDailyAttendance(r.user_id, att.date);
+                        }
+                    }
+                }
+            }
 
             return updatedSettings;
         });

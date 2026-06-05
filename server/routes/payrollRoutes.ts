@@ -6,7 +6,8 @@ import {
     getPayrolls, 
     getPayrollDetails, 
     recordPayment, 
-    getMyPayrolls 
+    getMyPayrolls,
+    getSalaryEstimate
 } from '../controllers/payrollController.js';
 import { authenticate, requireRole } from '../middlewares/authMiddleware.js';
 
@@ -23,6 +24,7 @@ router.get('/records/:user_id/details', requireRole(['manager']), getPayrollDeta
 router.post('/records/pay', requireRole(['manager']), recordPayment);
 
 // Employee endpoints
+router.get('/estimate', getSalaryEstimate);
 router.get('/my-records', getMyPayrolls);
 
 export default router;

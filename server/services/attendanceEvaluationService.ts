@@ -1,6 +1,54 @@
 import db from '../db/index.js';
 import logger from '../utils/logger.js';
 import { getAppNow, getDifferenceInMinutes, generateUnscheduledShiftId } from "../utils/timeManager.js";
+import { getSettingsCache, setSettingsCache } from '../utils/cache.js';
+import { recalculateUserDailyAttendance } from './dailyAttendanceService.js';
+
+// Helper to insert overtime request with min overtime check
+function insertOvertimeRequest(userId: number, attendanceId: number | null, reason: string, value: number) {
+    let settings = getSettingsCache();
+    if (!settings) {
+        settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+        setSettingsCache(settings);
+    }
+    const minOT = settings?.min_overtime_minutes || 0;
+    const status = value < minOT ? 'rejected' : 'pending';
+    const managerNote = value < minOT ? 'Auto-rejected: request duration is less than the minimum overtime period.' : null;
+    
+    db.prepare(`
+        INSERT INTO requests (user_id, attendance_id, type, reason, value, status, manager_note)
+        VALUES (?, ?, 'overtime_approval', ?, ?, ?, ?)
+    `).run(userId, attendanceId, reason, value, status, managerNote);
+}
+
+// Helper to insert late in or early leave request with grace period check
+function insertLateInOrEarlyLeaveRequest(userId: number, attendanceId: number, type: 'late_in_approval' | 'early_leave_approval', reason: string, value: number) {
+    let settings = getSettingsCache();
+    if (!settings) {
+        settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+        setSettingsCache(settings);
+    }
+    const grace = settings?.late_grace_period || 0;
+    const status = value <= grace ? 'approved' : 'pending';
+    const managerNote = value <= grace ? 'Auto-approved: within late grace period.' : null;
+    
+    db.prepare(`
+        INSERT INTO requests (user_id, attendance_id, type, reason, value, status, manager_note)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(userId, attendanceId, type, reason, value, status, managerNote);
+    
+    if (status === 'approved') {
+        if (type === 'late_in_approval') {
+            db.prepare("UPDATE attendance SET checkin_status = 'on_time' WHERE id = ?").run(attendanceId);
+        } else {
+            db.prepare("UPDATE attendance SET checkout_status = 'on_time' WHERE id = ?").run(attendanceId);
+        }
+        const att = db.prepare("SELECT date FROM attendance WHERE id = ?").get(attendanceId) as any;
+        if (att) {
+            recalculateUserDailyAttendance(userId, att.date);
+        }
+    }
+}
 
 let findLastHeartbeatStmt: any = null;
 const getFindLastHeartbeatStmt = () => {
@@ -162,10 +210,7 @@ export const evaluateUserAttendance = (userId: number): void => {
                     const otMinutes = getDifferenceInMinutes(activeUnscheduled.check_in, activeShift.start_time);
 
                     if (otMinutes > 0) {
-                        db.prepare(`
-                            INSERT INTO requests (user_id, attendance_id, type, reason, value, status)
-                            VALUES (?, ?, 'overtime_approval', 'Early Clock-in (Auto-Slice)', ?, 'pending')
-                        `).run(uid, activeUnscheduled.id, otMinutes);
+                        insertOvertimeRequest(uid, activeUnscheduled.id, 'Early Clock-in (Auto-Slice)', otMinutes);
                     }
 
                     // Update unscheduled to end at shift start time
@@ -197,12 +242,10 @@ export const evaluateUserAttendance = (userId: number): void => {
                 if (checkOutTime < shiftEnd) {
                     const earlyMinutes = getDifferenceInMinutes(checkOutTime, shiftEnd);
                     if (earlyMinutes > gracePeriod) {
-                        db.prepare(`
-                            INSERT INTO requests (user_id, type, attendance_id, reason, value, status)
-                            VALUES (?, 'early_leave_approval', ?, ?, ?, 'pending')
-                        `).run(
+                        insertLateInOrEarlyLeaveRequest(
                             uid,
                             session.id,
+                            'early_leave_approval',
                             `System detected early leave by ${earlyMinutes} minutes.`,
                             earlyMinutes
                         );

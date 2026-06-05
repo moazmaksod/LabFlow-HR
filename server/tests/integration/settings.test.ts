@@ -69,4 +69,43 @@ describe('Settings API', () => {
     expect(res.status).toBe(403);
     expect(res.body).toHaveProperty('error', 'Forbidden: Insufficient permissions');
   });
+
+  it('should handle maintenance mode activation and force logout non-managers', async () => {
+    // 1. Enable Maintenance Mode as Manager
+    let res = await request(app)
+      .put('/api/settings')
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ maintenance_mode: 1 });
+    expect(res.status).toBe(200);
+    expect(res.body.maintenance_mode).toBe(1);
+
+    // 2. Try to fetch settings as Employee - should get 401 with the exact maintenance error message
+    res = await request(app)
+      .get('/api/settings')
+      .set('Authorization', `Bearer ${employeeToken}`);
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('System Offline: The platform is currently undergoing scheduled maintenance. Please try again later.');
+
+    // 3. Manager should still be able to query settings
+    res = await request(app)
+      .get('/api/settings')
+      .set('Authorization', `Bearer ${managerToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.maintenance_mode).toBe(1);
+
+    // 4. Disable Maintenance Mode as Manager
+    res = await request(app)
+      .put('/api/settings')
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ maintenance_mode: 0 });
+    expect(res.status).toBe(200);
+    expect(res.body.maintenance_mode).toBe(0);
+
+    // 5. Employee should now be able to fetch settings again
+    res = await request(app)
+      .get('/api/settings')
+      .set('Authorization', `Bearer ${employeeToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.maintenance_mode).toBe(0);
+  });
 });

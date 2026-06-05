@@ -35,6 +35,8 @@ interface Settings {
   enable_reminders: number;
   send_daily_report: number;
   maintenance_mode: number;
+  min_overtime_minutes: number;
+  whitelist_device_ids: string;
 }
 
 export default function SettingsView() {
@@ -208,7 +210,7 @@ export default function SettingsView() {
       'overtime_rate_percent', 'weekend_rate_percent', 'attendance_bonus_amount',
       'office_lat', 'office_lng', 'geofence_radius', 'time_sync_interval',
       'max_drift_threshold', 'accuracy_meters', 'step_away_grace_period',
-      'late_grace_period', 'max_monthly_permissions'
+      'late_grace_period', 'max_monthly_permissions', 'min_overtime_minutes'
     ];
 
     for (const field of numericFields) {
@@ -348,11 +350,11 @@ export default function SettingsView() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-muted-foreground mb-2">Weekend Rate (%)</label>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Minimum Overtime Period (mins)</label>
                       <input
                         type="number"
-                        name="weekend_rate_percent"
-                        value={formData.weekend_rate_percent ?? 200}
+                        name="min_overtime_minutes"
+                        value={formData.min_overtime_minutes ?? 0}
                         onChange={handleChange}
                         className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
                       />
@@ -486,6 +488,17 @@ export default function SettingsView() {
                         Enforce Mobile Device Binding (One device per user)
                       </label>
                     </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Whitelisted Device IDs (comma-separated)</label>
+                      <input
+                        type="text"
+                        name="whitelist_device_ids"
+                        value={formData.whitelist_device_ids || ''}
+                        onChange={handleChange}
+                        className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
+                        placeholder="e.g. device_id_1, device_id_2"
+                      />
+                    </div>
                   </div>
 
                   <h3 className="text-md font-semibold text-foreground mt-8 mb-4 border-b border-border pb-2">Network Security</h3>
@@ -602,19 +615,6 @@ export default function SettingsView() {
                     </div>
 
                     <div className="md:col-span-2 space-y-4 pt-4 border-t border-border">
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="checkbox"
-                          id="auto_checkout"
-                          name="auto_checkout"
-                          checked={!!formData.auto_checkout}
-                          onChange={handleChange}
-                          className="w-5 h-5 rounded border-input text-primary focus:ring-primary"
-                        />
-                        <label htmlFor="auto_checkout" className="text-sm font-medium text-muted-foreground">
-                          Enable Auto-Checkout at end of shift
-                        </label>
-                      </div>
                       <div className="flex items-center gap-3">
                         <input
                           type="checkbox"

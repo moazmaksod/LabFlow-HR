@@ -80,6 +80,17 @@ export function initDb() {
       db.exec("ALTER TABLE settings ADD COLUMN company_wifi_bssid TEXT;");
     }
 
+    if (!settingsColumns.some(c => c.name === 'min_overtime_minutes')) {
+      db.exec("ALTER TABLE settings ADD COLUMN min_overtime_minutes INTEGER NOT NULL DEFAULT 0;");
+    }
+    if (!settingsColumns.some(c => c.name === 'whitelist_device_ids')) {
+      db.exec("ALTER TABLE settings ADD COLUMN whitelist_device_ids TEXT NOT NULL DEFAULT '';");
+    }
+    const payrollColumns = db.prepare("PRAGMA table_info(payrolls)").all() as any[];
+    if (!payrollColumns.some(c => c.name === 'attendance_bonus')) {
+      db.exec("ALTER TABLE payrolls ADD COLUMN attendance_bonus REAL NOT NULL DEFAULT 0.0;");
+    }
+
     // Drop payroll cycle settings if they exist
     const settingsColsAfterWifi = db.prepare("PRAGMA table_info(settings)").all() as any[];
     if (settingsColsAfterWifi.some(c => c.name === 'payroll_cycle_type')) {

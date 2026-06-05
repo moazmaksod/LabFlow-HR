@@ -5,6 +5,7 @@ import db from '../db/index.js';
 import { logAudit } from '../services/auditService.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
 import logger from '../utils/logger.js';
+import { getSettingsCache, setSettingsCache } from '../utils/cache.js';
 
 // 🛡️ Sentinel: Enforce secure JWT Secret from environment variables.
 // Do not use hardcoded fallbacks that could be exploited if env vars are missing.
@@ -123,6 +124,19 @@ export const login = async (req: Request, res: Response): Promise<void> => {
             return;
         }
 
+        // Maintenance Mode Check (Managers exempt)
+        let settings = getSettingsCache();
+        if (!settings) {
+            settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+            if (settings) {
+                setSettingsCache(settings);
+            }
+        }
+        if (settings && settings.maintenance_mode === 1 && user.role !== 'manager') {
+            res.status(503).json({ error: 'System Offline: The platform is currently undergoing scheduled maintenance. Please try again later.' });
+            return;
+        }
+
         // Platform Restriction: Web Login (No deviceId) vs Mobile Login (With deviceId)
         if (!deviceId) {
             // Web Login
@@ -132,18 +146,23 @@ export const login = async (req: Request, res: Response): Promise<void> => {
             }
         } else {
             // Mobile Login - Device Binding Security Check
-            if (!user.device_id) {
-                // First time login, bind device
-                // Check if this device is already registered to someone else
-                const existingDevice = db.prepare('SELECT user_id FROM profiles WHERE device_id = ?').get(deviceId) as any;
-                if (existingDevice && existingDevice.user_id !== user.id) {
-                    res.status(403).json({ error: 'Security Alert: This device is already registered to another user. One device per user is allowed.' });
+            const isWhitelisted = settings && settings.whitelist_device_ids && 
+                settings.whitelist_device_ids.split(',').map((id: string) => id.trim()).includes(deviceId);
+
+            if (!isWhitelisted && (!settings || settings.device_binding_enforced === 1)) {
+                if (!user.device_id) {
+                    // First time login, bind device
+                    // Check if this device is already registered to someone else
+                    const existingDevice = db.prepare('SELECT user_id FROM profiles WHERE device_id = ?').get(deviceId) as any;
+                    if (existingDevice && existingDevice.user_id !== user.id) {
+                        res.status(403).json({ error: 'Security Alert: This device is already registered to another user. One device per user is allowed.' });
+                        return;
+                    }
+                    db.prepare('UPDATE profiles SET device_id = ? WHERE user_id = ?').run(deviceId, user.id);
+                } else if (user.device_id !== deviceId) {
+                    res.status(403).json({ error: 'Security Alert: You are trying to login from an unauthorized device. Please use your registered phone or contact the manager.' });
                     return;
                 }
-                db.prepare('UPDATE profiles SET device_id = ? WHERE user_id = ?').run(deviceId, user.id);
-            } else if (user.device_id !== deviceId) {
-                res.status(403).json({ error: 'Security Alert: You are trying to login from an unauthorized device. Please use your registered phone or contact the manager.' });
-                return;
             }
         }
 

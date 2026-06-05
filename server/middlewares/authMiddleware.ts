@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import db from '../db/index.js';
+import { getSettingsCache, setSettingsCache } from '../utils/cache.js';
 
 // 🛡️ Sentinel: Enforce secure JWT Secret from environment variables.
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -42,6 +43,19 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
 
         if (!user) {
             res.status(401).json({ error: 'Unauthorized: User no longer exists' });
+            return;
+        }
+
+        // Maintenance Mode Check (Managers exempt) - Force logout non-managers on active endpoints
+        let settings = getSettingsCache();
+        if (!settings) {
+            settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+            if (settings) {
+                setSettingsCache(settings);
+            }
+        }
+        if (settings && settings.maintenance_mode === 1 && user.role !== 'manager') {
+            res.status(401).json({ error: 'System Offline: The platform is currently undergoing scheduled maintenance. Please try again later.' });
             return;
         }
 
