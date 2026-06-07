@@ -38,18 +38,8 @@ export default function RequestManagement() {
   const [filterStatus, setFilterStatus] = useState('pending');
   const [filterEmployee, setFilterEmployee] = useState('');
   const [filterType, setFilterType] = useState('all');
-  const [filterStartDate, setFilterStartDate] = useState(() => {
-    const tz = user?.display_timezone || resolveTimezone(user?.display_timezone);
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: tz
-    }).format(new Date(getSystemNow()));
-  });
-  const [filterEndDate, setFilterEndDate] = useState(() => {
-    const tz = user?.display_timezone || resolveTimezone(user?.display_timezone);
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: tz
-    }).format(new Date(getSystemNow()));
-  });
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
   const [selectedRequest, setSelectedRequest] = useState<RequestLog | null>(null);
   const [managerNote, setManagerNote] = useState('');
   const [error, setError] = useState<string | null>(null);

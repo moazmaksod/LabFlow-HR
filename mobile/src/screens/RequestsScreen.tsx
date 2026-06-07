@@ -76,12 +76,8 @@ export default function RequestsScreen() {
     return formatDisplayDate(getMobileNow(), userTimezone, 'yyyy-MM-dd');
   }, [userTimezone]);
 
-  const [filterStartDate, setFilterStartDate] = useState<string>(() => {
-    return formatDisplayDate(getMobileNow(), userTimezone, 'yyyy-MM-dd');
-  });
-  const [filterEndDate, setFilterEndDate] = useState<string>(() => {
-    return formatDisplayDate(getMobileNow(), userTimezone, 'yyyy-MM-dd');
-  });
+  const [filterStartDate, setFilterStartDate] = useState<string>('');
+  const [filterEndDate, setFilterEndDate] = useState<string>('');
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
 
@@ -598,13 +594,13 @@ export default function RequestsScreen() {
           <TouchableOpacity 
             style={[
               styles.filterToggleBtn,
-              (statusFilter !== 'all' || typeFilter !== 'all' || filterStartDate !== getTodayStr() || filterEndDate !== getTodayStr()) && styles.filterToggleActive
+              (statusFilter !== 'all' || typeFilter !== 'all' || filterStartDate !== '' || filterEndDate !== '') && styles.filterToggleActive
             ]}
             onPress={() => setShowFilters(!showFilters)}
           >
             <Filter size={18} color={showFilters ? colors.accent : colors.subtext} />
             <Text style={[styles.filterToggleText, showFilters && { color: colors.accent }]}>Filters</Text>
-            {(statusFilter !== 'all' || typeFilter !== 'all' || filterStartDate !== getTodayStr() || filterEndDate !== getTodayStr()) && (
+            {(statusFilter !== 'all' || typeFilter !== 'all' || filterStartDate !== '' || filterEndDate !== '') && (
               <View style={styles.activeFilterBadge} />
             )}
           </TouchableOpacity>
