@@ -244,6 +244,108 @@ describe('Payroll API', () => {
       expect(res.status).toBe(403);
       expect(res.body).toHaveProperty('error', 'Forbidden: Insufficient permissions');
     });
+
+    it('should prevent recording exact duplicate payments', async () => {
+      // Record first payment
+      await request(app)
+        .post('/api/payroll/records/pay')
+        .send({ user_id: employeeId, startDate: '2023-10-05', endDate: '2023-10-10' })
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      // Try recording duplicate payment
+      const res = await request(app)
+        .post('/api/payroll/records/pay')
+        .send({ user_id: employeeId, startDate: '2023-10-05', endDate: '2023-10-10' })
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('error', 'This period overlaps with an existing payment record for this employee.');
+    });
+
+    it('should prevent recording overlapping payments on the start boundary', async () => {
+      // Record first payment for 2023-10-05 to 2023-10-10
+      await request(app)
+        .post('/api/payroll/records/pay')
+        .send({ user_id: employeeId, startDate: '2023-10-05', endDate: '2023-10-10' })
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      // Try recording overlapping payment for 2023-10-01 to 2023-10-06 (overlaps on Oct 5 and Oct 6)
+      const res = await request(app)
+        .post('/api/payroll/records/pay')
+        .send({ user_id: employeeId, startDate: '2023-10-01', endDate: '2023-10-06' })
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('error', 'This period overlaps with an existing payment record for this employee.');
+    });
+
+    it('should prevent recording overlapping payments on the end boundary', async () => {
+      // Record first payment for 2023-10-05 to 2023-10-10
+      await request(app)
+        .post('/api/payroll/records/pay')
+        .send({ user_id: employeeId, startDate: '2023-10-05', endDate: '2023-10-10' })
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      // Try recording overlapping payment for 2023-10-09 to 2023-10-15 (overlaps on Oct 9 and Oct 10)
+      const res = await request(app)
+        .post('/api/payroll/records/pay')
+        .send({ user_id: employeeId, startDate: '2023-10-09', endDate: '2023-10-15' })
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('error', 'This period overlaps with an existing payment record for this employee.');
+    });
+
+    it('should prevent recording fully nested overlapping payments', async () => {
+      // Record first payment for 2023-10-01 to 2023-10-15
+      await request(app)
+        .post('/api/payroll/records/pay')
+        .send({ user_id: employeeId, startDate: '2023-10-01', endDate: '2023-10-15' })
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      // Try recording overlapping payment for 2023-10-05 to 2023-10-10 (fully inside)
+      const res = await request(app)
+        .post('/api/payroll/records/pay')
+        .send({ user_id: employeeId, startDate: '2023-10-05', endDate: '2023-10-10' })
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('error', 'This period overlaps with an existing payment record for this employee.');
+    });
+
+    it('should prevent recording encompassing overlapping payments', async () => {
+      // Record first payment for 2023-10-05 to 2023-10-10
+      await request(app)
+        .post('/api/payroll/records/pay')
+        .send({ user_id: employeeId, startDate: '2023-10-05', endDate: '2023-10-10' })
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      // Try recording overlapping payment for 2023-10-01 to 2023-10-15 (fully encompasses)
+      const res = await request(app)
+        .post('/api/payroll/records/pay')
+        .send({ user_id: employeeId, startDate: '2023-10-01', endDate: '2023-10-15' })
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('error', 'This period overlaps with an existing payment record for this employee.');
+    });
+
+    it('should allow recording non-overlapping payments', async () => {
+      // Record first payment for 2023-10-05 to 2023-10-10
+      await request(app)
+        .post('/api/payroll/records/pay')
+        .send({ user_id: employeeId, startDate: '2023-10-05', endDate: '2023-10-10' })
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      // Try recording non-overlapping payment for 2023-10-11 to 2023-10-15
+      const res = await request(app)
+        .post('/api/payroll/records/pay')
+        .send({ user_id: employeeId, startDate: '2023-10-11', endDate: '2023-10-15' })
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('message', 'Payment recorded successfully');
+    });
   });
 
   describe('GET /api/payroll/my-records', () => {

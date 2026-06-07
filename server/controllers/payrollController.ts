@@ -398,11 +398,11 @@ export const recordPayment = (req: AuthRequest, res: Response): void => {
 
         const existingPayment = db.prepare(`
             SELECT id FROM payrolls
-            WHERE user_id = ? AND start_date = ? AND end_date = ? AND status = 'paid'
-        `).get(user_id, startDate, endDate);
+            WHERE user_id = ? AND start_date <= ? AND end_date >= ? AND status = 'paid'
+        `).get(user_id, endDate, startDate);
 
         if (existingPayment) {
-            res.status(400).json({ error: 'This period has already been paid for this employee.' });
+            res.status(400).json({ error: 'This period overlaps with an existing payment record for this employee.' });
             return;
         }
 
