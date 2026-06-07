@@ -54,6 +54,9 @@ export default function ProfileScreen() {
       national_id: '',
       bio: '',
       display_timezone: '',
+      emergency_contact_name: '',
+      emergency_contact_phone: '',
+      emergency_contact_relationship: '',
     }
   });
 
@@ -95,6 +98,9 @@ export default function ProfileScreen() {
         national_id: userProfile.national_id || '',
         bio: userProfile.bio || '',
         display_timezone: userProfile.display_timezone || '',
+        emergency_contact_name: userProfile.emergency_contact_name || '',
+        emergency_contact_phone: userProfile.emergency_contact_phone || '',
+        emergency_contact_relationship: userProfile.emergency_contact_relationship || '',
       });
       setAvatar(userProfile.profile_picture_url || null);
       setUserTimezone(userProfile.display_timezone || null);
@@ -178,6 +184,9 @@ export default function ProfileScreen() {
         date_of_birth: data.date_of_birth ? data.date_of_birth.toISOString().split('T')[0] : null,
         national_id: data.national_id,
         display_timezone: data.display_timezone,
+        emergency_contact_name: data.emergency_contact_name || null,
+        emergency_contact_phone: data.emergency_contact_phone || null,
+        emergency_contact_relationship: data.emergency_contact_relationship || null,
       };
 
       const response = await api.put('/users/profile', finalData);
@@ -463,6 +472,77 @@ export default function ProfileScreen() {
                 )}
               />
             </View>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Emergency Contact</Text>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Emergency Contact Name</Text>
+            <View style={[styles.inputWrapper, errors.emergency_contact_name && styles.inputError]}>
+              <UserCircle size={18} color={colors.subtext} style={styles.inputIcon} />
+              <Controller
+                control={control}
+                name="emergency_contact_name"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <TextInput
+                    style={styles.input}
+                    onBlur={onBlur}
+                    onChangeText={onChange}
+                    value={value}
+                    placeholder="Emergency Contact Name"
+                    placeholderTextColor={colors.subtext}
+                  />
+                )}
+              />
+            </View>
+            {errors.emergency_contact_name && <Text style={styles.errorText}>{String(errors.emergency_contact_name.message)}</Text>}
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Emergency Contact Phone</Text>
+            <View style={[styles.inputWrapper, errors.emergency_contact_phone && styles.inputError]}>
+              <Phone size={18} color={colors.subtext} style={styles.inputIcon} />
+              <Controller
+                control={control}
+                name="emergency_contact_phone"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <TextInput
+                    style={styles.input}
+                    onBlur={onBlur}
+                    onChangeText={onChange}
+                    value={value}
+                    placeholder="+1 234 567 890"
+                    placeholderTextColor={colors.subtext}
+                    keyboardType="phone-pad"
+                  />
+                )}
+              />
+            </View>
+            {errors.emergency_contact_phone && <Text style={styles.errorText}>{String(errors.emergency_contact_phone.message)}</Text>}
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Emergency Contact Relationship</Text>
+            <View style={[styles.inputWrapper, errors.emergency_contact_relationship && styles.inputError]}>
+              <HeartHandshake size={18} color={colors.subtext} style={styles.inputIcon} />
+              <Controller
+                control={control}
+                name="emergency_contact_relationship"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <TextInput
+                    style={styles.input}
+                    onBlur={onBlur}
+                    onChangeText={onChange}
+                    value={value}
+                    placeholder="e.g. Spouse"
+                    placeholderTextColor={colors.subtext}
+                  />
+                )}
+              />
+            </View>
+            {errors.emergency_contact_relationship && <Text style={styles.errorText}>{String(errors.emergency_contact_relationship.message)}</Text>}
           </View>
         </View>
 

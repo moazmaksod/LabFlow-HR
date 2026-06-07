@@ -58,6 +58,9 @@ export const EmployeeProfileSchema = z.object({
   national_id: nationalIdSchema.optional().nullable().or(z.literal("")),
   bio: textSanitizedSchema.optional().nullable().or(z.literal("")),
   display_timezone: z.string().optional().nullable().or(z.literal("")),
+  emergency_contact_name: z.string().optional().nullable().or(z.literal("")),
+  emergency_contact_phone: z.string().optional().nullable().or(z.literal("")),
+  emergency_contact_relationship: z.string().optional().nullable().or(z.literal("")),
 });
 
 // For admin settings
