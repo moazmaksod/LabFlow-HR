@@ -37,6 +37,8 @@ interface Settings {
   maintenance_mode: number;
   min_overtime_minutes: number;
   whitelist_device_ids: string;
+  min_clock_session_minutes: number;
+  min_unscheduled_session_minutes: number;
 }
 
 export default function SettingsView() {
@@ -210,7 +212,8 @@ export default function SettingsView() {
       'overtime_rate_percent', 'weekend_rate_percent', 'attendance_bonus_amount',
       'office_lat', 'office_lng', 'geofence_radius', 'time_sync_interval',
       'max_drift_threshold', 'accuracy_meters', 'step_away_grace_period',
-      'late_grace_period', 'max_monthly_permissions', 'min_overtime_minutes'
+      'late_grace_period', 'max_monthly_permissions', 'min_overtime_minutes',
+      'min_clock_session_minutes', 'min_unscheduled_session_minutes'
     ];
 
     for (const field of numericFields) {
@@ -358,6 +361,9 @@ export default function SettingsView() {
                         onChange={handleChange}
                         className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
                       />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Determines the threshold for creating valid overtime requests. Any computed overtime shorter than this limit will be automatically rejected, but the attendance record is preserved.
+                      </p>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-muted-foreground mb-2">Attendance Bonus Amount</label>
@@ -592,6 +598,9 @@ export default function SettingsView() {
                         onChange={handleChange}
                         className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
                       />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Allows employees to check in late or leave early by up to this many minutes without triggering late/early leave penalization requests. (Keeps records but marks them as on-time).
+                      </p>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-muted-foreground mb-2">Step Away Grace Period (mins)</label>
@@ -612,6 +621,32 @@ export default function SettingsView() {
                         onChange={handleChange}
                         className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
                       />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Minimum Clock Session Duration (mins)</label>
+                      <input
+                        type="number"
+                        name="min_clock_session_minutes"
+                        value={formData.min_clock_session_minutes ?? 1}
+                        onChange={handleChange}
+                        className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Sessions shorter than this are considered accidental clicks (e.g., immediate checkout) and will be completely deleted from the database.
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Minimum Unscheduled Segment Duration (mins)</label>
+                      <input
+                        type="number"
+                        name="min_unscheduled_session_minutes"
+                        value={formData.min_unscheduled_session_minutes ?? 5}
+                        onChange={handleChange}
+                        className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Unscheduled shifts or early check-in/late check-out segments shorter than this limit will be ignored and deleted to keep the database clean.
+                      </p>
                     </div>
 
                     <div className="md:col-span-2 space-y-4 pt-4 border-t border-border">

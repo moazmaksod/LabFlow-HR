@@ -123,7 +123,10 @@ export const updateSettings = (req: AuthRequest, res: Response): void => {
 
             // Build dynamic update query
             // Allow explicit update of the new fields even if oldSettings doesn't have them natively yet (due to cache or legacy rows)
-            const allowedExtraKeys = ['wifi_validation_toggle', 'company_wifi_ssid', 'company_wifi_bssid'];
+            const allowedExtraKeys = [
+                'wifi_validation_toggle', 'company_wifi_ssid', 'company_wifi_bssid',
+                'min_clock_session_minutes', 'min_unscheduled_session_minutes'
+            ];
             const keys = Object.keys(body).filter(k =>
                 (Object.hasOwn(oldSettings, k) || allowedExtraKeys.includes(k)) &&
                 k !== 'id' && k !== 'created_at' && k !== 'updated_at'

@@ -103,38 +103,52 @@ export const evaluateUserAttendance = (userId: number): void => {
                 if (effectiveCheckOutMs < scheduledEndMs) {
                     logger.debug('[evaluateUserAttendance] Heartbeats stopped early. Auto-closing shift.');
 
-                    const effectiveCheckOutISO = new Date(effectiveCheckOutMs).toISOString();
+                    const minClockSessionMins = settings?.min_clock_session_minutes !== undefined ? settings.min_clock_session_minutes : 1;
+                    const totalMinsFloat = (effectiveCheckOutMs - new Date(activeScheduled.check_in).getTime()) / 60000;
 
-                    let checkoutStatus = 'on_time';
-                    const earlyMinutes = getDifferenceInMinutes(effectiveCheckOutISO, activeScheduled.scheduled_end_time);
-                    if (earlyMinutes > gracePeriod) {
-                        checkoutStatus = 'early_out';
+                    if (totalMinsFloat < minClockSessionMins) {
+                        logger.info(`Auto-closed session ignored for User ${uid}: total duration is ${totalMinsFloat.toFixed(2)} mins (minimum required: ${minClockSessionMins} mins).`);
+                        db.prepare('DELETE FROM requests WHERE attendance_id = ?').run(activeScheduled.id);
+                        db.prepare('DELETE FROM shift_interruptions WHERE attendance_id = ?').run(activeScheduled.id);
+                        db.prepare('DELETE FROM attendance WHERE id = ?').run(activeScheduled.id);
+                        
+                        db.prepare(`
+                            UPDATE shift_instances SET status = 'Scheduled' WHERE id = ?
+                        `).run(activeScheduled.shift_instance_id);
+                    } else {
+                        const effectiveCheckOutISO = new Date(effectiveCheckOutMs).toISOString();
+
+                        let checkoutStatus = 'on_time';
+                        const earlyMinutes = getDifferenceInMinutes(effectiveCheckOutISO, activeScheduled.scheduled_end_time);
+                        if (earlyMinutes > gracePeriod) {
+                            checkoutStatus = 'early_out';
+                        }
+     
+                        // Auto-Close Session
+                        db.prepare(`
+                            UPDATE attendance 
+                            SET check_out = ?, check_out_lat = ?, check_out_lng = ?, checkout_status = ?
+                            WHERE id = ?
+                        `).run(
+                            effectiveCheckOutISO, 
+                            activeScheduled.check_in_lat, 
+                            activeScheduled.check_in_lng, 
+                            checkoutStatus,
+                            activeScheduled.id
+                        );
+
+                        // End the active step_away interruption if any
+                        db.prepare(`
+                            UPDATE shift_interruptions
+                            SET end_time = ?
+                            WHERE attendance_id = ? AND type = 'step_away' AND end_time IS NULL
+                        `).run(effectiveCheckOutISO, activeScheduled.id);
+
+                        // Update shift instance status
+                        db.prepare(`
+                            UPDATE shift_instances SET status = 'Completed' WHERE id = ?
+                        `).run(activeScheduled.shift_instance_id);
                     }
- 
-                    // Auto-Close Session
-                    db.prepare(`
-                        UPDATE attendance 
-                        SET check_out = ?, check_out_lat = ?, check_out_lng = ?, checkout_status = ?
-                        WHERE id = ?
-                    `).run(
-                        effectiveCheckOutISO, 
-                        activeScheduled.check_in_lat, 
-                        activeScheduled.check_in_lng, 
-                        checkoutStatus,
-                        activeScheduled.id
-                    );
-
-                    // End the active step_away interruption if any
-                    db.prepare(`
-                        UPDATE shift_interruptions
-                        SET end_time = ?
-                        WHERE attendance_id = ? AND type = 'step_away' AND end_time IS NULL
-                    `).run(effectiveCheckOutISO, activeScheduled.id);
-
-                    // Update shift instance status
-                    db.prepare(`
-                        UPDATE shift_instances SET status = 'Completed' WHERE id = ?
-                    `).run(activeScheduled.shift_instance_id);
 
                 } else {
                     // Check if this is the final shift of the day
@@ -208,21 +222,37 @@ export const evaluateUserAttendance = (userId: number): void => {
                     logger.debug('[evaluateUserAttendance] activeShift Branch Entry. Flowing unscheduled to scheduled.');
 
                     const otMinutes = getDifferenceInMinutes(activeUnscheduled.check_in, activeShift.start_time);
+                    const minUnscheduledSessionMins = settings?.min_unscheduled_session_minutes !== undefined ? settings.min_unscheduled_session_minutes : 5;
 
-                    if (otMinutes > 0) {
-                        insertOvertimeRequest(uid, activeUnscheduled.id, 'Early Clock-in (Auto-Slice)', otMinutes);
+                    if (otMinutes >= minUnscheduledSessionMins) {
+                        if (otMinutes > 0) {
+                            insertOvertimeRequest(uid, activeUnscheduled.id, 'Early Clock-in (Auto-Slice)', otMinutes);
+                        }
+
+                        // Update unscheduled to end at shift start time
+                        db.prepare(`
+                            UPDATE attendance SET check_out = ?, check_out_lat = ?, check_out_lng = ?, checkout_status = 'unscheduled' WHERE id = ?
+                        `).run(activeShift.start_time, activeUnscheduled.check_in_lat, activeUnscheduled.check_in_lng, activeUnscheduled.id);
+
+                        // Insert new active attendance record for the scheduled shift
+                        db.prepare(`
+                            INSERT INTO attendance (user_id, check_in, check_out, date, check_in_lat, check_in_lng, checkin_status, checkout_status, working_status, shift_id)
+                            VALUES (?, ?, NULL, ?, ?, ?, 'on_time', NULL, 'working', ?)
+                        `).run(uid, activeShift.start_time, activeShift.logical_date, activeUnscheduled.check_in_lat, activeUnscheduled.check_in_lng, activeShift.id.toString());
+                    } else {
+                        // Early check-in was shorter than the minimum unscheduled session limit
+                        db.prepare('DELETE FROM requests WHERE attendance_id = ?').run(activeUnscheduled.id);
+                        db.prepare('DELETE FROM shift_interruptions WHERE attendance_id = ?').run(activeUnscheduled.id);
+                        db.prepare('DELETE FROM attendance WHERE id = ?').run(activeUnscheduled.id);
+
+                        // Insert new active attendance record for the scheduled shift starting at shift start
+                        db.prepare(`
+                            INSERT INTO attendance (user_id, check_in, check_out, date, check_in_lat, check_in_lng, checkin_status, checkout_status, working_status, shift_id)
+                            VALUES (?, ?, NULL, ?, ?, ?, 'on_time', NULL, 'working', ?)
+                        `).run(uid, activeShift.start_time, activeShift.logical_date, activeUnscheduled.check_in_lat, activeUnscheduled.check_in_lng, activeShift.id.toString());
+
+                        logger.info(`Auto-slice early segment ignored for User ${uid}: duration is ${otMinutes} mins (minimum required unscheduled: ${minUnscheduledSessionMins} mins).`);
                     }
-
-                    // Update unscheduled to end at shift start time
-                    db.prepare(`
-                        UPDATE attendance SET check_out = ?, check_out_lat = ?, check_out_lng = ?, checkout_status = 'unscheduled' WHERE id = ?
-                    `).run(activeShift.start_time, activeUnscheduled.check_in_lat, activeUnscheduled.check_in_lng, activeUnscheduled.id);
- 
-                    // Insert new active attendance record for the scheduled shift
-                    db.prepare(`
-                        INSERT INTO attendance (user_id, check_in, check_out, date, check_in_lat, check_in_lng, checkin_status, checkout_status, working_status, shift_id)
-                        VALUES (?, ?, NULL, ?, ?, ?, 'on_time', NULL, 'working', ?)
-                    `).run(uid, activeShift.start_time, activeShift.logical_date, activeUnscheduled.check_in_lat, activeUnscheduled.check_in_lng, activeShift.id.toString());
                 }
             }
 

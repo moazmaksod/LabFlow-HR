@@ -164,6 +164,8 @@ CREATE TABLE IF NOT EXISTS settings (
     maintenance_mode BOOLEAN NOT NULL DEFAULT 0,
     min_overtime_minutes INTEGER NOT NULL DEFAULT 0,
     whitelist_device_ids TEXT NOT NULL DEFAULT '',
+    min_clock_session_minutes INTEGER NOT NULL DEFAULT 1,
+    min_unscheduled_session_minutes INTEGER NOT NULL DEFAULT 5,
 
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP

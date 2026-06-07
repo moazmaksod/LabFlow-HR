@@ -86,6 +86,12 @@ export function initDb() {
     if (!settingsColumns.some(c => c.name === 'whitelist_device_ids')) {
       db.exec("ALTER TABLE settings ADD COLUMN whitelist_device_ids TEXT NOT NULL DEFAULT '';");
     }
+    if (!settingsColumns.some(c => c.name === 'min_clock_session_minutes')) {
+      db.exec("ALTER TABLE settings ADD COLUMN min_clock_session_minutes INTEGER NOT NULL DEFAULT 1;");
+    }
+    if (!settingsColumns.some(c => c.name === 'min_unscheduled_session_minutes')) {
+      db.exec("ALTER TABLE settings ADD COLUMN min_unscheduled_session_minutes INTEGER NOT NULL DEFAULT 5;");
+    }
     const payrollColumns = db.prepare("PRAGMA table_info(payrolls)").all() as any[];
     if (!payrollColumns.some(c => c.name === 'attendance_bonus')) {
       db.exec("ALTER TABLE payrolls ADD COLUMN attendance_bonus REAL NOT NULL DEFAULT 0.0;");

@@ -343,6 +343,73 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
         }
         const gracePeriod = settings?.late_grace_period !== undefined ? settings.late_grace_period : 0;
 
+        // --- Same-minute / Min-duration checks ---
+        const minClockSessionMins = settings?.min_clock_session_minutes !== undefined ? settings.min_clock_session_minutes : 1;
+        const diffMs = checkOutTime.getTime() - checkInTime.getTime();
+        const diffMinsFloat = diffMs / 60000;
+
+        let shouldDelete = false;
+        let deleteReason = '';
+        let deleteLimit = 0;
+
+        // 1. Fast Clock-Out check
+        if (diffMinsFloat < minClockSessionMins) {
+            shouldDelete = true;
+            deleteReason = 'fast_clock_out';
+            deleteLimit = minClockSessionMins;
+        }
+
+        // 2. Pure Unscheduled Session check
+        if (!shouldDelete && (!shiftStart || !shiftEnd || !shiftInstance)) {
+            const otMins = getDifferenceInMinutes(checkInTime, checkOutTime);
+            const minUnscheduledSessionMins = settings?.min_unscheduled_session_minutes !== undefined ? settings.min_unscheduled_session_minutes : 5;
+            if (otMins < minUnscheduledSessionMins) {
+                shouldDelete = true;
+                deleteReason = 'unscheduled';
+                deleteLimit = minUnscheduledSessionMins;
+            }
+        }
+
+        // 3. Out-of-bounds Unscheduled Session check
+        if (!shouldDelete && shiftStart && shiftEnd && shiftInstance) {
+            if (checkOutTime <= shiftStart || checkInTime >= shiftEnd) {
+                const otMins = getDifferenceInMinutes(checkInTime, checkOutTime);
+                const minUnscheduledSessionMins = settings?.min_unscheduled_session_minutes !== undefined ? settings.min_unscheduled_session_minutes : 5;
+                if (otMins < minUnscheduledSessionMins) {
+                    shouldDelete = true;
+                    deleteReason = 'unscheduled_out_of_bounds';
+                    deleteLimit = minUnscheduledSessionMins;
+                }
+            }
+        }
+
+        if (shouldDelete) {
+            const deleteTransaction = db.transaction(() => {
+                db.prepare('DELETE FROM requests WHERE attendance_id = ?').run(activeSession.id);
+                db.prepare('DELETE FROM shift_interruptions WHERE attendance_id = ?').run(activeSession.id);
+                db.prepare('DELETE FROM attendance WHERE id = ?').run(activeSession.id);
+            });
+            deleteTransaction();
+
+            recalculateUserDailyAttendance(userId, activeSession.date);
+
+            logger.info(`Session ignored: User ${userId} clocked out. Reason: ${deleteReason} (limit: ${deleteLimit} mins, actual: ${diffMinsFloat.toFixed(2)} mins). Record deleted.`);
+            logAudit('attendance', activeSession.id, 'DELETE', userId, activeSession, null);
+
+            return {
+                status: 200,
+                data: {
+                    id: activeSession.id,
+                    user_id: userId,
+                    check_in: activeSession.check_in,
+                    check_out: timestamp,
+                    date: activeSession.date,
+                    ignored: true,
+                    message: `Clock session ignored. Reason: ${deleteReason}`
+                }
+            };
+        }
+
         let updatedRecord: any = null;
 
         const updateTransaction = db.transaction(() => {
@@ -430,7 +497,8 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             // Insert Early Segment
             if (earlySegmentStart && earlySegmentEnd) {
                 const earlyMins = getDifferenceInMinutes(earlySegmentStart, earlySegmentEnd);
-                if (earlyMins > 0) {
+                const minUnscheduledSessionMins = settings?.min_unscheduled_session_minutes !== undefined ? settings.min_unscheduled_session_minutes : 5;
+                if (earlyMins >= minUnscheduledSessionMins) {
                     const earlyShiftId = generateUnscheduledShiftId(userId, earlySegmentStart);
                     const insertEarly = db.prepare(`
                         INSERT INTO attendance (user_id, check_in, check_out, date, check_in_lat, check_in_lng, check_out_lat, check_out_lng, checkin_status, checkout_status, working_status, shift_id)
@@ -449,13 +517,16 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                     );
 
                     insertOvertimeRequest(userId, Number(info.lastInsertRowid), 'Early Clock-in (Unscheduled)', earlyMins);
+                } else {
+                    logger.info(`Early segment ignored for User ${userId}: duration is ${earlyMins} mins (minimum required unscheduled: ${minUnscheduledSessionMins} mins).`);
                 }
             }
 
             // Insert Late Segment
             if (lateSegmentStart && lateSegmentEnd) {
                 const lateMins = getDifferenceInMinutes(lateSegmentStart, lateSegmentEnd);
-                if (lateMins > 0) {
+                const minUnscheduledSessionMins = settings?.min_unscheduled_session_minutes !== undefined ? settings.min_unscheduled_session_minutes : 5;
+                if (lateMins >= minUnscheduledSessionMins) {
                     const lateShiftId = generateUnscheduledShiftId(userId, lateSegmentStart);
                     const insertLate = db.prepare(`
                         INSERT INTO attendance (user_id, check_in, check_out, date, check_in_lat, check_in_lng, check_out_lat, check_out_lng, checkin_status, checkout_status, working_status, shift_id)
@@ -474,6 +545,8 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                     );
 
                     insertOvertimeRequest(userId, Number(info.lastInsertRowid), 'Late Clock-out (Unscheduled)', lateMins);
+                } else {
+                    logger.info(`Late segment ignored for User ${userId}: duration is ${lateMins} mins (minimum required unscheduled: ${minUnscheduledSessionMins} mins).`);
                 }
             }
         });
