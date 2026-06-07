@@ -455,4 +455,77 @@ describe('Attendance API - Schedule Driven Architecture', () => {
     const fridayShiftRecord = db.prepare('SELECT * FROM shift_instances WHERE id = ?').get(fridayShift.id) as any;
     expect(fridayShiftRecord.status).toBe('Cancelled');
   });
+
+  it('7. Unscheduled Shift Auto-Close - Saved Session Test', async () => {
+    const hash = await bcrypt.hash('password123', 10);
+    const empInsert = db.prepare(`INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)`).run('US AutoClose User 1', 'us_autoclose1@test.com', hash, 'employee');
+    const uId = empInsert.lastInsertRowid;
+
+    db.prepare(`INSERT INTO profiles (user_id, status, job_id, weekly_schedule, device_id, allow_overtime, max_overtime_hours) VALUES (?, ?, ?, ?, ?, 1, 10)`).run(uId, 'active', 1, '{}', 'device-us-1');
+
+    db.prepare(`UPDATE settings SET min_clock_session_minutes = 2, min_unscheduled_session_minutes = 5 WHERE id = 1`).run();
+    const { clearSettingsCache } = await import('../../utils/cache.js');
+    clearSettingsCache();
+
+    // Check in at 09:00 UTC
+    db.prepare(`
+        INSERT INTO attendance (user_id, check_in, date, check_in_lat, check_in_lng, checkin_status, checkout_status, working_status, shift_id)
+        VALUES (?, '2023-10-28T09:00:00Z', '2023-10-28', 37.7749, -122.4194, 'unscheduled', NULL, 'working', NULL)
+    `).run(uId);
+
+    const attRecord = db.prepare(`SELECT id FROM attendance WHERE user_id = ?`).get(uId) as any;
+
+    // Seed heartbeat at 09:15 UTC
+    db.prepare(`
+        INSERT INTO attendance_heartbeats (user_id, timestamp, ssid, status)
+        VALUES (?, '2023-10-28T09:15:00Z', 'Company-WiFi', 'success')
+    `).run(uId);
+
+    // Evaluate at 09:40 UTC (now > effective check_out at 09:30 UTC -> 30 min session >= 5 min limit)
+    jest.useFakeTimers().setSystemTime(new Date('2023-10-28T09:40:00Z'));
+    const { evaluateUserAttendance } = await import('../../services/attendanceEvaluationService.js');
+    evaluateUserAttendance(Number(uId));
+
+    // Verify shift was updated and saved
+    const updatedAtt = db.prepare('SELECT * FROM attendance WHERE id = ?').get(attRecord.id) as any;
+    expect(updatedAtt).toBeDefined();
+    expect(updatedAtt.check_out).toBe('2023-10-28T09:30:00.000Z');
+    expect(updatedAtt.checkout_status).toBe('unscheduled');
+
+    // Verify overtime request was created
+    const reqRecord = db.prepare('SELECT * FROM requests WHERE attendance_id = ? AND type = ?').get(attRecord.id, 'overtime_approval') as any;
+    expect(reqRecord).toBeDefined();
+    expect(reqRecord.value).toBe(30); // 30 minutes
+    expect(reqRecord.status).toBe('pending');
+  });
+
+  it('8. Unscheduled Shift Auto-Close - Short Session Ignored Test', async () => {
+    const hash = await bcrypt.hash('password123', 10);
+    const empInsert = db.prepare(`INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)`).run('US AutoClose User 2', 'us_autoclose2@test.com', hash, 'employee');
+    const uId = empInsert.lastInsertRowid;
+
+    db.prepare(`INSERT INTO profiles (user_id, status, job_id, weekly_schedule, device_id, allow_overtime, max_overtime_hours) VALUES (?, ?, ?, ?, ?, 1, 10)`).run(uId, 'active', 1, '{}', 'device-us-2');
+
+    // Set min_unscheduled_session_minutes to 20 to ensure 15 mins (check_in to 15 mins check_out) is deleted
+    db.prepare(`UPDATE settings SET min_clock_session_minutes = 2, min_unscheduled_session_minutes = 20 WHERE id = 1`).run();
+    const { clearSettingsCache } = await import('../../utils/cache.js');
+    clearSettingsCache();
+
+    // Check in at 12:00 UTC
+    db.prepare(`
+        INSERT INTO attendance (user_id, check_in, date, check_in_lat, check_in_lng, checkin_status, checkout_status, working_status, shift_id)
+        VALUES (?, '2023-10-28T12:00:00Z', '2023-10-28', 37.7749, -122.4194, 'unscheduled', NULL, 'working', NULL)
+    `).run(uId);
+
+    const attRecord = db.prepare(`SELECT id FROM attendance WHERE user_id = ?`).get(uId) as any;
+
+    // Evaluate at 12:20 UTC (now > effective check_out at 12:15 UTC -> 15 min session < 20 min limit)
+    jest.useFakeTimers().setSystemTime(new Date('2023-10-28T12:20:00Z'));
+    const { evaluateUserAttendance } = await import('../../services/attendanceEvaluationService.js');
+    evaluateUserAttendance(Number(uId));
+
+    // Verify shift was deleted
+    const deletedAtt = db.prepare('SELECT * FROM attendance WHERE id = ?').get(attRecord.id);
+    expect(deletedAtt).toBeUndefined();
+  });
 });
