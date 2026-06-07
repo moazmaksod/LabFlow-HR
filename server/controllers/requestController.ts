@@ -373,9 +373,11 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
         }
 
         const transaction = db.transaction(() => {
-            const finalPaidMinutes = requestRecord.type === 'overtime_approval'
-                ? (approved_minutes !== undefined ? approved_minutes : (requestRecord.value || 0))
-                : (paid_minutes || 0);
+            const finalPaidMinutes = status === 'rejected'
+                ? 0
+                : (requestRecord.type === 'overtime_approval'
+                    ? (approved_minutes !== undefined ? approved_minutes : (requestRecord.value || 0))
+                    : (paid_minutes || 0));
 
             // Update the request status, manager note, paid_minutes and penalty_minutes
             db.prepare('UPDATE requests SET status = ?, manager_note = ?, paid_minutes = ?, penalty_minutes = ? WHERE id = ?').run(

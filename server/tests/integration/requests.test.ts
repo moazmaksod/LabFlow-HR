@@ -386,4 +386,32 @@ describe('Requests API', () => {
     expect(correctionRes2.status).toBe(400);
     expect(correctionRes2.body.error).toContain('cannot be later than the scheduled shift end time');
   });
+
+  it('should ensure paid_minutes is always 0 on rejected requests', async () => {
+    // 1. Create a request
+    const createRes = await request(app)
+      .post('/api/requests')
+      .set('Authorization', `Bearer ${employeeToken}`)
+      .send({
+        reason: 'Sick leave for rejection test',
+        requested_check_in: new Date().toISOString(),
+        requested_check_out: new Date().toISOString()
+      });
+    expect(createRes.status).toBe(201);
+    const testReqId = createRes.body.id;
+
+    // 2. Reject the request and try passing a non-zero paid_minutes to test robustness
+    const rejectRes = await request(app)
+      .put(`/api/requests/${testReqId}/status`)
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ status: 'rejected', manager_note: 'Not approved', paid_minutes: 30 });
+    
+    expect(rejectRes.status).toBe(200);
+    expect(rejectRes.body.status).toBe('rejected');
+    expect(rejectRes.body.paid_minutes).toBe(0);
+
+    // Double check directly from DB
+    const dbRecord = db.prepare('SELECT paid_minutes FROM requests WHERE id = ?').get(testReqId) as any;
+    expect(dbRecord.paid_minutes).toBe(0);
+  });
 });
