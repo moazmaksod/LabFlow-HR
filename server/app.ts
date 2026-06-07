@@ -7,8 +7,13 @@ import requestRoutes from './routes/requestRoutes.js';
 import payrollRoutes from './routes/payrollRoutes.js';
 import settingsRoutes from './routes/settingsRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
+import logger from './utils/logger.js';
+
 
 const app = express();
+
+// Trust reverse proxies (e.g., Nginx, AWS ELB) to securely populate req.ip from X-Forwarded-For
+app.set('trust proxy', 1);
 
 // Middleware
 app.use(express.json());
@@ -28,5 +33,38 @@ app.use('/api/requests', requestRoutes);
 app.use('/api/payroll', payrollRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/audit', auditRoutes);
+
+import db from './db/index.js';
+
+import { evaluateUserAttendance } from './services/attendanceEvaluationService.js';
+import { initCronJobs } from './services/cronService.js';
+
+// Initialize Scheduled Tasks
+initCronJobs();
+
+// Global Missed Shift Cleanup Interval (30 minutes) -> Replaced with real-time 1-minute Active Attendance Evaluator
+const evaluationInterval = setInterval(() => {
+    try {
+        // Find all users who are currently checked in (active attendance)
+        const activeUsers = db.prepare(`
+            SELECT DISTINCT user_id
+            FROM attendance
+            WHERE check_out IS NULL
+        `).all() as any[];
+
+        for (const user of activeUsers) {
+            evaluateUserAttendance(user.user_id);
+        }
+    } catch (error) {
+        logger.error("Error evaluating real-time attendance:", error);
+    }
+}, 60 * 1000); // Every 1 minute
+evaluationInterval.unref();
+
+// Global Error Middleware
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    logger.error('Unhandled Server Error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+});
 
 export default app;

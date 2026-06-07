@@ -4,9 +4,11 @@
  */
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import axios from 'axios';
 import { useAppStore } from './store/useAppStore';
+import { useAuthStore } from './store/useAuthStore';
 import DashboardLayout from './components/DashboardLayout';
 import Login from './features/auth/Login';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -29,9 +31,10 @@ const queryClient = new QueryClient({
   },
 });
 
-export default function App() {
+function AppContent() {
   const { i18n } = useTranslation();
   const { theme, language } = useAppStore();
+  const token = useAuthStore((state) => state.token);
 
   // Sync theme and language with DOM globally
   useEffect(() => {
@@ -44,31 +47,62 @@ export default function App() {
     root.lang = language;
   }, [theme, language, i18n]);
 
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: async () => {
+      const res = await axios.get('/api/settings', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return res.data;
+    }
+  });
+
+  useEffect(() => {
+    if (settings) {
+      document.title = settings.company_name || 'LabFlow';
+      if (settings.company_favicon_url) {
+        let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+        if (!link) {
+          link = document.createElement('link');
+          link.rel = 'icon';
+          document.getElementsByTagName('head')[0].appendChild(link);
+        }
+        link.href = settings.company_favicon_url;
+      }
+    }
+  }, [settings]);
+
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <DashboardLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<AnalyticsDashboard />} />
+          <Route path="jobs" element={<JobManagement />} />
+          <Route path="employees" element={<EmployeeList />} />
+          <Route path="attendance" element={<AttendanceLogs />} />
+          <Route path="requests" element={<RequestManagement />} />
+          <Route path="payroll" element={<PayrollView />} />
+          <Route path="settings" element={<SettingsView />} />
+          <Route path="profile" element={<ManagerProfile />} />
+          <Route path="audit" element={<AuditLogs />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
+  );
+}
+
+export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route 
-            path="/" 
-            element={
-              <ProtectedRoute>
-                <DashboardLayout />
-              </ProtectedRoute>
-            } 
-          >
-            <Route index element={<AnalyticsDashboard />} />
-            <Route path="jobs" element={<JobManagement />} />
-            <Route path="employees" element={<EmployeeList />} />
-            <Route path="attendance" element={<AttendanceLogs />} />
-            <Route path="requests" element={<RequestManagement />} />
-            <Route path="payroll" element={<PayrollView />} />
-            <Route path="settings" element={<SettingsView />} />
-            <Route path="profile" element={<ManagerProfile />} />
-            <Route path="audit" element={<AuditLogs />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+      <AppContent />
     </QueryClientProvider>
   );
 }

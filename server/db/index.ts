@@ -1,10 +1,11 @@
 import Database from 'better-sqlite3';
 import * as path from 'path';
 import { schema } from './schema.js';
+import logger from '../utils/logger.js';
 
 // Connect to SQLite DB (file-based for persistence)
-const dbPath = process.env.DB_PATH === ':memory:' 
-  ? ':memory:' 
+const dbPath = process.env.DB_PATH === ':memory:'
+  ? ':memory:'
   : path.resolve(process.cwd(), process.env.DB_PATH || 'labflow.db');
 
 const isTestEnv = process.env.NODE_ENV === 'test';
@@ -12,8 +13,8 @@ const isTestEnv = process.env.NODE_ENV === 'test';
 
 const isBenchmarkOrTest = isTestEnv || dbPath.includes('temp') || dbPath === ':memory:';
 
-const db = new Database(dbPath, { 
-    verbose: isBenchmarkOrTest ? undefined : console.log 
+const db = new Database(dbPath, {
+    verbose: isBenchmarkOrTest ? undefined : logger.debug
 });
 
 // Strictly enforce Foreign Keys
@@ -24,16 +25,38 @@ db.pragma('journal_mode = WAL');
 export function initDb() {
   try {
     if (!isTestEnv) {
-      console.log('Initializing database schema...');
+      logger.info('Initializing database schema...');
     }
-    db.exec(schema);
     
+    // Drop old payroll_transactions if they exist
+    db.exec("DROP TABLE IF EXISTS payroll_transactions;");
+
+    // Drop old payrolls if it has the legacy schema
+    try {
+      const payrollColumns = db.prepare("PRAGMA table_info(payrolls)").all() as any[];
+      if (payrollColumns.length > 0 && !payrollColumns.some(c => c.name === 'paid_by')) {
+        db.exec("DROP TABLE IF EXISTS payrolls;");
+      }
+    } catch (e) {
+      // payrolls table doesn't exist yet, ignore
+    }
+
+    db.exec(schema);
+
     // Migration: Add new columns to jobs and profiles
+    const userColumns = db.prepare("PRAGMA table_info(users)").all() as any[];
     const jobColumns = db.prepare("PRAGMA table_info(jobs)").all() as any[];
     const profileColumns = db.prepare("PRAGMA table_info(profiles)").all() as any[];
     const attendanceColumns = db.prepare("PRAGMA table_info(attendance)").all() as any[];
     const requestColumns = db.prepare("PRAGMA table_info(requests)").all() as any[];
     const settingsColumns = db.prepare("PRAGMA table_info(settings)").all() as any[];
+
+    if (!userColumns.some(c => c.name === 'display_timezone')) {
+      db.exec("ALTER TABLE users ADD COLUMN display_timezone TEXT;");
+    }
+
+    // Shift instances migration: no specific data migration needed,
+    // table and indexes created by db.exec(schema)
 
     // Settings migrations
     if (!settingsColumns.some(c => c.name === 'company_name')) {
@@ -44,22 +67,117 @@ export function initDb() {
       `);
       db.exec(schema);
     }
+    
+    // Add new settings columns if they don't exist
+    if (!settingsColumns.some(c => c.name === 'company_favicon_url')) {
+      db.exec("ALTER TABLE settings ADD COLUMN company_favicon_url TEXT;");
+    }
+
+    // Wi-Fi Validation migrations
+    if (!settingsColumns.some(c => c.name === 'wifi_validation_toggle')) {
+      db.exec("ALTER TABLE settings ADD COLUMN wifi_validation_toggle BOOLEAN NOT NULL DEFAULT 0;");
+      db.exec("ALTER TABLE settings ADD COLUMN company_wifi_ssid TEXT;");
+      db.exec("ALTER TABLE settings ADD COLUMN company_wifi_bssid TEXT;");
+    }
+
+    if (!settingsColumns.some(c => c.name === 'min_overtime_minutes')) {
+      db.exec("ALTER TABLE settings ADD COLUMN min_overtime_minutes INTEGER NOT NULL DEFAULT 0;");
+    }
+    if (!settingsColumns.some(c => c.name === 'whitelist_device_ids')) {
+      db.exec("ALTER TABLE settings ADD COLUMN whitelist_device_ids TEXT NOT NULL DEFAULT '';");
+    }
+    if (!settingsColumns.some(c => c.name === 'min_clock_session_minutes')) {
+      db.exec("ALTER TABLE settings ADD COLUMN min_clock_session_minutes INTEGER NOT NULL DEFAULT 1;");
+    }
+    if (!settingsColumns.some(c => c.name === 'min_unscheduled_session_minutes')) {
+      db.exec("ALTER TABLE settings ADD COLUMN min_unscheduled_session_minutes INTEGER NOT NULL DEFAULT 5;");
+    }
+    const payrollColumns = db.prepare("PRAGMA table_info(payrolls)").all() as any[];
+    if (!payrollColumns.some(c => c.name === 'attendance_bonus')) {
+      db.exec("ALTER TABLE payrolls ADD COLUMN attendance_bonus REAL NOT NULL DEFAULT 0.0;");
+    }
+
+    // Drop payroll cycle settings if they exist
+    const settingsColsAfterWifi = db.prepare("PRAGMA table_info(settings)").all() as any[];
+    if (settingsColsAfterWifi.some(c => c.name === 'payroll_cycle_type')) {
+      db.exec(`
+        PRAGMA foreign_keys=off;
+        BEGIN TRANSACTION;
+        CREATE TABLE settings_temp (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            company_name TEXT NOT NULL DEFAULT 'LabFlow',
+            company_logo_url TEXT,
+            company_favicon_url TEXT,
+            brand_primary_color TEXT NOT NULL DEFAULT '#4f46e5',
+            support_contact TEXT,
+            overtime_rate_percent REAL NOT NULL DEFAULT 150.0,
+            weekend_rate_percent REAL NOT NULL DEFAULT 200.0,
+            attendance_bonus_amount REAL NOT NULL DEFAULT 0.0,
+            show_salary_estimate BOOLEAN NOT NULL DEFAULT 1,
+            geofence_toggle BOOLEAN NOT NULL DEFAULT 1,
+            office_lat REAL NOT NULL DEFAULT 0,
+            office_lng REAL NOT NULL DEFAULT 0,
+            geofence_radius REAL NOT NULL DEFAULT 50,
+            time_sync_interval INTEGER NOT NULL DEFAULT 300,
+            max_drift_threshold INTEGER NOT NULL DEFAULT 10,
+            wifi_validation_toggle BOOLEAN NOT NULL DEFAULT 0,
+            company_wifi_ssid TEXT,
+            company_wifi_bssid TEXT,
+            accuracy_meters INTEGER NOT NULL DEFAULT 100,
+            device_binding_enforced BOOLEAN NOT NULL DEFAULT 1,
+            auto_checkout BOOLEAN NOT NULL DEFAULT 0,
+            step_away_grace_period INTEGER NOT NULL DEFAULT 5,
+            late_grace_period INTEGER NOT NULL DEFAULT 15,
+            max_monthly_permissions INTEGER NOT NULL DEFAULT 3,
+            enable_reminders BOOLEAN NOT NULL DEFAULT 1,
+            send_daily_report BOOLEAN NOT NULL DEFAULT 0,
+            maintenance_mode BOOLEAN NOT NULL DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO settings_temp (
+            id, company_name, company_logo_url, company_favicon_url, brand_primary_color, support_contact,
+            overtime_rate_percent, weekend_rate_percent, attendance_bonus_amount, show_salary_estimate,
+            geofence_toggle, office_lat, office_lng, geofence_radius, time_sync_interval, max_drift_threshold,
+            wifi_validation_toggle, company_wifi_ssid, company_wifi_bssid, accuracy_meters, device_binding_enforced,
+            auto_checkout, step_away_grace_period, late_grace_period, max_monthly_permissions, enable_reminders,
+            send_daily_report, maintenance_mode, created_at, updated_at
+        )
+        SELECT 
+            id, company_name, company_logo_url, company_favicon_url, brand_primary_color, support_contact,
+            overtime_rate_percent, weekend_rate_percent, attendance_bonus_amount, show_salary_estimate,
+            geofence_toggle, office_lat, office_lng, geofence_radius, time_sync_interval, max_drift_threshold,
+            wifi_validation_toggle, company_wifi_ssid, company_wifi_bssid, accuracy_meters, device_binding_enforced,
+            auto_checkout, step_away_grace_period, late_grace_period, max_monthly_permissions, enable_reminders,
+            send_daily_report, maintenance_mode, created_at, updated_at
+        FROM settings;
+        DROP TABLE settings;
+        ALTER TABLE settings_temp RENAME TO settings;
+        
+        CREATE TRIGGER IF NOT EXISTS update_settings_updated_at AFTER UPDATE ON settings
+        FOR EACH ROW WHEN NEW.updated_at <= OLD.updated_at
+        BEGIN UPDATE settings SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;
+        
+        COMMIT;
+        PRAGMA foreign_keys=on;
+      `);
+    }
 
     // Jobs migrations
     if (!jobColumns.some(c => c.name === 'required_hours_per_week')) {
       db.exec("ALTER TABLE jobs ADD COLUMN required_hours_per_week INTEGER;");
     }
-    if (!jobColumns.some(c => c.name === 'preferred_gender')) {
-      db.exec("ALTER TABLE jobs ADD COLUMN preferred_gender TEXT;");
+    if (!jobColumns.some(c => c.name === 'default_annual_leave_days')) {
+      db.exec("ALTER TABLE jobs ADD COLUMN default_annual_leave_days INTEGER DEFAULT 21;");
     }
-    if (!jobColumns.some(c => c.name === 'min_age')) {
-      db.exec("ALTER TABLE jobs ADD COLUMN min_age INTEGER;");
+    if (!jobColumns.some(c => c.name === 'default_sick_leave_days')) {
+      db.exec("ALTER TABLE jobs ADD COLUMN default_sick_leave_days INTEGER DEFAULT 7;");
     }
-    if (!jobColumns.some(c => c.name === 'max_age')) {
-      db.exec("ALTER TABLE jobs ADD COLUMN max_age INTEGER;");
+    if (!jobColumns.some(c => c.name === 'allow_overtime')) {
+      db.exec("ALTER TABLE jobs ADD COLUMN allow_overtime BOOLEAN DEFAULT 1;");
     }
-    if (!jobColumns.some(c => c.name === 'weekly_schedule')) {
-      db.exec("ALTER TABLE jobs ADD COLUMN weekly_schedule TEXT;");
+    if (!jobColumns.some(c => c.name === 'employment_type')) {
+      db.exec("ALTER TABLE jobs ADD COLUMN employment_type TEXT DEFAULT 'full-time';");
     }
 
     // Profiles migrations
@@ -78,8 +196,35 @@ export function initDb() {
     if (!profileColumns.some(c => c.name === 'emergency_contact_phone')) {
       db.exec("ALTER TABLE profiles ADD COLUMN emergency_contact_phone TEXT;");
     }
-    if (!profileColumns.some(c => c.name === 'leave_balance')) {
-      db.exec("ALTER TABLE profiles ADD COLUMN leave_balance INTEGER DEFAULT 21;");
+    if (!profileColumns.some(c => c.name === 'emergency_contact_relationship')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN emergency_contact_relationship TEXT;");
+    }
+    if (!profileColumns.some(c => c.name === 'full_address')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN full_address TEXT;");
+    }
+    if (!profileColumns.some(c => c.name === 'national_id')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN national_id TEXT;");
+    }
+    if (!profileColumns.some(c => c.name === 'bank_name')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN bank_name TEXT;");
+    }
+    if (!profileColumns.some(c => c.name === 'bank_account_iban')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN bank_account_iban TEXT;");
+    }
+    if (!profileColumns.some(c => c.name === 'bank_account_number')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN bank_account_number TEXT;");
+    }
+    if (!profileColumns.some(c => c.name === 'bank_iban')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN bank_iban TEXT;");
+    }
+    if (!profileColumns.some(c => c.name === 'date_of_birth')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN date_of_birth DATE;");
+    }
+    if (!profileColumns.some(c => c.name === 'annual_leave_balance')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN annual_leave_balance REAL DEFAULT 21;");
+    }
+    if (!profileColumns.some(c => c.name === 'sick_leave_balance')) {
+      db.exec("ALTER TABLE profiles ADD COLUMN sick_leave_balance REAL DEFAULT 7;");
     }
     if (!profileColumns.some(c => c.name === 'device_id')) {
       db.exec("ALTER TABLE profiles ADD COLUMN device_id TEXT;");
@@ -113,12 +258,12 @@ export function initDb() {
     const attendanceSql = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='attendance'").get() as any;
     if (attendanceSql && attendanceSql.sql.includes("'present'")) {
       if (!isTestEnv) {
-        console.log('Migrating attendance table to new status constraints...');
+        logger.info('Migrating attendance table to new status constraints...');
       }
       db.exec(`
         PRAGMA foreign_keys=off;
         BEGIN TRANSACTION;
-        
+
         CREATE TABLE attendance_new (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -134,9 +279,9 @@ export function initDb() {
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
-        
+
         INSERT INTO attendance_new SELECT * FROM attendance;
-        
+
         -- Update legacy statuses
         UPDATE attendance_new SET status = 'on_time' WHERE status = 'present';
         UPDATE attendance_new SET status = 'late_in' WHERE status = 'late';
@@ -144,23 +289,23 @@ export function initDb() {
 
         DROP TABLE attendance;
         ALTER TABLE attendance_new RENAME TO attendance;
-        
+
         CREATE INDEX IF NOT EXISTS idx_attendance_user_id ON attendance(user_id);
-        
+
         CREATE TRIGGER IF NOT EXISTS update_attendance_updated_at AFTER UPDATE ON attendance
         FOR EACH ROW WHEN NEW.updated_at <= OLD.updated_at
         BEGIN UPDATE attendance SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;
-        
+
         COMMIT;
         PRAGMA foreign_keys=on;
       `);
       if (!isTestEnv) {
-        console.log('Attendance table migrated successfully.');
+        logger.info('Attendance table migrated successfully.');
       }
     }
 
     const newAttendanceColumns = db.prepare("PRAGMA table_info(attendance)").all() as any[];
-    if (!newAttendanceColumns.some(c => c.name === 'current_status')) {
+    if (!newAttendanceColumns.some(c => c.name === 'working_status') && !newAttendanceColumns.some(c => c.name === 'current_status')) {
       db.exec("ALTER TABLE attendance ADD COLUMN current_status TEXT NOT NULL DEFAULT 'working';");
     }
     if (!newAttendanceColumns.some(c => c.name === 'approved_overtime_minutes')) {
@@ -171,35 +316,201 @@ export function initDb() {
     if (!requestColumns.some(c => c.name === 'type')) {
       db.exec("ALTER TABLE requests ADD COLUMN type TEXT;");
     }
-    if (!requestColumns.some(c => c.name === 'reference_id')) {
-      db.exec("ALTER TABLE requests ADD COLUMN reference_id INTEGER;");
-    }
-    if (!requestColumns.some(c => c.name === 'details')) {
-      db.exec("ALTER TABLE requests ADD COLUMN details TEXT;");
+    if (requestColumns.some(c => c.name === 'reference_id')) {
+      db.exec("ALTER TABLE requests RENAME COLUMN reference_id TO shift_interruption_id;");
+    } else if (!requestColumns.some(c => c.name === 'shift_interruption_id')) {
+      db.exec("ALTER TABLE requests ADD COLUMN shift_interruption_id INTEGER;");
     }
     if (!requestColumns.some(c => c.name === 'manager_note')) {
       db.exec("ALTER TABLE requests ADD COLUMN manager_note TEXT;");
     }
-    if (!requestColumns.some(c => c.name === 'is_paid_permission')) {
-      db.exec("ALTER TABLE requests ADD COLUMN is_paid_permission BOOLEAN DEFAULT 0;");
+    if (requestColumns.some(c => c.name === 'details')) {
+      db.exec("ALTER TABLE requests RENAME COLUMN details TO value;");
+    } else if (!requestColumns.some(c => c.name === 'value')) {
+      db.exec("ALTER TABLE requests ADD COLUMN value INTEGER DEFAULT 0;");
     }
-    if (!requestColumns.some(c => c.name === 'paid_permission_minutes')) {
-      db.exec("ALTER TABLE requests ADD COLUMN paid_permission_minutes INTEGER DEFAULT 0;");
+    if (requestColumns.some(c => c.name === 'paid_permission_minutes')) {
+      db.exec("ALTER TABLE requests RENAME COLUMN paid_permission_minutes TO paid_minutes;");
+    } else if (!requestColumns.some(c => c.name === 'paid_minutes')) {
+      db.exec("ALTER TABLE requests ADD COLUMN paid_minutes INTEGER DEFAULT 0;");
+    }
+    if (!requestColumns.some(c => c.name === 'penalty_minutes')) {
+      db.exec("ALTER TABLE requests ADD COLUMN penalty_minutes INTEGER DEFAULT 0;");
+    }
+    if (requestColumns.some(c => c.name === 'is_paid_permission')) {
+      db.exec("ALTER TABLE requests DROP COLUMN is_paid_permission;");
     }
 
     const finalAttendanceColumns = db.prepare("PRAGMA table_info(attendance)").all() as any[];
-    if (!finalAttendanceColumns.some(c => c.name === 'is_paid_permission')) {
-      db.exec("ALTER TABLE attendance ADD COLUMN is_paid_permission BOOLEAN DEFAULT 0;");
+    if (finalAttendanceColumns.some(c => c.name === 'approved_overtime_minutes')) {
+      db.exec("ALTER TABLE attendance DROP COLUMN approved_overtime_minutes;");
     }
-    if (!finalAttendanceColumns.some(c => c.name === 'paid_permission_minutes')) {
-      db.exec("ALTER TABLE attendance ADD COLUMN paid_permission_minutes INTEGER DEFAULT 0;");
+    if (finalAttendanceColumns.some(c => c.name === 'paid_minutes')) {
+      db.exec("ALTER TABLE attendance DROP COLUMN paid_minutes;");
+    }
+    if (finalAttendanceColumns.some(c => c.name === 'paid_permission_minutes')) {
+      db.exec("ALTER TABLE attendance DROP COLUMN paid_permission_minutes;");
+    }
+    if (finalAttendanceColumns.some(c => c.name === 'is_paid_permission')) {
+      db.exec("ALTER TABLE attendance DROP COLUMN is_paid_permission;");
+    }
+    if (!finalAttendanceColumns.find(c => c.name === 'shift_id')) {
+      db.exec("ALTER TABLE attendance ADD COLUMN shift_id TEXT;");
+    }
+    db.exec("CREATE INDEX IF NOT EXISTS idx_attendance_shift_id ON attendance(shift_id);");
+
+    // Migration: Split location_lat/lng into check_in_lat/lng and check_out_lat/lng
+    const postFinalAttendanceColumns = db.prepare("PRAGMA table_info(attendance)").all() as any[];
+    if (postFinalAttendanceColumns.some(c => c.name === 'location_lat')) {
+      if (!isTestEnv) {
+        logger.info('Migrating attendance table to split location_lat/lng into check_in/check_out coordinates...');
+      }
+      db.exec(`
+        PRAGMA foreign_keys=off;
+        BEGIN TRANSACTION;
+
+        CREATE TABLE attendance_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            check_in DATETIME NOT NULL,
+            check_out DATETIME,
+            date DATE NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('on_time', 'late_in', 'early_out', 'absent', 'half_day', 'unscheduled')) DEFAULT 'on_time',
+            current_status TEXT NOT NULL CHECK(current_status IN ('working', 'away')) DEFAULT 'working',
+            check_in_lat REAL,
+            check_in_lng REAL,
+            check_out_lat REAL,
+            check_out_lng REAL,
+            shift_id TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        INSERT INTO attendance_new (
+          id, user_id, check_in, check_out, date, status, current_status,
+          check_in_lat, check_in_lng, check_out_lat, check_out_lng,
+          shift_id, created_at, updated_at
+        )
+        SELECT 
+          id, user_id, check_in, check_out, date, status, current_status,
+          location_lat, location_lng, 
+          CASE WHEN check_out IS NOT NULL THEN location_lat ELSE NULL END,
+          CASE WHEN check_out IS NOT NULL THEN location_lng ELSE NULL END,
+          shift_id, created_at, updated_at
+        FROM attendance;
+
+        DROP TABLE attendance;
+        ALTER TABLE attendance_new RENAME TO attendance;
+
+        CREATE INDEX IF NOT EXISTS idx_attendance_user_id ON attendance(user_id);
+        CREATE INDEX IF NOT EXISTS idx_attendance_shift_id ON attendance(shift_id);
+
+        CREATE TRIGGER IF NOT EXISTS update_attendance_updated_at AFTER UPDATE ON attendance
+        FOR EACH ROW WHEN NEW.updated_at <= OLD.updated_at
+        BEGIN UPDATE attendance SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;
+
+        COMMIT;
+        PRAGMA foreign_keys=on;
+      `);
+      if (!isTestEnv) {
+        logger.info('Attendance table split location migration completed.');
+      }
+    }
+
+    // Migration: Split status into checkin_status and checkout_status, and rename current_status to working_status
+    const postLocationAttendanceColumns = db.prepare("PRAGMA table_info(attendance)").all() as any[];
+    if (postLocationAttendanceColumns.some(c => c.name === 'status')) {
+      if (!isTestEnv) {
+        logger.info('Migrating attendance table status to checkin_status/checkout_status and current_status to working_status...');
+      }
+      db.exec(`
+        PRAGMA foreign_keys=off;
+        BEGIN TRANSACTION;
+
+        CREATE TABLE attendance_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            check_in DATETIME NOT NULL,
+            check_out DATETIME,
+            date DATE NOT NULL,
+            checkin_status TEXT NOT NULL CHECK(checkin_status IN ('on_time', 'late_in', 'unscheduled')) DEFAULT 'on_time',
+            checkout_status TEXT CHECK(checkout_status IN ('on_time', 'early_out', 'unscheduled')),
+            working_status TEXT NOT NULL CHECK(working_status IN ('working', 'away')) DEFAULT 'working',
+            check_in_lat REAL,
+            check_in_lng REAL,
+            check_out_lat REAL,
+            check_out_lng REAL,
+            shift_id TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        INSERT INTO attendance_new (
+          id, user_id, check_in, check_out, date,
+          checkin_status, checkout_status, working_status,
+          check_in_lat, check_in_lng, check_out_lat, check_out_lng,
+          shift_id, created_at, updated_at
+        )
+        SELECT 
+          id, user_id, check_in, check_out, date,
+          CASE 
+            WHEN status = 'late_in' THEN 'late_in'
+            WHEN status = 'unscheduled' THEN 'unscheduled'
+            ELSE 'on_time'
+          END,
+          CASE 
+            WHEN check_out IS NULL THEN NULL
+            WHEN status = 'early_out' THEN 'early_out'
+            WHEN status = 'unscheduled' THEN 'unscheduled'
+            ELSE 'on_time'
+          END,
+          current_status,
+          check_in_lat, check_in_lng, check_out_lat, check_out_lng,
+          shift_id, created_at, updated_at
+        FROM attendance;
+
+        DROP TABLE attendance;
+        ALTER TABLE attendance_new RENAME TO attendance;
+
+        CREATE INDEX IF NOT EXISTS idx_attendance_user_id ON attendance(user_id);
+        CREATE INDEX IF NOT EXISTS idx_attendance_shift_id ON attendance(shift_id);
+
+        CREATE TRIGGER IF NOT EXISTS update_attendance_updated_at AFTER UPDATE ON attendance
+        FOR EACH ROW WHEN NEW.updated_at <= OLD.updated_at
+        BEGIN UPDATE attendance SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;
+
+        COMMIT;
+        PRAGMA foreign_keys=on;
+      `);
+      if (!isTestEnv) {
+        logger.info('Attendance table status split migration completed.');
+      }
+    }
+
+
+
+    // Settings bootstrapping is done in schema default values.
+    // We should ensure settings table has 1 row with these defaults.
+    const settingsCount = db.prepare('SELECT COUNT(*) as count FROM settings').get() as any;
+    if (settingsCount.count === 0) {
+      db.prepare(`
+        INSERT INTO settings (id, late_grace_period, geofence_radius, office_lat, office_lng)
+        VALUES (1, ?, ?, ?, ?)
+      `).run(
+        process.env.DEFAULT_LATE_GRACE_PERIOD || 0,
+        process.env.DEFAULT_GEOFENCE_RADIUS || 100,
+        process.env.DEFAULT_GEOFENCE_LAT || 30.0444,
+        process.env.DEFAULT_GEOFENCE_LNG || 31.2357
+      );
     }
 
     if (!isTestEnv) {
-      console.log('Database schema initialized successfully.');
+      logger.info('Database schema initialized successfully.');
     }
   } catch (error) {
-    console.error('Failed to initialize database schema:', error);
+    logger.error('Failed to initialize database schema:', error);
     throw error;
   }
 }

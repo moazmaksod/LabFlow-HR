@@ -20,10 +20,10 @@ interface Job {
   hourly_rate: number;
   required_hours_per_week: number;
   grace_period: number;
-  preferred_gender: string;
-  min_age: number | null;
-  max_age: number | null;
-  weekly_schedule?: string;
+  default_annual_leave_days: number;
+  default_sick_leave_days: number;
+  allow_overtime: boolean;
+  employment_type: string;
 }
 
 const DAYS = ['saturday', 'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
@@ -33,7 +33,7 @@ export default function JobManagement() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingJobId, setEditingJobId] = useState<number | null>(null);
   const [hasScheduleError, setHasScheduleError] = useState(false);
-  
+
   const defaultSchedule: WeeklySchedule = {};
   DAYS.forEach(day => {
     defaultSchedule[day] = [];
@@ -44,10 +44,10 @@ export default function JobManagement() {
     hourly_rate: '',
     required_hours_per_week: '40',
     grace_period: '15',
-    preferred_gender: 'any',
-    min_age: '',
-    max_age: '',
-    weekly_schedule: defaultSchedule
+    default_annual_leave_days: '21',
+    default_sick_leave_days: '7',
+    allow_overtime: true,
+    employment_type: 'full-time'
   });
 
   const { data: jobs, isLoading } = useQuery<Job[]>({
@@ -99,23 +99,25 @@ export default function JobManagement() {
     setFormData({
       title: '',
       hourly_rate: '',
-      grace_period: '15',
-      preferred_gender: 'any',
-      min_age: '',
-      max_age: ''
+      required_hours_per_week: '40',
+      default_annual_leave_days: '21',
+      default_sick_leave_days: '7',
+      allow_overtime: true,
+      employment_type: 'full-time'
     });
   };
 
   const handleEdit = (job: Job) => {
     setEditingJobId(job.id);
-    
+
     setFormData({
       title: job.title,
       hourly_rate: job.hourly_rate.toString(),
-      grace_period: job.grace_period.toString(),
-      preferred_gender: job.preferred_gender,
-      min_age: job.min_age ? job.min_age.toString() : '',
-      max_age: job.max_age ? job.max_age.toString() : ''
+      required_hours_per_week: job.required_hours_per_week ? job.required_hours_per_week.toString() : '40',
+      default_annual_leave_days: job.default_annual_leave_days !== null && job.default_annual_leave_days !== undefined ? job.default_annual_leave_days.toString() : '21',
+      default_sick_leave_days: job.default_sick_leave_days !== null && job.default_sick_leave_days !== undefined ? job.default_sick_leave_days.toString() : '7',
+      allow_overtime: job.allow_overtime === false ? false : true,
+      employment_type: job.employment_type || 'full-time'
     });
     setIsFormOpen(true);
   };
@@ -125,9 +127,9 @@ export default function JobManagement() {
     const payload = {
       ...formData,
       hourly_rate: Number(formData.hourly_rate),
-      grace_period: Number(formData.grace_period),
-      min_age: formData.min_age ? Number(formData.min_age) : null,
-      max_age: formData.max_age ? Number(formData.max_age) : null
+      required_hours_per_week: Number(formData.required_hours_per_week),
+      default_annual_leave_days: Number(formData.default_annual_leave_days),
+      default_sick_leave_days: Number(formData.default_sick_leave_days)
     };
 
     if (editingJobId) {
@@ -150,7 +152,7 @@ export default function JobManagement() {
           <h2 className="text-3xl font-black tracking-tight">Job Roles & Templates</h2>
           <p className="text-muted-foreground font-medium mt-1">Configure default settings and schedules for different positions.</p>
         </div>
-        <button 
+        <button
           onClick={() => {
             if (isFormOpen) {
               resetForm();
@@ -159,8 +161,8 @@ export default function JobManagement() {
             }
           }}
           className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg ${
-            isFormOpen 
-              ? 'bg-muted text-muted-foreground hover:bg-muted/80' 
+            isFormOpen
+              ? 'bg-muted text-muted-foreground hover:bg-muted/80'
               : 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-primary/20'
           }`}
         >
@@ -170,7 +172,7 @@ export default function JobManagement() {
       </div>
 
       {isFormOpen && (
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="bg-card border border-border rounded-3xl p-8 shadow-xl space-y-8"
@@ -185,72 +187,85 @@ export default function JobManagement() {
           <form onSubmit={handleSubmit} className="space-y-8">
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
               {/* Basic Config */}
-              <div className="xl:col-span-4 space-y-6">
+              <div className="xl:col-span-8 space-y-6">
                 <div className="bg-muted/30 p-6 rounded-2xl border border-border space-y-6">
                   <h4 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">General Configuration</h4>
-                  
+
                   <div className="space-y-4">
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Job Title</label>
-                      <input 
-                        required 
-                        value={formData.title} 
-                        onChange={e => setFormData({...formData, title: e.target.value})} 
-                        className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all" 
-                        placeholder="e.g. Senior Developer" 
+                      <input
+                        required
+                        value={formData.title}
+                        onChange={e => setFormData({...formData, title: e.target.value})}
+                        className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                        placeholder="e.g. Senior Developer"
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-3 gap-4">
                       <div className="space-y-1.5">
                         <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Hourly Rate ($)</label>
-                        <input 
-                          required 
-                          type="number" 
-                          step="0.01" 
-                          value={formData.hourly_rate} 
-                          onChange={e => setFormData({...formData, hourly_rate: e.target.value})} 
-                          className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all" 
+                        <input
+                          required
+                          type="number"
+                          step="0.01"
+                          value={formData.hourly_rate}
+                          onChange={e => setFormData({...formData, hourly_rate: e.target.value})}
+                          className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all"
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Grace Period (min)</label>
-                        <input 
-                          required 
-                          type="number" 
-                          value={formData.grace_period} 
-                          onChange={e => setFormData({...formData, grace_period: e.target.value})} 
-                          className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all" 
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Weekly Hours</label>
+                        <input
+                          required
+                          type="number"
+                          value={formData.required_hours_per_week}
+                          onChange={e => setFormData({...formData, required_hours_per_week: e.target.value})}
+                          className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all"
                         />
                       </div>
                     </div>
                   </div>
                 </div>
-
+              </div>
+              <div className="xl:col-span-4 space-y-6">
                 <div className="bg-muted/30 p-6 rounded-2xl border border-border space-y-6">
-                  <h4 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Hiring Preferences</h4>
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Default Settings</h4>
                   <div className="space-y-4">
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Preferred Gender</label>
-                      <select 
-                        value={formData.preferred_gender} 
-                        onChange={e => setFormData({...formData, preferred_gender: e.target.value})}
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Employment Type</label>
+                      <select
+                        value={formData.employment_type}
+                        onChange={e => setFormData({...formData, employment_type: e.target.value})}
                         className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all"
                       >
-                        <option value="any">Any</option>
-                        <option value="male">Male</option>
-                        <option value="female">Female</option>
+                        <option value="full-time">Full Time</option>
+                        <option value="part-time">Part Time</option>
+                        <option value="contract">Contract</option>
                       </select>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Min Age</label>
-                        <input type="number" value={formData.min_age} onChange={e => setFormData({...formData, min_age: e.target.value})} className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all" placeholder="18" />
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Annual Leave (Days)</label>
+                        <input type="number" value={formData.default_annual_leave_days} onChange={e => setFormData({...formData, default_annual_leave_days: e.target.value})} className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all" placeholder="21" />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Max Age</label>
-                        <input type="number" value={formData.max_age} onChange={e => setFormData({...formData, max_age: e.target.value})} className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all" placeholder="65" />
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Sick Leave (Days)</label>
+                        <input type="number" value={formData.default_sick_leave_days} onChange={e => setFormData({...formData, default_sick_leave_days: e.target.value})} className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all" placeholder="7" />
                       </div>
+                    </div>
+                    <div className="flex items-center justify-between p-4 bg-background border border-border rounded-xl">
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Overtime Policy</span>
+                        <p className="text-xs font-medium">Allow Overtime</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={formData.allow_overtime}
+                        onChange={(e) => setFormData({...formData, allow_overtime: e.target.checked})}
+                        className="w-5 h-5 rounded-lg border-border text-primary focus:ring-primary transition-all"
+                      />
                     </div>
                   </div>
                 </div>
@@ -259,9 +274,9 @@ export default function JobManagement() {
 
             <div className="flex justify-end gap-4 pt-4 border-t border-border">
               <button type="button" onClick={resetForm} className="px-8 py-2.5 text-sm font-bold hover:bg-muted rounded-xl transition-colors">Cancel</button>
-              <button 
-                type="submit" 
-                disabled={createJobMutation.isPending || updateJobMutation.isPending} 
+              <button
+                type="submit"
+                disabled={createJobMutation.isPending || updateJobMutation.isPending}
                 className="px-8 py-2.5 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 disabled:opacity-50"
               >
                 {createJobMutation.isPending || updateJobMutation.isPending ? 'Saving...' : (editingJobId ? 'Update Job Role' : 'Create Job Role')}
@@ -293,8 +308,8 @@ export default function JobManagement() {
                   <th className="px-8 py-5 font-black">Job Title</th>
                   <th className="px-8 py-5 font-black">Hourly Rate</th>
                   <th className="px-8 py-5 font-black">Weekly Hours</th>
-                  <th className="px-8 py-5 font-black">Preferences</th>
-                  <th className="px-8 py-5 font-black">Grace Period</th>
+                  <th className="px-8 py-5 font-black">Employment Type</th>
+                  <th className="px-8 py-5 font-black">Leave (Annual/Sick)</th>
                   <th className="px-8 py-5 font-black text-right">Actions</th>
                 </tr>
               </thead>
@@ -308,26 +323,19 @@ export default function JobManagement() {
                     <td className="px-8 py-5 font-black text-primary">${job.hourly_rate.toFixed(2)}</td>
                     <td className="px-8 py-5 font-medium">{job.required_hours_per_week}h / week</td>
                     <td className="px-8 py-5">
-                      <div className="flex flex-wrap gap-2">
-                        <span className="px-2 py-0.5 bg-muted rounded text-[10px] font-bold uppercase tracking-tighter capitalize">{job.preferred_gender}</span>
-                        {(job.min_age || job.max_age) && (
-                          <span className="px-2 py-0.5 bg-muted rounded text-[10px] font-bold uppercase tracking-tighter">
-                            {job.min_age || '0'} - {job.max_age || '∞'} yrs
-                          </span>
-                        )}
-                      </div>
+                      <span className="px-2 py-0.5 bg-muted rounded text-[10px] font-bold uppercase tracking-tighter capitalize">{job.employment_type || 'full-time'}</span>
                     </td>
-                    <td className="px-8 py-5 font-medium">{job.grace_period}m</td>
+                    <td className="px-8 py-5 font-medium">{job.default_annual_leave_days ?? 21} / {job.default_sick_leave_days ?? 7} days</td>
                     <td className="px-8 py-5 text-right">
                       <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button 
+                        <button
                           onClick={() => handleEdit(job)}
                           className="p-2.5 bg-background border border-border rounded-xl text-muted-foreground hover:text-primary hover:border-primary/30 transition-all"
                           title="Edit Job Role"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
-                        <button 
+                        <button
                           onClick={() => handleDelete(job.id, job.title)}
                           className="p-2.5 bg-background border border-border rounded-xl text-muted-foreground hover:text-destructive hover:border-destructive/30 transition-all"
                           title="Delete Job Role"

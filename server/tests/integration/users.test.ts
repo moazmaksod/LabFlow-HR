@@ -60,13 +60,13 @@ describe('User Profile API', () => {
       .set('Authorization', `Bearer ${employeeToken}`)
       .send({
         name: 'Updated Name',
-        age: 25,
+        date_of_birth: '1998-01-01',
         gender: 'Male'
       });
     
     expect(res.status).toBe(200);
     expect(res.body.name).toBe('Updated Name');
-    expect(res.body.age).toBe(25);
+    expect(res.body.date_of_birth).toBe('1998-01-01');
     expect(res.body.gender).toBe('Male');
   });
 
@@ -170,7 +170,7 @@ describe('User Management API (Manager)', () => {
     expect(firstUser).toHaveProperty('status');
     expect(firstUser).toHaveProperty('job_id');
     expect(firstUser).toHaveProperty('job_title');
-    expect(firstUser).toHaveProperty('current_status');
+    expect(firstUser).toHaveProperty('working_status');
   });
 });
 

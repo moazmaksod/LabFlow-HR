@@ -1,6 +1,19 @@
 import db, { initDb } from '../db/index.js';
 import { logAudit } from '../services/auditService.js';
-import { getOrCreateDraftPayroll } from '../controllers/payrollController.js';
+
+// Dummy implementation of getOrCreateDraftPayroll since the endpoint/concept was deprecated.
+// This preserves the Slow baseline structure without breaking compilation.
+const getOrCreateDraftPayroll = (userId: number, startDate: string, actorId: number) => {
+    // Insert a paid payroll to mimic the old Slow unoptimized behavior
+    const insertStmt = db.prepare(`
+        INSERT INTO payrolls (user_id, start_date, end_date, hourly_rate, scheduled_working_minutes, net_salary, status, paid_by)
+        VALUES (?, ?, ?, 25.0, 0, 0, 'paid', ?)
+    `);
+    try {
+        insertStmt.run(userId, startDate, startDate, actorId);
+    } catch (e) {}
+    return {};
+};
 
 // Setup DB
 initDb();
@@ -39,24 +52,24 @@ function slowBulkInsert() {
 function fastBulkInsert() {
     const missingUsers = userIds; // in real life, we would filter this list
 
-    // Bulk insert missing drafts
+    // Bulk insert missing paid records
     const insertStmt = db.prepare(`
-        INSERT INTO payrolls (user_id, start_date, end_date, base_salary, status)
-        VALUES (?, ?, ?, 0, 'draft')
+        INSERT INTO payrolls (user_id, start_date, end_date, hourly_rate, scheduled_working_minutes, net_salary, status, paid_by)
+        VALUES (?, ?, ?, 25.0, 0, 0, 'paid', ?)
     `);
 
     const insertTx = db.transaction((users) => {
         for (const userId of users) {
-            insertStmt.run(userId, startDate, endDate);
+            insertStmt.run(userId, startDate, endDate, actorId);
         }
     });
     insertTx(missingUsers);
 
-    // Bulk select the newly created drafts
+    // Bulk select the newly created paid records
     const placeholders = missingUsers.map(() => '?').join(',');
     const newPayrolls = db.prepare(`
         SELECT * FROM payrolls
-        WHERE user_id IN (${placeholders}) AND start_date = ? AND end_date = ? AND status = 'draft'
+        WHERE user_id IN (${placeholders}) AND start_date = ? AND end_date = ? AND status = 'paid'
     `).all(...missingUsers, startDate, endDate) as any[];
 
     // Bulk audit log

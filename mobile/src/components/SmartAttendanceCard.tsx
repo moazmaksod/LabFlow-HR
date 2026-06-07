@@ -1,8 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Dimensions, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { Clock, Calendar, Play, Pause, AlertCircle } from 'lucide-react-native';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Animated } from 'react-native';
+import { Play, Pause, AlertCircle, Clock } from 'lucide-react-native';
 import { useAttendanceStore } from '../store/useAttendanceStore';
+import { formatDisplayDate, formatDisplayTime, formatTimeString, formatDuration, getMobileNow, resolveTimezone, getTimestamp } from '../lib/timeManager';
+import { toDate } from 'date-fns-tz';
+import { useAuthStore } from '../store/useAuthStore';
 import { useNetworkStore } from '../store/useNetworkStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { useThemeColors } from '../hooks/useTheme';
 
 interface SmartAttendanceCardProps {
   currentShift: any | null;
@@ -15,29 +20,6 @@ interface SmartAttendanceCardProps {
   lunchBreakMinutes: number;
 }
 
-const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-
-const timeToMinutes = (timeStr: string) => {
-  if (!timeStr) return 0;
-  const [h, m] = timeStr.split(':').map(Number);
-  return h * 60 + m;
-};
-
-const formatDuration = (mins: number) => {
-  if (mins <= 0) return '0h 0m';
-  const h = Math.floor(mins / 60);
-  const m = Math.floor(mins % 60);
-  return `${h}h ${m}m`;
-};
-
-const formatTime = (timeStr: string) => {
-  if (!timeStr) return '';
-  const [h, m] = timeStr.split(':').map(Number);
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  const h12 = h % 12 || 12;
-  return `${h12}:${m.toString().padStart(2, '0')} ${ampm}`;
-};
-
 export default function SmartAttendanceCard({
   currentShift,
   currentStatus,
@@ -48,291 +30,469 @@ export default function SmartAttendanceCard({
   handleResumeWork,
   lunchBreakMinutes
 }: SmartAttendanceCardProps) {
+  const user = useAuthStore((state) => state.user);
+  const userTimezone = useSettingsStore((state) => state.userTimezone);
+  const settings = useSettingsStore((state) => state.settings);
+  const { colors } = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
+  const formatShiftTime = (timeStr: string, utcTimeStr?: string) => {
+    if (utcTimeStr) {
+      return formatDisplayTime(utcTimeStr, userTimezone, 'HH:mm');
+    }
+    return formatTimeString(timeStr, userTimezone);
+  };
+
   const activeSession = useAttendanceStore((state) => state.activeSession);
+  const todayLogs = useAttendanceStore((state) => state.todayLogs);
   const serverTimeOffset = useNetworkStore((state) => state.serverTimeOffset);
   const lastLocalSyncTime = useNetworkStore((state) => state.lastLocalSyncTime);
 
-  const shadowTimeRef = useRef(Date.now() + serverTimeOffset);
-  const [now, setNow] = useState(new Date(shadowTimeRef.current));
+  const [now, setNow] = useState(new Date(getMobileNow()));
   const [isTampered, setIsTampered] = useState(false);
+  const pulseAnim = useRef(new Animated.Value(0.4)).current;
 
   useEffect(() => {
-    // Re-sync shadow ref when dependency updates (e.g. app wakes up and syncs)
-    shadowTimeRef.current = Date.now() + serverTimeOffset;
+    const updateTime = () => {
+      const nowIso = getMobileNow();
+      const nowObj = new Date(nowIso);
+      setNow(nowObj);
 
-    const interval = setInterval(() => {
-      // A) The Shadow Tick
-      shadowTimeRef.current += 1000;
-      setNow(new Date(shadowTimeRef.current));
-
-      // B) The Drift Check
+      // Monotonic time drift check
       const expectedOsTime = Date.now() + serverTimeOffset;
-      if (Math.abs(expectedOsTime - shadowTimeRef.current) > 60000 || Date.now() < lastLocalSyncTime) {
+      const monotonicTime = nowObj.getTime();
+      if (Math.abs(expectedOsTime - monotonicTime) > 60000 || Date.now() < lastLocalSyncTime) {
         setIsTampered(true);
       } else {
         setIsTampered(false);
       }
-    }, 1000);
+    };
+
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
 
     return () => clearInterval(interval);
   }, [serverTimeOffset, lastLocalSyncTime]);
 
-  const todayShift = currentShift;
   const isClockedIn = currentStatus === 'working' || currentStatus === 'away';
+  const isUnscheduledSession = activeSession?.checkin_status === 'unscheduled';
 
-  if (!todayShift) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.timelineCard}>
-          <View style={styles.timelineHeader}>
-            <View>
-              <Text style={styles.timelineTitle}>No Shift Today</Text>
-              <Text style={styles.timelineSubtitle}>Enjoy your day off!</Text>
-            </View>
-            <View style={[styles.statusBadge, styles.statusNone]}>
-              <Text style={[styles.statusText, styles.statusTextNone]}>Off Duty</Text>
-            </View>
-          </View>
-          <View style={styles.buttonRow}>
-          {isTampered ? (
-            <View style={styles.tamperContainer}>
-              <AlertCircle color="#ef4444" size={24} style={{ marginBottom: 8 }} />
-              <Text style={styles.tamperTitle}>Device Time Out of Sync</Text>
-              <Text style={styles.tamperText}>
-                Please set your phone's Date & Time to 'Automatic' to log attendance.
-              </Text>
-            </View>
-          ) : !isClockedIn ? (
-            <TouchableOpacity 
-              style={[styles.clockButton, styles.clockInButton, loading && styles.disabledButton]}
-              onPress={() => handleClock('check_in')}
-              disabled={loading}
-            >
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Clock In</Text>}
-            </TouchableOpacity>
-          ) : (
-            <>
-              {currentStatus === 'working' ? (
-                <TouchableOpacity
-                  style={[styles.clockButton, styles.stepAwayButton, loading && styles.disabledButton]}
-                  onPress={handleStepAway}
-                  disabled={loading}
-                >
-                  <Pause color="#fff" size={20} style={{ marginRight: 8 }} />
-                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Step Away</Text>}
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  style={[styles.clockButton, styles.resumeButton, loading && styles.disabledButton]}
-                  onPress={handleResumeWork}
-                  disabled={loading}
-                >
-                  <Play color="#fff" size={20} style={{ marginRight: 8 }} />
-                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Resume Work</Text>}
-                </TouchableOpacity>
-              )}
+  // Live indicator pulsing effect
+  useEffect(() => {
+    if (isClockedIn) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 0.4,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      pulseAnim.setValue(0.4);
+    }
+  }, [isClockedIn]);
 
-              <TouchableOpacity
-                style={[styles.clockButton, styles.clockOutButton, loading && styles.disabledButton]}
-                onPress={() => handleClock('check_out')}
-                disabled={loading}
-              >
-                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Clock Out</Text>}
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-        </View>
-      </View>
-    );
+  const runningShift = (() => {
+    if (!currentShift) return null;
+    const resolvedTz = resolveTimezone(userTimezone || user?.display_timezone);
+    const localTodayStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: resolvedTz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(now);
+
+    const shiftStartMs = currentShift.start_utc
+      ? new Date(currentShift.start_utc).getTime()
+      : toDate(`${currentShift.date}T${currentShift.start}:00`, { timeZone: resolvedTz }).getTime();
+    const shiftEndMs = currentShift.end_utc
+      ? new Date(currentShift.end_utc).getTime()
+      : toDate(`${currentShift.date}T${currentShift.end}:00`, { timeZone: resolvedTz }).getTime();
+
+    const gracePeriod = settings?.late_grace_period !== undefined ? settings.late_grace_period : 15;
+    const gracePeriodMs = gracePeriod * 60000;
+    const currentNowMs = now.getTime();
+    const isShiftRunning = currentNowMs >= (shiftStartMs - gracePeriodMs) && currentNowMs <= shiftEndMs;
+
+    const isToday = currentShift.date === localTodayStr;
+    const isClockedIntoShift = isClockedIn && activeSession?.shift_id && !activeSession.shift_id.startsWith('US_');
+    return (isToday || isClockedIntoShift || isShiftRunning) ? currentShift : null;
+  })();
+
+  const todayShift = runningShift;
+  const resolvedTimezone = resolveTimezone(userTimezone || user?.display_timezone);
+
+  const isTimelineScheduled = todayShift && !isUnscheduledSession;
+
+  // --- VISUAL TIMELINE CALCULATIONS ---
+  const currentNowMs = now.getTime();
+
+  let shiftStartMs = 0;
+  let shiftEndMs = 0;
+  if (todayShift) {
+    shiftStartMs = todayShift.start_utc
+      ? new Date(todayShift.start_utc).getTime()
+      : toDate(`${todayShift.date}T${todayShift.start}:00`, { timeZone: resolvedTimezone }).getTime();
+    shiftEndMs = todayShift.end_utc
+      ? new Date(todayShift.end_utc).getTime()
+      : toDate(`${todayShift.date}T${todayShift.end}:00`, { timeZone: resolvedTimezone }).getTime();
   }
 
+  const logsToProcess = isTimelineScheduled
+    ? todayLogs.filter((log: any) => todayShift?.id && String(log.shift_id) === String(todayShift.id))
+    : (activeSession ? [activeSession] : []);
+  const startMsList: number[] = [];
+  const endMsList: number[] = [];
 
+  logsToProcess.forEach((log: any) => {
+    const checkInStr = log.check_in.endsWith('Z') ? log.check_in : log.check_in.replace(' ', 'T') + 'Z';
+    startMsList.push(new Date(checkInStr).getTime());
 
-
-  const shiftStartUtc = new Date(todayShift.start_utc);
-  const shiftEndUtc = new Date(todayShift.end_utc);
-  const totalMins = (shiftEndUtc.getTime() - shiftStartUtc.getTime()) / (1000 * 60);
-  const currentNowMins = (now.getTime() - shiftStartUtc.getTime()) / (1000 * 60);
-
-  const dayDiff = now.getDate() !== shiftStartUtc.getDate() ? 1 : 0; // Simplified for display logic
-  const shiftDate = shiftStartUtc;
-  const startMins = 0; // Everything is relative to start now
-
-  // Calculations
-  let workedMins = 0;
-  let remainingMins = 0;
-  let breakMins = consumedBreakMinutes;
-
-  type SegmentType = 'work' | 'break' | 'missed' | 'remaining';
-  const segments: { type: SegmentType, widthPct: number }[] = [];
-
-  if (isClockedIn && activeSession) {
-    const checkInDate = new Date(activeSession.check_in);
-    const totalElapsed = (now.getTime() - checkInDate.getTime()) / (1000 * 60);
-    workedMins = Math.max(0, totalElapsed - breakMins);
-    
-    remainingMins = Math.max(0, (shiftEndUtc.getTime() - now.getTime()) / (1000 * 60));
-
-    const getMinsFromShiftStart = (dateStr: string | Date) => {
-      const d = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
-      return (d.getTime() - shiftStartUtc.getTime()) / (1000 * 60);
-    };
-
-    let checkInMins = getMinsFromShiftStart(activeSession.check_in);
-    let lastEnd = 0;
-
-    // If clocked in late, add a missed segment
-    if (checkInMins > 0) {
-      const missedWidth = Math.min(checkInMins, totalMins);
-      segments.push({ type: 'missed', widthPct: (missedWidth / totalMins) * 100 });
-      lastEnd = missedWidth;
-    } else if (checkInMins < 0) {
-      // Clocked in early, start from 0 for the timeline
-      checkInMins = 0;
+    if (log.check_out) {
+      const checkOutStr = log.check_out.endsWith('Z') ? log.check_out : log.check_out.replace(' ', 'T') + 'Z';
+      endMsList.push(new Date(checkOutStr).getTime());
+    } else {
+      endMsList.push(currentNowMs);
     }
+  });
 
-    if (activeSession.breaks && Array.isArray(activeSession.breaks)) {
-      activeSession.breaks.forEach((b: any) => {
-        const breakStartMins = Math.max(0, getMinsFromShiftStart(b.start_time));
-        const breakEndMins = b.end_time ? Math.max(0, getMinsFromShiftStart(b.end_time)) : Math.max(0, getMinsFromShiftStart(now));
+  // Calculate timeline start and end boundaries
+  let timelineStartMs = isTimelineScheduled ? shiftStartMs : currentNowMs;
+  if (!isTimelineScheduled) {
+    if (startMsList.length > 0) {
+      timelineStartMs = Math.min(timelineStartMs, ...startMsList);
+    }
+  }
 
-        // Add work segment before break
-        if (breakStartMins > lastEnd) {
-          const workWidth = Math.min(breakStartMins - lastEnd, totalMins - lastEnd);
-          if (workWidth > 0) {
-            segments.push({ type: 'work', widthPct: (workWidth / totalMins) * 100 });
-          }
-        }
-        
-        // Add break segment
-        const breakWidth = Math.min(breakEndMins - Math.max(lastEnd, breakStartMins), totalMins - Math.max(lastEnd, breakStartMins));
-        if (breakWidth > 0) {
-          segments.push({ type: 'break', widthPct: (breakWidth / totalMins) * 100 });
-        }
-        
-        lastEnd = Math.max(lastEnd, breakEndMins);
+  let timelineEndMs = isTimelineScheduled ? shiftEndMs : currentNowMs;
+  if (!isTimelineScheduled) {
+    if (endMsList.length > 0) {
+      timelineEndMs = Math.max(timelineEndMs, ...endMsList);
+    }
+    if (currentNowMs > timelineEndMs) {
+      timelineEndMs = currentNowMs;
+    }
+  }
+
+  const activeDurationRaw = currentNowMs - timelineStartMs;
+
+  if (!isTimelineScheduled) {
+    const minDurationMs = 60000; // 1 minute
+    const activeDuration = Math.max(activeDurationRaw, minDurationMs);
+    timelineEndMs = timelineStartMs + activeDuration * 1.1;
+  }
+
+  const totalDuration = timelineEndMs - timelineStartMs;
+  const showLeftLabel = isTimelineScheduled || (activeDurationRaw >= 60000);
+
+  // Collect all boundary points to partition the timeline
+  const boundaryPointsSet = new Set<number>();
+  if (isTimelineScheduled) {
+    boundaryPointsSet.add(shiftStartMs);
+    boundaryPointsSet.add(shiftEndMs);
+  }
+  boundaryPointsSet.add(currentNowMs);
+  boundaryPointsSet.add(timelineStartMs);
+  boundaryPointsSet.add(timelineEndMs);
+
+  logsToProcess.forEach((log: any) => {
+    const checkInStr = log.check_in.endsWith('Z') ? log.check_in : log.check_in.replace(' ', 'T') + 'Z';
+    const logStart = new Date(checkInStr).getTime();
+    boundaryPointsSet.add(logStart);
+
+    let logEnd = currentNowMs;
+    if (log.check_out) {
+      const checkOutStr = log.check_out.endsWith('Z') ? log.check_out : log.check_out.replace(' ', 'T') + 'Z';
+      logEnd = new Date(checkOutStr).getTime();
+    }
+    boundaryPointsSet.add(logEnd);
+
+    const sessionBreaks = log.breaks || [];
+    sessionBreaks.forEach((b: any) => {
+      const bStart = getTimestamp(b.start_time);
+      const bEnd = b.end_time ? getTimestamp(b.end_time) : (log.check_out ? getTimestamp(log.check_out) : currentNowMs);
+      boundaryPointsSet.add(bStart);
+      boundaryPointsSet.add(bEnd);
+    });
+  });
+
+  const sortedPoints = Array.from(boundaryPointsSet)
+    .filter(t => t >= timelineStartMs && t <= timelineEndMs)
+    .sort((a, b) => a - b);
+
+  // Helper check functions
+  const isInsideBreak = (t: number) => {
+    return logsToProcess.some((log: any) => {
+      const sessionBreaks = log.breaks || [];
+      return sessionBreaks.some((b: any) => {
+        const bStart = getTimestamp(b.start_time);
+        const bEnd = b.end_time ? getTimestamp(b.end_time) : (log.check_out ? getTimestamp(log.check_out) : currentNowMs);
+        return t >= bStart && t <= bEnd;
       });
-    }
+    });
+  };
 
-    // Add final work segment if currently working
-    const nowMinsFromStart = Math.max(0, getMinsFromShiftStart(now));
-    if (currentStatus === 'working' && nowMinsFromStart > lastEnd) {
-      const workWidth = Math.min(nowMinsFromStart - lastEnd, totalMins - lastEnd);
-      if (workWidth > 0) {
-        segments.push({ type: 'work', widthPct: (workWidth / totalMins) * 100 });
+  const isInsideWork = (t: number) => {
+    return logsToProcess.some((log: any) => {
+      const checkInStr = log.check_in.endsWith('Z') ? log.check_in : log.check_in.replace(' ', 'T') + 'Z';
+      const logStart = new Date(checkInStr).getTime();
+      let logEnd = currentNowMs;
+      if (log.check_out) {
+        const checkOutStr = log.check_out.endsWith('Z') ? log.check_out : log.check_out.replace(' ', 'T') + 'Z';
+        logEnd = new Date(checkOutStr).getTime();
       }
-      lastEnd = Math.max(lastEnd, nowMinsFromStart);
+      return t >= logStart && t <= logEnd;
+    });
+  };
+
+  type SegmentType = 'work' | 'break' | 'missed' | 'remaining' | 'overtime' | 'none';
+
+  const classifyInterval = (t: number): SegmentType => {
+    if (isInsideBreak(t)) return 'break';
+
+    if (isInsideWork(t)) {
+      if (isTimelineScheduled) {
+        if (t >= shiftStartMs && t <= shiftEndMs) {
+          return 'work';
+        }
+        return 'overtime';
+      }
+      return 'overtime';
     }
 
-    // Add remaining segment
-    if (lastEnd < totalMins) {
-      segments.push({ type: 'remaining', widthPct: ((totalMins - lastEnd) / totalMins) * 100 });
+    // Not working/break
+    if (isTimelineScheduled) {
+      if (t >= shiftStartMs && t <= shiftEndMs) {
+        return t < currentNowMs ? 'missed' : 'remaining';
+      }
+    }
+    return 'none';
+  };
+
+  // Generate segments
+  const segments: { type: SegmentType; widthPct: number }[] = [];
+  let workedMins = 0;
+  let breakMins = 0;
+  let remainingMins = 0;
+
+  sortedPoints.forEach((t2, idx) => {
+    if (idx === 0) return;
+    const t1 = sortedPoints[idx - 1];
+    const duration = t2 - t1;
+    if (duration <= 0) return;
+
+    const t_mid = (t1 + t2) / 2;
+    const type = classifyInterval(t_mid);
+
+    const widthPct = totalDuration > 0 ? (duration / totalDuration) * 100 : 0;
+    segments.push({ type, widthPct });
+
+    // Calculate stats
+    const durationMins = duration / 60000;
+    if (type === 'work' || type === 'overtime') {
+      workedMins += durationMins;
+    } else if (type === 'break') {
+      breakMins += durationMins;
+    } else if (type === 'remaining') {
+      remainingMins += durationMins;
+    }
+  });
+
+  const nowPctRaw = totalDuration > 0 ? ((currentNowMs - timelineStartMs) / totalDuration) * 100 : 0;
+  const nowPct = Math.max(0, Math.min(100, nowPctRaw));
+  const startMarkerPct = totalDuration > 0 && isTimelineScheduled ? ((shiftStartMs - timelineStartMs) / totalDuration) * 100 : 0;
+  const endMarkerPct = totalDuration > 0 && isTimelineScheduled ? ((shiftEndMs - timelineStartMs) / totalDuration) * 100 : 0;
+
+  const gracePeriod = settings?.late_grace_period !== undefined ? settings.late_grace_period : 15;
+  const gracePeriodMs = gracePeriod * 60000;
+  const isShiftRunningNow = todayShift && currentNowMs >= (shiftStartMs - gracePeriodMs) && currentNowMs <= shiftEndMs;
+  const shouldShowTimeline = isClockedIn || isShiftRunningNow;
+
+  let targetShiftType: 'scheduled' | 'unscheduled' = 'unscheduled';
+  let targetShiftTimes = '';
+  let targetShiftNotice = '';
+
+  if (!isClockedIn) {
+    if (isShiftRunningNow) {
+      targetShiftType = 'scheduled';
+      targetShiftTimes = `${formatShiftTime(todayShift.start, todayShift.start_utc)} - ${formatShiftTime(todayShift.end, todayShift.end_utc)}`;
+      targetShiftNotice = 'Clocking in now will record hours under your rostered shift.';
+    } else {
+      targetShiftType = 'unscheduled';
+      targetShiftTimes = 'Unscheduled Overtime';
+      targetShiftNotice = 'Clocking in now will start an unscheduled overtime session.';
     }
   } else {
-    remainingMins = totalMins;
-    segments.push({ type: 'remaining', widthPct: 100 });
+    // Clocked in
+    if (isUnscheduledSession || !todayShift) {
+      targetShiftType = 'unscheduled';
+      targetShiftTimes = 'Unscheduled Overtime';
+      targetShiftNotice = 'You are currently working an unscheduled overtime shift.';
+    } else {
+      targetShiftType = 'scheduled';
+      targetShiftTimes = `${formatShiftTime(todayShift.start, todayShift.start_utc)} - ${formatShiftTime(todayShift.end, todayShift.end_utc)}`;
+      targetShiftNotice = 'You are currently working your scheduled shift.';
+    }
   }
-
-  // "Now" indicator position
-  let nowPct = (currentNowMins / totalMins) * 100;
-  if (nowPct < 0) nowPct = 0;
-  if (nowPct > 100) nowPct = 100;
 
   return (
     <View style={styles.container}>
       <View style={styles.timelineCard}>
+        {/* Status Header */}
         <View style={styles.timelineHeader}>
           <View>
-            <Text style={styles.timelineTitle}>
-              {isClockedIn ? 'Active Shift' : 'Target Shift'}
-            </Text>
-            <Text style={styles.timelineSubtitle}>
-              {shiftDate.toLocaleDateString('en-GB', { 
-                weekday: 'long', 
-                day: 'numeric', 
-                month: 'short' 
-              }).replace(/,/g, '')} {'\n'} {formatTime(todayShift.start)} - {formatTime(todayShift.end)}
-            </Text>
+            <Text style={styles.timelineTitle}>Daily Attendance</Text>
           </View>
           <View style={[styles.statusBadge, currentStatus === 'working' ? styles.statusWorking : currentStatus === 'away' ? styles.statusAway : styles.statusNone]}>
-            {currentStatus === 'working' && <Play size={12} color="#10b981" style={{ marginRight: 4 }} />}
-            {currentStatus === 'away' && <Pause size={12} color="#f59e0b" style={{ marginRight: 4 }} />}
+            {currentStatus === 'working' && <Play size={12} color={colors.success} style={{ marginRight: 4 }} />}
+            {currentStatus === 'away' && <Pause size={12} color={colors.warning} style={{ marginRight: 4 }} />}
             <Text style={[styles.statusText, currentStatus === 'working' ? styles.statusTextWorking : currentStatus === 'away' ? styles.statusTextAway : styles.statusTextNone]}>
-              {currentStatus === 'working' ? 'Working' : currentStatus === 'away' ? 'Away' : 'Off Duty'}
+              {currentStatus === 'working' ? 'Working' : currentStatus === 'away' ? 'Away' : 'Not Working'}
             </Text>
           </View>
         </View>
 
-        {isClockedIn && (
+        {/* Active Shift Info */}
+        <View style={styles.shiftInfoCard}>
+          <View style={styles.shiftInfoRow}>
+            <Text style={styles.shiftInfoLabel}>
+              {isClockedIn ? 'Active Shift' : 'Target Shift'}
+            </Text>
+            <View style={[styles.shiftInfoBadge, targetShiftType === 'scheduled' ? styles.badgeScheduled : styles.badgeUnscheduled]}>
+              <Text style={[styles.shiftInfoBadgeText, targetShiftType === 'scheduled' ? styles.badgeTextScheduled : styles.badgeTextUnscheduled]}>
+                {targetShiftType === 'scheduled' ? 'Scheduled' : 'Unscheduled'}
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.shiftInfoValue}>
+            {targetShiftTimes}
+          </Text>
+          <Text style={styles.shiftInfoNotice}>
+            {targetShiftNotice}
+          </Text>
+        </View>
+
+        {shouldShowTimeline && (
           <>
             {/* The Visual Timeline */}
-            <View style={styles.timelineWrapper}>
-              <View style={styles.timelineTrack}>
-                {segments.map((seg, idx) => {
-                  let segStyle = {};
-                  if (seg.type === 'work') segStyle = styles.segmentWorked;
-                  else if (seg.type === 'break') segStyle = styles.segmentBreak;
-                  else if (seg.type === 'missed') segStyle = styles.segmentMissed;
-                  else if (seg.type === 'remaining') segStyle = styles.segmentRemaining;
+            {totalDuration > 0 ? (
+              <>
+                <View style={styles.timelineWrapper}>
+                  <View style={styles.timelineTrack}>
+                    {segments.map((seg, idx) => {
+                      let segStyle = {};
+                      if (seg.type === 'work') segStyle = styles.segmentWorked;
+                      else if (seg.type === 'break') segStyle = styles.segmentBreak;
+                      else if (seg.type === 'missed') segStyle = styles.segmentMissed;
+                      else if (seg.type === 'remaining') segStyle = styles.segmentRemaining;
+                      else if (seg.type === 'overtime') segStyle = styles.segmentOvertime;
+                      else if (seg.type === 'none') segStyle = styles.segmentNone;
 
-                  return (
-                    <View 
-                      key={idx} 
-                      style={[styles.timelineSegment, segStyle, { width: `${seg.widthPct}%` }]} 
-                    />
-                  );
-                })}
-              </View>
-              
-              {/* "Now" Indicator */}
-              <View style={[styles.nowIndicator, { left: `${nowPct}%` }]}>
-                <View style={styles.nowIndicatorLine} />
-                <View style={styles.nowIndicatorDot} />
-              </View>
-            </View>
+                      return (
+                        <View
+                          key={idx}
+                          style={[styles.timelineSegment, segStyle, { width: `${seg.widthPct}%` }]}
+                        />
+                      );
+                    })}
+                  </View>
 
-            {/* Timeline Labels */}
-            <View style={styles.timelineLabels}>
-              <Text style={styles.timelineLabelText}>{formatTime(todayShift.start)}</Text>
-              <Text style={styles.timelineLabelText}>{formatTime(todayShift.end)}</Text>
-            </View>
+                  {/* Visual Shift Markers (Only for scheduled shift) */}
+                  {isTimelineScheduled && (
+                    <>
+                      {timelineStartMs < shiftStartMs && (
+                        <View style={[styles.shiftMarker, { left: `${startMarkerPct}%` }]} />
+                      )}
+                      {timelineEndMs > shiftEndMs && (
+                        <View style={[styles.shiftMarker, { left: `${endMarkerPct}%` }]} />
+                      )}
+                    </>
+                  )}
+
+                  {/* "Now" Indicator (Minimalist arrow pointer) */}
+                  <View style={[styles.nowIndicator, { left: `${nowPct}%` }]}>
+                    <Animated.View style={[styles.nowIndicatorArrow, { opacity: pulseAnim }]} />
+                    <Text style={styles.nowTimeLabel}>
+                      {formatDisplayTime(currentNowMs, userTimezone, 'HH:mm')}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Timeline Labels */}
+                <View style={styles.timelineLabels}>
+                  <Text style={styles.timelineLabelText}>
+                    {showLeftLabel && (startMsList.length > 0 || isTimelineScheduled) ? formatDisplayTime(timelineStartMs, userTimezone, 'HH:mm') : ''}
+                  </Text>
+                  <Text style={styles.timelineLabelText}>
+                    {isTimelineScheduled ? formatDisplayTime(timelineEndMs, userTimezone, 'HH:mm') : ''}
+                  </Text>
+                </View>
+              </>
+            ) : (
+              <View style={styles.emptyTimelineContainer}>
+                <Clock size={18} color={colors.subtext} />
+                <Text style={styles.emptyTimelineText}>Clock in to start tracking your daily progress.</Text>
+              </View>
+            )}
 
             {/* Stats Row */}
             <View style={styles.statsRow}>
               <View style={styles.statBox}>
-                <View style={[styles.statDot, { backgroundColor: '#10b981' }]} />
+                <View style={[styles.statDot, { backgroundColor: isTimelineScheduled ? colors.success : colors.unscheduled }]} />
                 <View>
-                  <Text style={styles.statLabel}>Worked</Text>
-                  <Text style={styles.statValue}>{formatDuration(workedMins)}</Text>
+                  <Text style={styles.statLabel}>{isTimelineScheduled ? 'Worked' : 'Overtime'}</Text>
+                  <Text style={styles.statValue}>{formatDuration(Math.floor(workedMins))}</Text>
                 </View>
               </View>
-              <View style={styles.statBox}>
-                <View style={[styles.statDot, { backgroundColor: '#f59e0b' }]} />
-                <View>
-                  <Text style={styles.statLabel}>Break</Text>
-                  <Text style={styles.statValue}>{formatDuration(breakMins)}</Text>
-                </View>
-              </View>
-              <View style={styles.statBox}>
-                <View style={[styles.statDot, { backgroundColor: '#e2e8f0' }]} />
-                <View>
-                  <Text style={styles.statLabel}>Remaining</Text>
-                  <Text style={styles.statValue}>{formatDuration(remainingMins)}</Text>
-                </View>
-              </View>
+              {isTimelineScheduled && (
+                <>
+                  <View style={styles.statBox}>
+                    <View style={[styles.statDot, { backgroundColor: colors.warning }]} />
+                    <View>
+                      <Text style={styles.statLabel}>Break</Text>
+                      <Text style={styles.statValue}>{formatDuration(Math.floor(breakMins))}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.statBox}>
+                    <View style={[styles.statDot, { backgroundColor: colors.timelineRemaining }]} />
+                    <View>
+                      <Text style={styles.statLabel}>Remaining</Text>
+                      <Text style={styles.statValue}>{formatDuration(Math.floor(remainingMins))}</Text>
+                    </View>
+                  </View>
+                </>
+              )}
             </View>
 
             {/* Break Info */}
-            <View style={styles.breakInfoContainer}>
-              {consumedBreakMinutes < lunchBreakMinutes ? (
-                <Text style={styles.breakInfoText}>
-                  Remaining Break Time : {lunchBreakMinutes - consumedBreakMinutes} min
+            {isTimelineScheduled && (
+              <View style={styles.breakInfoContainer}>
+                {lunchBreakMinutes - breakMins > 0 ? (
+                  <Text style={styles.breakInfoText}>
+                    Remaining Break Time: {Math.floor(lunchBreakMinutes - breakMins)} min
+                  </Text>
+                ) : (
+                  <Text style={styles.breakWarningText}>
+                    Over Break Limit by: {Math.abs(Math.floor(lunchBreakMinutes - breakMins))} min
+                  </Text>
+                )}
+              </View>
+            )}
+
+            {currentStatus === 'away' && currentShift && isTimelineScheduled && (
+              <View style={styles.breakInfoContainer}>
+                <Text style={styles.breakWarningText}>
+                  Your break will end automatically at {formatShiftTime(currentShift.end_time || currentShift.end, currentShift.end_utc)}.
                 </Text>
-              ) : (
-                <Text style={styles.breakWarningText}>Break time exhausted</Text>
-              )}
-            </View>
+              </View>
+            )}
           </>
         )}
 
@@ -343,49 +503,54 @@ export default function SmartAttendanceCard({
         <View style={styles.buttonRow}>
           {isTampered ? (
             <View style={styles.tamperContainer}>
-              <AlertCircle color="#ef4444" size={24} style={{ marginBottom: 8 }} />
+              <AlertCircle color={colors.danger} size={24} style={{ marginBottom: 8 }} />
               <Text style={styles.tamperTitle}>Device Time Out of Sync</Text>
               <Text style={styles.tamperText}>
                 Please set your phone's Date & Time to 'Automatic' to log attendance.
               </Text>
             </View>
-          ) : !isClockedIn ? (
-            <TouchableOpacity 
-              style={[styles.clockButton, styles.clockInButton, loading && styles.disabledButton]}
-              onPress={() => handleClock('check_in')}
-              disabled={loading}
-            >
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Clock In</Text>}
-            </TouchableOpacity>
           ) : (
             <>
-              {currentStatus === 'working' ? (
-                <TouchableOpacity 
-                  style={[styles.clockButton, styles.stepAwayButton, loading && styles.disabledButton]}
-                  onPress={handleStepAway}
+              {!isClockedIn ? (
+                <TouchableOpacity
+                  style={[styles.clockButton, styles.clockInButton, loading && styles.disabledButton]}
+                  onPress={() => handleClock('check_in')}
                   disabled={loading}
                 >
-                  <Pause color="#fff" size={20} style={{ marginRight: 8 }} />
-                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Step Away</Text>}
+                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Clock In</Text>}
                 </TouchableOpacity>
               ) : (
-                <TouchableOpacity 
-                  style={[styles.clockButton, styles.resumeButton, loading && styles.disabledButton]}
-                  onPress={handleResumeWork}
-                  disabled={loading}
-                >
-                  <Play color="#fff" size={20} style={{ marginRight: 8 }} />
-                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Resume Work</Text>}
-                </TouchableOpacity>
+                <>
+                  {currentStatus === 'working' && !isUnscheduledSession && (
+                    <TouchableOpacity
+                      style={[styles.clockButton, styles.stepAwayButton, loading && styles.disabledButton]}
+                      onPress={handleStepAway}
+                      disabled={loading}
+                    >
+                      <Pause color="#fff" size={20} style={{ marginRight: 8 }} />
+                      {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Step Away</Text>}
+                    </TouchableOpacity>
+                  )}
+                  {currentStatus === 'away' && !isUnscheduledSession && (
+                    <TouchableOpacity
+                      style={[styles.clockButton, styles.resumeButton, loading && styles.disabledButton]}
+                      onPress={handleResumeWork}
+                      disabled={loading}
+                    >
+                      <Play color="#fff" size={20} style={{ marginRight: 8 }} />
+                      {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Resume Work</Text>}
+                    </TouchableOpacity>
+                  )}
+
+                  <TouchableOpacity
+                    style={[styles.clockButton, styles.clockOutButton, loading && styles.disabledButton]}
+                    onPress={() => handleClock('check_out')}
+                    disabled={loading}
+                  >
+                    {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Clock Out</Text>}
+                  </TouchableOpacity>
+                </>
               )}
-              
-              <TouchableOpacity 
-                style={[styles.clockButton, styles.clockOutButton, loading && styles.disabledButton]}
-                onPress={() => handleClock('check_out')}
-                disabled={loading}
-              >
-                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Clock Out</Text>}
-              </TouchableOpacity>
             </>
           )}
         </View>
@@ -394,39 +559,40 @@ export default function SmartAttendanceCard({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     marginBottom: 24,
   },
   timelineCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.surface,
     borderRadius: 24,
     padding: 20,
-    shadowColor: '#000',
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.04,
     shadowRadius: 24,
     elevation: 4,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: colors.border,
   },
   timelineHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   timelineTitle: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#0f172a',
+    color: colors.text,
     marginBottom: 4,
   },
   timelineSubtitle: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#64748b',
+    color: colors.subtext,
+    lineHeight: 20,
   },
   statusBadge: {
     flexDirection: 'row',
@@ -436,13 +602,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   statusWorking: {
-    backgroundColor: '#ecfdf5',
+    backgroundColor: colors.successBg,
   },
   statusAway: {
-    backgroundColor: '#fffbeb',
+    backgroundColor: colors.warningBg,
   },
   statusNone: {
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.card,
   },
   statusText: {
     fontSize: 12,
@@ -451,23 +617,96 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   statusTextWorking: {
-    color: '#10b981',
+    color: colors.success,
   },
   statusTextAway: {
-    color: '#f59e0b',
+    color: colors.warning,
   },
   statusTextNone: {
-    color: '#64748b',
+    color: colors.subtext,
+  },
+  shiftInfoCard: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  shiftInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  shiftInfoLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.subtext,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  shiftInfoBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  badgeScheduled: {
+    backgroundColor: colors.successBg,
+  },
+  badgeUnscheduled: {
+    backgroundColor: colors.unscheduledBg,
+  },
+  shiftInfoBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  badgeTextScheduled: {
+    color: colors.success,
+  },
+  badgeTextUnscheduled: {
+    color: colors.unscheduled,
+  },
+  shiftInfoValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  shiftInfoNotice: {
+    fontSize: 11,
+    color: colors.subtext,
+    marginTop: 8,
+    fontWeight: '500',
+    fontStyle: 'italic',
+  },
+  emptyTimelineContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.card,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    marginBottom: 20,
+    gap: 8,
+  },
+  emptyTimelineText: {
+    fontSize: 13,
+    color: colors.subtext,
+    fontWeight: '500',
   },
   timelineWrapper: {
     position: 'relative',
-    height: 32,
-    marginBottom: 8,
+    height: 42,
+    marginBottom: 4,
   },
   timelineTrack: {
     flexDirection: 'row',
     height: 12,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.timelineTrackBg,
     borderRadius: 6,
     overflow: 'hidden',
     marginTop: 10,
@@ -476,16 +715,32 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   segmentWorked: {
-    backgroundColor: '#10b981',
+    backgroundColor: colors.success,
   },
   segmentBreak: {
-    backgroundColor: '#f59e0b',
+    backgroundColor: colors.warning,
   },
   segmentMissed: {
-    backgroundColor: '#cbd5e1', // Distinct gray for missed time
+    backgroundColor: colors.timelineMissed,
   },
   segmentRemaining: {
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.timelineRemaining,
+  },
+  segmentOvertime: {
+    backgroundColor: colors.unscheduled,
+  },
+  segmentNone: {
+    backgroundColor: colors.timelineNone,
+  },
+  shiftMarker: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 2,
+    backgroundColor: colors.timelineMarker,
+    marginTop: 10,
+    height: 12,
+    zIndex: 5,
   },
   nowIndicator: {
     position: 'absolute',
@@ -494,44 +749,50 @@ const styles = StyleSheet.create({
     width: 2,
     marginLeft: -1,
     alignItems: 'center',
+    zIndex: 15,
   },
-  nowIndicatorLine: {
-    width: 2,
-    height: '100%',
-    backgroundColor: '#3b82f6',
-    borderRadius: 1,
-  },
-  nowIndicatorDot: {
+  nowIndicatorArrow: {
+    width: 0,
+    height: 0,
+    backgroundColor: 'transparent',
+    borderStyle: 'solid',
+    borderLeftWidth: 5,
+    borderRightWidth: 5,
+    borderTopWidth: 0,
+    borderBottomWidth: 7,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: '#ef4444',
     position: 'absolute',
-    top: 6,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#3b82f6',
-    borderWidth: 2,
-    borderColor: '#ffffff',
-    shadowColor: '#3b82f6',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 2,
+    top: 22,
+    zIndex: 20,
   },
   timelineLabels: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 24,
+    marginTop: 4,
+    marginBottom: 16,
+  },
+  nowTimeLabel: {
+    position: 'absolute',
+    top: 30,
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#ef4444',
+    width: 60,
+    textAlign: 'center',
   },
   timelineLabelText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#94a3b8',
+    color: colors.subtext,
   },
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
+    borderTopColor: colors.border,
   },
   statBox: {
     flexDirection: 'row',
@@ -546,7 +807,7 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#94a3b8',
+    color: colors.subtext,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 2,
@@ -554,31 +815,10 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#0f172a',
-  },
-  noShiftCard: {
-    backgroundColor: '#f8fafc',
-    borderRadius: 24,
-    padding: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    marginBottom: 16,
-  },
-  noShiftTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0f172a',
-    marginTop: 12,
-    marginBottom: 4,
-  },
-  noShiftText: {
-    fontSize: 14,
-    color: '#64748b',
+    color: colors.text,
   },
   breakInfoContainer: {
-    backgroundColor: '#f4f4f5',
+    backgroundColor: colors.card,
     padding: 12,
     borderRadius: 12,
     marginTop: 16,
@@ -586,26 +826,26 @@ const styles = StyleSheet.create({
   },
   breakInfoText: {
     fontSize: 13,
-    color: '#3f3f46',
+    color: colors.text,
     fontWeight: '600',
   },
   breakWarningText: {
     fontSize: 11,
-    color: '#ef4444',
+    color: colors.danger,
     marginTop: 4,
     fontWeight: '800',
     textTransform: 'uppercase',
   },
   radiusWarning: {
     fontSize: 12,
-    color: '#71717a',
+    color: colors.subtext,
     textAlign: 'center',
     marginTop: 16,
     marginBottom: 12,
   },
   tamperContainer: {
-    backgroundColor: '#fef2f2',
-    borderColor: '#fca5a5',
+    backgroundColor: colors.dangerBg,
+    borderColor: colors.dangerBorder,
     borderWidth: 1,
     borderRadius: 12,
     padding: 16,
@@ -615,12 +855,12 @@ const styles = StyleSheet.create({
   tamperTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#ef4444',
+    color: colors.danger,
     marginBottom: 4,
   },
   tamperText: {
     fontSize: 13,
-    color: '#991b1b',
+    color: colors.danger,
     textAlign: 'center',
   },
   disabledButton: {
@@ -639,16 +879,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   clockInButton: {
-    backgroundColor: '#10b981',
+    backgroundColor: colors.success,
   },
   clockOutButton: {
-    backgroundColor: '#ef4444',
+    backgroundColor: colors.danger,
   },
   stepAwayButton: {
-    backgroundColor: '#f59e0b',
+    backgroundColor: colors.warning,
   },
   resumeButton: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: colors.accent,
   },
   buttonText: {
     color: '#fff',

@@ -1,15 +1,12 @@
 import { Router } from 'express';
-import { clockAttendance, syncOfflineLogs, getAttendanceLogs, getAttendanceStats, getMyLogs, stepAway, resumeWork } from '../controllers/attendanceController.js';
+import { clockAttendance, syncOfflineLogs, getAttendanceLogs, getAttendanceStats, getMyLogs, stepAway, resumeWork, heartbeatAttendance } from '../controllers/attendanceController.js';
 import { authenticate, requireRole } from '../middlewares/authMiddleware.js';
 
 const router = Router();
 
-import db from '../db/index.js';
 
 router.get('/server-time', (req, res) => {
-    const settings = db.prepare('SELECT company_timezone FROM settings WHERE id = 1').get() as any;
-    const timezone = settings?.company_timezone || 'UTC';
-    res.json({ serverTime: new Date().toISOString(), timezone });
+    res.json({ serverTime: new Date().toISOString(), timezone: 'UTC' });
 });
 
 router.use(authenticate);
@@ -20,6 +17,7 @@ router.post('/sync', requireRole(['employee', 'manager']), syncOfflineLogs);
 router.get('/my-logs', requireRole(['employee', 'manager']), getMyLogs);
 router.post('/step-away', requireRole(['employee', 'manager']), stepAway);
 router.post('/resume-work', requireRole(['employee', 'manager']), resumeWork);
+router.post('/heartbeat', requireRole(['employee', 'manager']), heartbeatAttendance);
 
 // Manager only routes
 router.get('/', requireRole(['manager']), getAttendanceLogs);

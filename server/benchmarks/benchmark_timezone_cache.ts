@@ -8,8 +8,8 @@ initDb();
 const N = 5000;
 
 function slowFetch() {
-    const settingsForTz = db.prepare('SELECT company_timezone FROM settings WHERE id = 1').get() as any;
-    return settingsForTz?.company_timezone || 'UTC';
+    const settingsForTz = db.prepare('SELECT company_name FROM settings WHERE id = 1').get() as any;
+    return settingsForTz?.company_name || 'LabFlow';
 }
 
 let cachedTz: string | null = null;
@@ -19,8 +19,8 @@ function fastFetch() {
     const now = Date.now();
     if (cachedTz && now < tzExpiry) return cachedTz;
 
-    const settings = db.prepare('SELECT company_timezone FROM settings WHERE id = 1').get() as any;
-    cachedTz = settings?.company_timezone || 'UTC';
+    const settings = db.prepare('SELECT company_name FROM settings WHERE id = 1').get() as any;
+    cachedTz = settings?.company_name || 'LabFlow';
     tzExpiry = now + 5 * 60 * 1000;
     return cachedTz;
 }

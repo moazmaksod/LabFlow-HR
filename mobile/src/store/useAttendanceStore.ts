@@ -10,6 +10,7 @@ interface AttendanceState {
   lastActionTimestamp: string | null;
   userProfile: any | null;
   activeSession: any | null;
+  todayLogs: any[];
   
   // Actions
   setStatus: (status: AttendanceStatus) => void;
@@ -17,6 +18,7 @@ interface AttendanceState {
   setLastActionTimestamp: (timestamp: string | null) => void;
   setUserProfile: (profile: any) => void;
   setActiveSession: (session: any | null) => void;
+  setTodayLogs: (logs: any[]) => void;
   reset: () => void;
 }
 
@@ -54,13 +56,15 @@ export const useAttendanceStore = create<AttendanceState>()(
       lastActionTimestamp: null,
       userProfile: null,
       activeSession: null,
+      todayLogs: [],
 
       setStatus: (status) => set({ currentStatus: status }),
       setConsumedBreakMinutes: (minutes) => set({ consumedBreakMinutes: minutes }),
       setLastActionTimestamp: (timestamp) => set({ lastActionTimestamp: timestamp }),
       setUserProfile: (profile) => set({ userProfile: profile }),
       setActiveSession: (session) => set({ activeSession: session }),
-      reset: () => set({ currentStatus: 'none', consumedBreakMinutes: 0, lastActionTimestamp: null, userProfile: null, activeSession: null }),
+      setTodayLogs: (logs) => set({ todayLogs: logs }),
+      reset: () => set({ currentStatus: 'none', consumedBreakMinutes: 0, lastActionTimestamp: null, userProfile: null, activeSession: null, todayLogs: [] }),
     }),
     {
       name: 'labflow-attendance-state',

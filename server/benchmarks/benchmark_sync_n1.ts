@@ -10,8 +10,8 @@ function setupMockData() {
     db.prepare('DELETE FROM attendance').run();
 
     db.prepare(`
-        INSERT INTO settings (id, company_name, company_timezone, late_grace_period, geofence_toggle)
-        VALUES (1, 'Bench Co', 'UTC', 15, 0)
+        INSERT INTO settings (id, company_name, late_grace_period, geofence_toggle)
+        VALUES (1, 'Bench Co', 15, 0)
     `).run();
 
     const insertUser = db.prepare(`
@@ -21,8 +21,8 @@ function setupMockData() {
     const userId = insertUser.run().lastInsertRowid;
 
     db.prepare(`
-        INSERT INTO jobs (id, title, grace_period, hourly_rate, required_hours)
-        VALUES (1, 'Bench Job', 15, 20.0, 40)
+        INSERT INTO jobs (id, title, hourly_rate, required_hours)
+        VALUES (1, 'Bench Job', 20.0, 40)
     `).run();
 
     const schedule = {
@@ -64,7 +64,7 @@ const { userId, logs } = setupMockData();
 // Simulated handleClockAction - SLOW (Current Implementation)
 const handleClockActionSlow = (userId: number, type: string, lat: number, lng: number, deviceId: string, timestamp: string) => {
     const userProfile = db.prepare(`
-        SELECT p.status, p.device_id, p.weekly_schedule, j.grace_period, p.allow_overtime, p.max_overtime_hours
+        SELECT p.status, p.device_id, p.weekly_schedule, p.allow_overtime, p.max_overtime_hours
         FROM profiles p
         LEFT JOIN jobs j ON p.job_id = j.id
         WHERE p.user_id = ?
@@ -84,7 +84,7 @@ const handleClockActionFast = (userId: number, type: string, lat: number, lng: n
     let userProfile = prefetchedProfile;
     if (!userProfile) {
         userProfile = db.prepare(`
-            SELECT p.status, p.device_id, p.weekly_schedule, j.grace_period, p.allow_overtime, p.max_overtime_hours
+            SELECT p.status, p.device_id, p.weekly_schedule, p.allow_overtime, p.max_overtime_hours
             FROM profiles p
             LEFT JOIN jobs j ON p.job_id = j.id
             WHERE p.user_id = ?
@@ -129,7 +129,7 @@ export function runBenchmark() {
         let profile = profileMap.get(userId);
         if (!profile) {
             profile = db.prepare(`
-                SELECT p.status, p.device_id, p.weekly_schedule, j.grace_period, p.allow_overtime, p.max_overtime_hours
+                SELECT p.status, p.device_id, p.weekly_schedule, p.allow_overtime, p.max_overtime_hours
                 FROM profiles p
                 LEFT JOIN jobs j ON p.job_id = j.id
                 WHERE p.user_id = ?

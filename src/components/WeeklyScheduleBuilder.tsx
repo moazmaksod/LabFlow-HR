@@ -1,5 +1,6 @@
 import React from 'react';
 import { Clock, Copy, Trash2, CheckCircle2, Circle, Info, Plus } from 'lucide-react';
+import { formatDuration } from '../lib/timeManager';
 
 interface Shift {
   start: string;
@@ -14,9 +15,10 @@ interface WeeklyScheduleBuilderProps {
   schedule: WeeklySchedule;
   onChange: (schedule: WeeklySchedule) => void;
   onError?: (hasError: boolean) => void;
+  requiredWeeklyHours?: number;
 }
 
-const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const DAYS = ['saturday', 'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
 
 const timeToMinutes = (time: string) => {
   if (!time) return 0;
@@ -49,7 +51,27 @@ const checkOverlap = (shifts: Shift[]) => {
   return Array.from(overlapIndices);
 };
 
-export const WeeklyScheduleBuilder: React.FC<WeeklyScheduleBuilderProps> = ({ schedule, onChange, onError }) => {
+
+const calculateDuration = (start: string, end: string) => {
+  const startMins = timeToMinutes(start);
+  const endMins = timeToMinutes(end);
+  if (endMins < startMins) {
+    return (1440 - startMins) + endMins; // Crosses midnight
+  }
+  return endMins - startMins;
+};
+
+export const WeeklyScheduleBuilder: React.FC<WeeklyScheduleBuilderProps> = ({ schedule, onChange, onError, requiredWeeklyHours }) => {
+
+  const totalWeeklyMinutes = React.useMemo(() => {
+    let total = 0;
+    DAYS.forEach(day => {
+      (schedule[day] || []).forEach(shift => {
+        total += calculateDuration(shift.start, shift.end);
+      });
+    });
+    return total;
+  }, [schedule]);
   
   // Validate all days and notify parent
   React.useEffect(() => {
@@ -78,14 +100,14 @@ export const WeeklyScheduleBuilder: React.FC<WeeklyScheduleBuilderProps> = ({ sc
     onChange(newSchedule);
   };
 
-  const copyMondayToAll = () => {
-    const mondayShifts = schedule['monday'] || [];
-    if (mondayShifts.length === 0) return;
+  const copySaturdayToAll = () => {
+    const saturdayShifts = schedule['saturday'] || [];
+    if (saturdayShifts.length === 0) return;
 
     const newSchedule = { ...schedule };
     DAYS.forEach(day => {
-      if (day !== 'monday') {
-        newSchedule[day] = mondayShifts.map(s => ({ ...s }));
+      if (day !== 'saturday') {
+        newSchedule[day] = saturdayShifts.map(s => ({ ...s }));
       }
     });
     onChange(newSchedule);
@@ -94,10 +116,18 @@ export const WeeklyScheduleBuilder: React.FC<WeeklyScheduleBuilderProps> = ({ sc
   return (
     <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
       <div className="p-4 space-y-4">
+        <div className="flex justify-between items-center bg-primary/10 border border-primary/20 px-4 py-3 rounded-xl mb-2">
+          <span className="text-xs font-black uppercase tracking-widest text-primary">Total Weekly Working Hours</span>
+          <span className="text-sm font-black text-primary">
+            {formatDuration(totalWeeklyMinutes)}
+            {requiredWeeklyHours ? ` / ${requiredWeeklyHours.toString().padStart(2, '0')}:00` : ''}
+          </span>
+        </div>
         {DAYS.map((day) => {
           const shifts = schedule[day] || [];
           const isActive = shifts.length > 0;
           const overlapIndices = checkOverlap(shifts);
+          const dailyMinutes = shifts.reduce((acc, shift) => acc + calculateDuration(shift.start, shift.end), 0);
 
           return (
             <div 
@@ -116,12 +146,17 @@ export const WeeklyScheduleBuilder: React.FC<WeeklyScheduleBuilderProps> = ({ sc
                   <span className={`text-xs font-black uppercase tracking-widest transition-colors ${isActive ? 'text-foreground' : 'text-muted-foreground'}`}>
                     {day}
                   </span>
+                  {isActive && (
+                    <span className="text-[10px] font-bold text-muted-foreground ml-2">
+                      ({formatDuration(dailyMinutes)})
+                    </span>
+                  )}
                 </div>
                 
                 <div className="flex items-center gap-2">
-                  {day === 'monday' && isActive && (
+                  {day === 'saturday' && isActive && (
                     <button 
-                      onClick={copyMondayToAll}
+                      onClick={copySaturdayToAll}
                       className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest hover:bg-primary/20 transition-all"
                     >
                       <Copy className="w-3.5 h-3.5" /> Copy All

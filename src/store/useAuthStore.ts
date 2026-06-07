@@ -6,6 +6,7 @@ export interface User {
   name: string;
   email: string;
   role: string;
+  display_timezone?: string | null;
 }
 
 interface AuthState {

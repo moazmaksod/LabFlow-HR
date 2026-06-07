@@ -4,6 +4,8 @@ import jwt from 'jsonwebtoken';
 import db from '../db/index.js';
 import { logAudit } from '../services/auditService.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
+import logger from '../utils/logger.js';
+import { getSettingsCache, setSettingsCache } from '../utils/cache.js';
 
 // 🛡️ Sentinel: Enforce secure JWT Secret from environment variables.
 // Do not use hardcoded fallbacks that could be exploited if env vars are missing.
@@ -14,19 +16,18 @@ if (!JWT_SECRET) {
 
 export const register = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { name, email, password, age, gender } = req.body;
+        const { name, email, password, date_of_birth, gender } = req.body;
         
-        if (!name || !email || !password || !age || !gender) {
-            res.status(400).json({ error: 'Missing required fields: name, email, password, age, gender' });
+        if (!name || !email || !password || date_of_birth === undefined || !gender) {
+            res.status(400).json({ error: 'Missing required fields: name, email, password, date_of_birth, gender' });
             return;
         }
 
         const normalizedEmail = email.toLowerCase();
 
-        // Validate age
-        const ageNum = parseInt(age);
-        if (isNaN(ageNum) || ageNum < 16 || ageNum > 100) {
-            res.status(400).json({ error: 'Invalid age. Must be between 16 and 100.' });
+        // Validate date of birth
+        if (typeof date_of_birth !== 'string' || !date_of_birth.trim()) {
+            res.status(400).json({ error: 'Missing required fields: name, email, password, date_of_birth, gender' });
             return;
         }
 
@@ -55,8 +56,8 @@ export const register = async (req: Request, res: Response): Promise<void> => {
             const userId = info.lastInsertRowid;
 
             // Insert profile
-            const insertProfile = db.prepare('INSERT INTO profiles (user_id, age, gender, status) VALUES (?, ?, ?, ?)');
-            insertProfile.run(userId, ageNum, gender.toLowerCase(), 'inactive');
+            const insertProfile = db.prepare('INSERT INTO profiles (user_id, date_of_birth, gender, status, annual_leave_balance, sick_leave_balance) VALUES (?, ?, ?, ?, ?, ?)');
+            insertProfile.run(userId, date_of_birth || null, gender.toLowerCase(), 'inactive', 21, 7);
 
             return userId;
         });
@@ -79,7 +80,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
             user: { id: userId, name, email: normalizedEmail, role: 'pending' }
         });
     } catch (error) {
-        console.error('Registration error:', error);
+        logger.error('Registration error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -123,6 +124,19 @@ export const login = async (req: Request, res: Response): Promise<void> => {
             return;
         }
 
+        // Maintenance Mode Check (Managers exempt)
+        let settings = getSettingsCache();
+        if (!settings) {
+            settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+            if (settings) {
+                setSettingsCache(settings);
+            }
+        }
+        if (settings && settings.maintenance_mode === 1 && user.role !== 'manager') {
+            res.status(503).json({ error: 'System Offline: The platform is currently undergoing scheduled maintenance. Please try again later.' });
+            return;
+        }
+
         // Platform Restriction: Web Login (No deviceId) vs Mobile Login (With deviceId)
         if (!deviceId) {
             // Web Login
@@ -132,18 +146,23 @@ export const login = async (req: Request, res: Response): Promise<void> => {
             }
         } else {
             // Mobile Login - Device Binding Security Check
-            if (!user.device_id) {
-                // First time login, bind device
-                // Check if this device is already registered to someone else
-                const existingDevice = db.prepare('SELECT user_id FROM profiles WHERE device_id = ?').get(deviceId) as any;
-                if (existingDevice && existingDevice.user_id !== user.id) {
-                    res.status(403).json({ error: 'Security Alert: This device is already registered to another user. One device per user is allowed.' });
+            const isWhitelisted = settings && settings.whitelist_device_ids && 
+                settings.whitelist_device_ids.split(',').map((id: string) => id.trim()).includes(deviceId);
+
+            if (!isWhitelisted && (!settings || settings.device_binding_enforced === 1)) {
+                if (!user.device_id) {
+                    // First time login, bind device
+                    // Check if this device is already registered to someone else
+                    const existingDevice = db.prepare('SELECT user_id FROM profiles WHERE device_id = ?').get(deviceId) as any;
+                    if (existingDevice && existingDevice.user_id !== user.id) {
+                        res.status(403).json({ error: 'Security Alert: This device is already registered to another user. One device per user is allowed.' });
+                        return;
+                    }
+                    db.prepare('UPDATE profiles SET device_id = ? WHERE user_id = ?').run(deviceId, user.id);
+                } else if (user.device_id !== deviceId) {
+                    res.status(403).json({ error: 'Security Alert: You are trying to login from an unauthorized device. Please use your registered phone or contact the manager.' });
                     return;
                 }
-                db.prepare('UPDATE profiles SET device_id = ? WHERE user_id = ?').run(deviceId, user.id);
-            } else if (user.device_id !== deviceId) {
-                res.status(403).json({ error: 'Security Alert: You are trying to login from an unauthorized device. Please use your registered phone or contact the manager.' });
-                return;
             }
         }
 
@@ -163,7 +182,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
             user: { id: user.id, name: user.name, email: user.email, role: user.role }
         });
     } catch (error) {
-        console.error('Login error:', error);
+        logger.error('Login error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -177,7 +196,7 @@ export const logout = async (req: AuthRequest, res: Response): Promise<void> => 
 
         res.json({ message: 'Logout successful' });
     } catch (error) {
-        console.error('Logout error:', error);
+        logger.error('Logout error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -202,7 +221,7 @@ export const resetAdminDeviceID = async (req: AuthRequest, res: Response): Promi
 
         res.json({ message: 'Mobile device binding reset successfully. You can now pair a new device from your phone.' });
     } catch (error) {
-        console.error('Reset device error:', error);
+        logger.error('Reset device error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

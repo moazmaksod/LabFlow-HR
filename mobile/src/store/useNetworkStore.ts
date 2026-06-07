@@ -149,11 +149,21 @@ export const useNetworkStore = create<NetworkState>()(
           attendanceStore.setUserProfile(profileRes.data);
 
           const logs = logsRes.data;
-          const today = new Date().toISOString().split('T')[0];
-          const activeSession = logs.find((l: any) => l.date === today && !l.check_out);
+          const userTimezone = profileRes.data?.display_timezone || 'UTC';
+          const localTodayStr = new Intl.DateTimeFormat('en-CA', {
+            timeZone: userTimezone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+          }).format(new Date());
+
+          const todayLogs = logs.filter((l: any) => l.date === localTodayStr);
+          attendanceStore.setTodayLogs(todayLogs);
+
+          const activeSession = logs.find((l: any) => l.date === localTodayStr && !l.check_out);
           
           if (activeSession) {
-            attendanceStore.setStatus(activeSession.current_status || 'working');
+            attendanceStore.setStatus(activeSession.working_status || 'working');
             
             let consumed = 0;
             if (activeSession.breaks && Array.isArray(activeSession.breaks)) {

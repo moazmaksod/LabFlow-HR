@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
+import { formatDisplayTime, DateFormats } from '../../lib/timeManager';
+import { useAuthStore } from '../../store/useAuthStore';
 import { useTranslation } from 'react-i18next';
 import { 
     Shield, Search, Filter, User, Clock, ArrowRight, Database, 
@@ -166,6 +167,7 @@ const LogSummary: React.FC<{ log: AuditLog }> = ({ log }) => {
 };
 
 const AuditLogRow: React.FC<{ log: AuditLog }> = ({ log }) => {
+    const user = useAuthStore(state => state.user);
     const [isExpanded, setIsExpanded] = useState(false);
     const changes = getChangedKeys(log);
     const oldData = parseValues(log.old_values);
@@ -204,7 +206,7 @@ const AuditLogRow: React.FC<{ log: AuditLog }> = ({ log }) => {
                         </div>
                         <div className="flex flex-col">
                             <span className="text-[10px] font-mono font-bold text-muted-foreground">#{log.id.toString().padStart(6, '0')}</span>
-                            <span className="text-xs font-medium text-foreground">{format(new Date(log.created_at), 'MMM dd, HH:mm')}</span>
+                            <span className="text-xs font-medium text-foreground">{formatDisplayTime(log.created_at, user?.display_timezone, DateFormats.AUDIT_LOG)}</span>
                         </div>
                     </div>
                 </td>
@@ -328,6 +330,7 @@ const AuditLogRow: React.FC<{ log: AuditLog }> = ({ log }) => {
 };
 
 export const AuditLogs: React.FC = () => {
+  const user = useAuthStore(state => state.user);
     const { t } = useTranslation();
     const [entityName, setEntityName] = useState('');
     const [action, setAction] = useState('');
@@ -343,7 +346,14 @@ export const AuditLogs: React.FC = () => {
         }
     });
 
-    const logs = useMemo(() => rawLogs || [], [rawLogs]);
+    const logs = useMemo(() => {
+        if (!rawLogs) return [];
+        return rawLogs.filter(log => {
+            const changes = getChangedKeys(log);
+            const hasNoChanges = changes.length === 0 && !['LOGIN', 'LOGOUT', 'DELETE'].includes(log.action);
+            return !hasNoChanges;
+        });
+    }, [rawLogs]);
 
     if (isLoading) return (
         <div className="flex flex-col items-center justify-center p-12 space-y-4">

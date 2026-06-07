@@ -19,11 +19,10 @@ CREATE TABLE IF NOT EXISTS jobs (
     hourly_rate REAL NOT NULL,
     required_hours REAL NOT NULL,
     required_hours_per_week INTEGER,
-    preferred_gender TEXT, -- 'male', 'female', 'any'
-    min_age INTEGER,
-    max_age INTEGER,
-    grace_period INTEGER NOT NULL DEFAULT 15, -- In minutes
-    weekly_schedule TEXT, -- JSON stringified schedule array
+    default_annual_leave_days INTEGER DEFAULT 21,
+    default_sick_leave_days INTEGER DEFAULT 7,
+    allow_overtime BOOLEAN DEFAULT 1,
+    employment_type TEXT DEFAULT 'full-time',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -33,19 +32,25 @@ CREATE TABLE IF NOT EXISTS profiles (
     user_id INTEGER NOT NULL UNIQUE,
     job_id INTEGER,
     profile_picture_url TEXT,
-    age INTEGER,
+    date_of_birth DATE,
     gender TEXT,
     weekly_schedule TEXT, -- JSON stringified schedule array
     hourly_rate INTEGER DEFAULT 0,
     lunch_break_minutes INTEGER DEFAULT 0,
     emergency_contact_name TEXT,
     emergency_contact_phone TEXT,
+    emergency_contact_relationship TEXT,
+    full_address TEXT,
+    national_id TEXT,
+    bank_name TEXT,
+    bank_account_iban TEXT,
     bio TEXT,
     personal_phone TEXT,
     legal_name TEXT,
     id_photo_url TEXT,
     hire_date DATE,
-    leave_balance INTEGER DEFAULT 21,
+    annual_leave_balance REAL DEFAULT 21,
+    sick_leave_balance REAL DEFAULT 7,
     device_id TEXT,
     allow_overtime BOOLEAN DEFAULT 0,
     max_overtime_hours REAL DEFAULT 0,
@@ -63,13 +68,14 @@ CREATE TABLE IF NOT EXISTS attendance (
     check_in DATETIME NOT NULL,
     check_out DATETIME,
     date DATE NOT NULL,
-    status TEXT NOT NULL CHECK(status IN ('on_time', 'late_in', 'early_out', 'absent', 'half_day', 'unscheduled')) DEFAULT 'on_time',
-    current_status TEXT NOT NULL CHECK(current_status IN ('working', 'away')) DEFAULT 'working',
-    location_lat REAL,
-    location_lng REAL,
-    approved_overtime_minutes INTEGER DEFAULT 0,
-    is_paid_permission BOOLEAN DEFAULT 0,
-    paid_permission_minutes INTEGER DEFAULT 0,
+    checkin_status TEXT NOT NULL CHECK(checkin_status IN ('on_time', 'late_in', 'unscheduled')) DEFAULT 'on_time',
+    checkout_status TEXT CHECK(checkout_status IN ('on_time', 'early_out', 'unscheduled')),
+    working_status TEXT NOT NULL CHECK(working_status IN ('working', 'away')) DEFAULT 'working',
+    check_in_lat REAL,
+    check_in_lng REAL,
+    check_out_lat REAL,
+    check_out_lng REAL,
+    shift_id TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -82,12 +88,12 @@ CREATE TABLE IF NOT EXISTS requests (
     requested_check_in DATETIME,
     requested_check_out DATETIME,
     type TEXT, -- 'manual_clock', 'permission_to_leave', 'overtime_approval', 'early_leave_approval', 'attendance_correction'
-    reference_id INTEGER, -- points to shift_interruptions.id if type is 'permission_to_leave'
+    shift_interruption_id INTEGER, -- points to shift_interruptions.id if type is 'permission_to_leave' or 'shift_interruption_review'
     reason TEXT NOT NULL,
-    details TEXT,
+    value INTEGER DEFAULT 0,
+    penalty_minutes INTEGER DEFAULT 0,
     manager_note TEXT,
-    is_paid_permission BOOLEAN DEFAULT 0,
-    paid_permission_minutes INTEGER DEFAULT 0,
+    paid_minutes INTEGER DEFAULT 0,
     status TEXT NOT NULL CHECK(status IN ('pending', 'approved', 'rejected', 'canceled')) DEFAULT 'pending',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -125,13 +131,11 @@ CREATE TABLE IF NOT EXISTS settings (
     -- Identity
     company_name TEXT NOT NULL DEFAULT 'LabFlow',
     company_logo_url TEXT,
+    company_favicon_url TEXT,
     brand_primary_color TEXT NOT NULL DEFAULT '#4f46e5',
-    company_timezone TEXT NOT NULL DEFAULT 'UTC',
     support_contact TEXT,
 
     -- Payroll
-    payroll_cycle_type TEXT NOT NULL DEFAULT 'calendar_month',
-    custom_payroll_cycle_days INTEGER NOT NULL DEFAULT 0,
     overtime_rate_percent REAL NOT NULL DEFAULT 150.0,
     weekend_rate_percent REAL NOT NULL DEFAULT 200.0,
     attendance_bonus_amount REAL NOT NULL DEFAULT 0.0,
@@ -144,6 +148,9 @@ CREATE TABLE IF NOT EXISTS settings (
     geofence_radius REAL NOT NULL DEFAULT 50,
     time_sync_interval INTEGER NOT NULL DEFAULT 300, -- seconds
     max_drift_threshold INTEGER NOT NULL DEFAULT 10, -- seconds
+    wifi_validation_toggle BOOLEAN NOT NULL DEFAULT 0,
+    company_wifi_ssid TEXT,
+    company_wifi_bssid TEXT,
     accuracy_meters INTEGER NOT NULL DEFAULT 100,
     device_binding_enforced BOOLEAN NOT NULL DEFAULT 1,
 
@@ -155,6 +162,10 @@ CREATE TABLE IF NOT EXISTS settings (
     enable_reminders BOOLEAN NOT NULL DEFAULT 1,
     send_daily_report BOOLEAN NOT NULL DEFAULT 0,
     maintenance_mode BOOLEAN NOT NULL DEFAULT 0,
+    min_overtime_minutes INTEGER NOT NULL DEFAULT 0,
+    whitelist_device_ids TEXT NOT NULL DEFAULT '',
+    min_clock_session_minutes INTEGER NOT NULL DEFAULT 1,
+    min_unscheduled_session_minutes INTEGER NOT NULL DEFAULT 5,
 
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -165,28 +176,30 @@ CREATE TABLE IF NOT EXISTS payrolls (
     user_id INTEGER NOT NULL,
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
-    base_salary REAL NOT NULL DEFAULT 0,
-    total_additions REAL NOT NULL DEFAULT 0,
-    total_deductions REAL NOT NULL DEFAULT 0,
-    net_salary REAL NOT NULL DEFAULT 0,
-    status TEXT NOT NULL CHECK(status IN ('draft', 'finalized', 'paid')) DEFAULT 'draft',
+    hourly_rate REAL NOT NULL,
+    scheduled_working_minutes REAL NOT NULL DEFAULT 0,
+    scheduled_non_working_minutes REAL NOT NULL DEFAULT 0,
+    overtime_minutes REAL NOT NULL DEFAULT 0,
+    overtime_rate_percent REAL NOT NULL DEFAULT 150.0,
+    deduction_minutes REAL NOT NULL DEFAULT 0,
+    attendance_bonus REAL NOT NULL DEFAULT 0.0,
+    net_salary REAL NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('paid')) DEFAULT 'paid',
+    paid_by INTEGER NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (paid_by) REFERENCES users(id) ON DELETE RESTRICT
 );
 
-CREATE TABLE IF NOT EXISTS payroll_transactions (
+CREATE TABLE IF NOT EXISTS shift_instances (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    payroll_id INTEGER NOT NULL,
-    reference_id INTEGER, -- Can be attendance_id or request_id
-    type TEXT NOT NULL, -- 'overtime', 'late_deduction', 'step_away_unpaid', 'bonus', 'deduction'
-    hours REAL NOT NULL DEFAULT 0,
-    amount REAL NOT NULL DEFAULT 0,
-    status TEXT NOT NULL CHECK(status IN ('applied', 'rejected', 'voided')) DEFAULT 'applied',
-    manager_notes TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (payroll_id) REFERENCES payrolls(id) ON DELETE CASCADE
+    user_id INTEGER NOT NULL,
+    start_time DATETIME NOT NULL,
+    end_time DATETIME NOT NULL,
+    logical_date DATE NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('Scheduled', 'Completed', 'Cancelled')) DEFAULT 'Scheduled',
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS audit_logs (
@@ -201,15 +214,46 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS attendance_heartbeats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    timestamp DATETIME NOT NULL,
+    ssid TEXT,
+    status TEXT CHECK(status IN ('success', 'failed')) DEFAULT 'success',
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_attendance_heartbeats_user_id_timestamp ON attendance_heartbeats(user_id, timestamp);
+
+CREATE TABLE IF NOT EXISTS daily_attendance (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    date DATE NOT NULL,
+    scheduled_working_minutes REAL NOT NULL DEFAULT 0,
+    scheduled_non_working_minutes REAL NOT NULL DEFAULT 0,
+    unscheduled_working_minutes REAL NOT NULL DEFAULT 0,
+    deduction_minutes REAL NOT NULL DEFAULT 0,
+    status TEXT NOT NULL CHECK(status IN ('pending', 'processed')) DEFAULT 'pending',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, date)
+);
+
 -- Performance Indexes for Foreign Keys
 CREATE INDEX IF NOT EXISTS idx_profiles_user_id ON profiles(user_id);
 CREATE INDEX IF NOT EXISTS idx_profiles_job_id ON profiles(job_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_user_id ON attendance(user_id);
 CREATE INDEX IF NOT EXISTS idx_requests_user_id ON requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_requests_attendance_id ON requests(attendance_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_shift_id ON attendance(shift_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_shift_interruptions_attendance_id ON shift_interruptions(attendance_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_name, entity_id);
+CREATE INDEX IF NOT EXISTS idx_shift_instances_user_id ON shift_instances(user_id);
+CREATE INDEX IF NOT EXISTS idx_shift_instances_status ON shift_instances(status);
+CREATE INDEX IF NOT EXISTS idx_daily_attendance_user_id ON daily_attendance(user_id);
+CREATE INDEX IF NOT EXISTS idx_daily_attendance_date ON daily_attendance(date);
 
 -- Triggers for updated_at (with safety condition to prevent infinite loops)
 CREATE TRIGGER IF NOT EXISTS update_users_updated_at AFTER UPDATE ON users
@@ -248,7 +292,9 @@ CREATE TRIGGER IF NOT EXISTS update_payrolls_updated_at AFTER UPDATE ON payrolls
 FOR EACH ROW WHEN NEW.updated_at <= OLD.updated_at
 BEGIN UPDATE payrolls SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;
 
-CREATE TRIGGER IF NOT EXISTS update_payroll_transactions_updated_at AFTER UPDATE ON payroll_transactions
+
+
+CREATE TRIGGER IF NOT EXISTS update_daily_attendance_updated_at AFTER UPDATE ON daily_attendance
 FOR EACH ROW WHEN NEW.updated_at <= OLD.updated_at
-BEGIN UPDATE payroll_transactions SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;
+BEGIN UPDATE daily_attendance SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;
 `;

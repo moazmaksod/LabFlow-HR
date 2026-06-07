@@ -31,7 +31,7 @@ describe('Auth API', () => {
         name: 'Test User',
         email: 'test@example.com',
         password: 'password123',
-        age: 25,
+        date_of_birth: '1998-01-01',
         gender: 'male'
       });
 
@@ -67,7 +67,7 @@ describe('Auth API', () => {
           name: 'Error User',
           email: 'erroruser2@example.com',
           password: 'password123',
-          age: 25,
+          date_of_birth: '1998-01-01',
           gender: 'male'
         });
 
@@ -90,10 +90,10 @@ describe('Auth API', () => {
         });
 
       expect(res.status).toBe(400);
-      expect(res.body).toHaveProperty('error', 'Missing required fields: name, email, password, age, gender');
+      expect(res.body).toHaveProperty('error', 'Missing required fields: name, email, password, date_of_birth, gender');
     });
 
-    it('should not register a user with invalid age (not a number)', async () => {
+    it('should not register a user with invalid date_of_birth (not a string)', async () => {
       const res = await request(app)
         .post('/api/auth/register')
         .send({
@@ -105,37 +105,37 @@ describe('Auth API', () => {
         });
 
       expect(res.status).toBe(400);
-      expect(res.body).toHaveProperty('error', 'Invalid age. Must be between 16 and 100.');
+      expect(res.body).toHaveProperty('error', 'Missing required fields: name, email, password, date_of_birth, gender');
     });
 
-    it('should not register a user with invalid age (less than 16)', async () => {
+    it('should not register a user with missing date_of_birth', async () => {
       const res = await request(app)
         .post('/api/auth/register')
         .send({
           name: 'Young User',
           email: 'young@example.com',
           password: 'password123',
-          age: 15,
+
           gender: 'female'
         });
 
       expect(res.status).toBe(400);
-      expect(res.body).toHaveProperty('error', 'Invalid age. Must be between 16 and 100.');
+      expect(res.body).toHaveProperty('error', 'Missing required fields: name, email, password, date_of_birth, gender');
     });
 
-    it('should not register a user with invalid age (greater than 100)', async () => {
+    it('should not register a user with empty date_of_birth', async () => {
       const res = await request(app)
         .post('/api/auth/register')
         .send({
           name: 'Old User',
           email: 'old@example.com',
           password: 'password123',
-          age: 101,
+          date_of_birth: '',
           gender: 'male'
         });
 
       expect(res.status).toBe(400);
-      expect(res.body).toHaveProperty('error', 'Invalid age. Must be between 16 and 100.');
+      expect(res.body).toHaveProperty('error', 'Missing required fields: name, email, password, date_of_birth, gender');
     });
 
     it('should not register a user with invalid gender', async () => {
@@ -145,7 +145,7 @@ describe('Auth API', () => {
           name: 'Invalid Gender User',
           email: 'invalidgender@example.com',
           password: 'password123',
-          age: 25,
+          date_of_birth: '1998-01-01',
           gender: 'other' // Only "male" or "female" are allowed
         });
 
@@ -161,7 +161,7 @@ describe('Auth API', () => {
         name: 'Another User',
         email: 'test@example.com',
         password: 'password123',
-        age: 30,
+        date_of_birth: '1993-01-01',
         gender: 'female'
       });
 
@@ -176,7 +176,7 @@ describe('Auth API', () => {
         name: 'Another User',
         email: 'TEST@example.com',
         password: 'password123',
-        age: 30,
+        date_of_birth: '1993-01-01',
         gender: 'female'
       });
 
@@ -208,7 +208,7 @@ describe('Auth API', () => {
         name: 'Employee User',
         email: 'employee@example.com',
         password: 'password123',
-        age: 25,
+        date_of_birth: '1998-01-01',
         gender: 'male'
       });
     

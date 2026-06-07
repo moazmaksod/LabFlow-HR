@@ -4,6 +4,12 @@ import api from '../../lib/axios';
 import { X, Save, User, Phone, Mail, Clock, Shield, DollarSign, Calendar, FileText, ChevronRight, Plus, Smartphone, RefreshCcw, XCircle } from 'lucide-react';
 import { WeeklyScheduleBuilder } from '../../components/WeeklyScheduleBuilder';
 import { motion, AnimatePresence } from 'motion/react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { HrEmployeeDetailSchema } from '../../../shared/validations';
+import { useAuthStore } from '../../store/useAuthStore';
+import { formatForDateInput, parseFromDateInput, formatDisplayTime, formatTimeOnlyToLocal, parseTimeOnlyToUTC } from '../../lib/timeManager';
 
 interface EmployeeDetailProps {
   userId: number;
@@ -23,9 +29,54 @@ const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'
 
 export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps) {
   const queryClient = useQueryClient();
-  const [formData, setFormData] = useState<any>(null);
+  const userTimezone = useAuthStore(state => state.user?.display_timezone);
+
   const [isSaving, setIsSaving] = useState(false);
   const [hasScheduleError, setHasScheduleError] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors }, watch, setValue, setError, clearErrors
+  } = useForm<z.infer<typeof HrEmployeeDetailSchema>>({
+    resolver: zodResolver(HrEmployeeDetailSchema),
+    mode: 'onChange',
+    defaultValues: {
+      legal_name: '',
+      personal_phone: '',
+      date_of_birth: undefined,
+      national_id: '',
+      bio: '',
+    }
+  });
+
+
+  const watchedData = watch() as any;
+
+
+  useEffect(() => {
+    const clamp = (val: any, min: number, max: number, field: any, message: string) => {
+      const num = Number(val);
+      if (!isNaN(num)) {
+        if (num > max) {
+          setValue(field, max, { shouldValidate: true });
+          setError(field, { type: 'manual', message });
+        } else if (num < min && val !== '') {
+          setValue(field, min, { shouldValidate: true });
+          setError(field, { type: 'manual', message });
+        }
+      }
+    };
+
+    clamp(watchedData.annual_leave_balance, 0, 365, 'annual_leave_balance', 'Max 365 days');
+    clamp(watchedData.sick_leave_balance, 0, 365, 'sick_leave_balance', 'Max 365 days');
+    clamp(watchedData.lunch_break_minutes, 0, 60, 'lunch_break_minutes', 'Max 60 mins');
+    if (watchedData.allow_overtime) {
+      clamp(watchedData.max_overtime_hours, 1, 168, 'max_overtime_hours', 'Between 1 and 168 hours');
+    }
+  }, [watchedData.annual_leave_balance, watchedData.sick_leave_balance, watchedData.max_overtime_hours, watchedData.allow_overtime, watchedData.lunch_break_minutes, setValue, setError]);
+
 
   const { data: employee, isLoading } = useQuery({
     queryKey: ['user', userId],
@@ -57,33 +108,45 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
       DAYS.forEach(day => {
         const daySchedule = (schedule as any)[day];
         if (Array.isArray(daySchedule)) {
-          fullSchedule[day] = daySchedule;
+          fullSchedule[day] = daySchedule.map((shift: any) => ({
+            start: formatTimeOnlyToLocal(shift.start, userTimezone),
+            end: formatTimeOnlyToLocal(shift.end, userTimezone)
+          }));
         } else if (daySchedule && !daySchedule.isOff) {
           // Migrate old format
-          fullSchedule[day] = [{ start: daySchedule.start || '09:00', end: daySchedule.end || '17:00' }];
+          fullSchedule[day] = [{ 
+            start: formatTimeOnlyToLocal(daySchedule.start || '09:00', userTimezone), 
+            end: formatTimeOnlyToLocal(daySchedule.end || '17:00', userTimezone) 
+          }];
         } else {
           fullSchedule[day] = [];
         }
       });
 
-      setFormData({
+      reset({
         ...employee,
         weekly_schedule: fullSchedule,
         hourly_rate: employee.hourly_rate || 0,
-        leave_balance: employee.leave_balance || 21,
+        annual_leave_balance: employee.annual_leave_balance ?? 21,
+        sick_leave_balance: employee.sick_leave_balance ?? 7,
         lunch_break_minutes: employee.lunch_break_minutes || 0,
         emergency_contact_name: employee.emergency_contact_name || '',
         emergency_contact_phone: employee.emergency_contact_phone || '',
+        emergency_contact_relationship: employee.emergency_contact_relationship || '',
+        full_address: employee.full_address || '',
+        national_id: employee.national_id || '',
+        bank_name: employee.bank_name || '',
+        bank_account_iban: employee.bank_account_iban || '',
         legal_name: employee.legal_name || '',
         id_photo_url: employee.id_photo_url || '',
-        hire_date: employee.hire_date || '',
-        age: employee.age || '',
+        hire_date: formatForDateInput(employee.hire_date, userTimezone) || '',
+        date_of_birth: formatForDateInput(employee.date_of_birth, userTimezone) || '',
         gender: employee.gender || '',
         allow_overtime: employee.allow_overtime || false,
         max_overtime_hours: employee.max_overtime_hours || 0
       });
     }
-  }, [employee]);
+  }, [employee, userTimezone]);
 
   const updateMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -112,18 +175,38 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
     }
   });
 
-  const handleSave = () => {
-    if (formData.status === 'suspended' && !formData.suspension_reason?.trim()) {
+  const handleSave = handleSubmit((data: any) => {
+    if (data.status === 'suspended' && !data.suspension_reason?.trim()) {
       alert('Suspension reason is required when status is suspended.');
       return;
     }
     setIsSaving(true);
-    updateMutation.mutate(formData, {
+    const finalData = { ...watchedData, ...data };
+    if (finalData.date_of_birth) {
+      finalData.date_of_birth = parseFromDateInput(String(finalData.date_of_birth), userTimezone);
+    }
+    if (finalData.hire_date) {
+      finalData.hire_date = parseFromDateInput(String(finalData.hire_date), userTimezone);
+    }
+    if (finalData.weekly_schedule) {
+      const utcSchedule: WeeklySchedule = {};
+      Object.keys(finalData.weekly_schedule).forEach(day => {
+        utcSchedule[day] = finalData.weekly_schedule[day].map((shift: Shift) => ({
+          start: parseTimeOnlyToUTC(shift.start, userTimezone),
+          end: parseTimeOnlyToUTC(shift.end, userTimezone)
+        }));
+      });
+      finalData.weekly_schedule = utcSchedule;
+    }
+    updateMutation.mutate(finalData, {
       onSettled: () => setIsSaving(false)
     });
-  };
+  }, (errors) => {
+    console.error('Form validation failed:', errors); alert('Validation Error: ' + Object.keys(errors).join(', '));
+    alert('Please fix the errors in the form before saving.');
+  });
 
-  if (isLoading || !formData) {
+  if (isLoading || !watchedData) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -132,7 +215,7 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
   }
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
@@ -142,40 +225,39 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
       <div className="p-8 border-b border-border flex items-center justify-between bg-muted/30">
         <div className="flex items-center gap-6">
           <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center text-primary font-bold text-2xl shadow-inner border border-primary/20">
-            {formData.profile_picture_url ? (
-              <img 
-                src={formData.profile_picture_url.startsWith('http') ? formData.profile_picture_url : `${window.location.origin}${formData.profile_picture_url}`} 
-                alt={formData.name}
+            {watchedData.profile_picture_url ? (
+              <img
+                src={watchedData.profile_picture_url.startsWith('http') ? watchedData.profile_picture_url : `${window.location.origin}${watchedData.profile_picture_url}`}
+                alt={watchedData.name}
                 className="w-full h-full rounded-2xl object-cover"
                 referrerPolicy="no-referrer"
               />
             ) : (
-              formData.name.charAt(0)
+              watchedData?.name?.charAt(0) || 'U'
             )}
           </div>
           <div>
             <div className="flex items-center gap-3">
-              <h3 className="text-2xl font-black tracking-tight">{formData.name}</h3>
+              <h3 className="text-2xl font-black tracking-tight">{watchedData.name}</h3>
               <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${
-                formData.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 
-                formData.status === 'suspended' ? 'bg-rose-100 text-rose-700' : 'bg-muted text-muted-foreground'
+                watchedData.status === 'active' ? 'bg-emerald-100 text-emerald-700' :
+                watchedData.status === 'suspended' ? 'bg-rose-100 text-rose-700' : 'bg-muted text-muted-foreground'
               }`}>
-                {formData.status}
+                {watchedData.status}
               </span>
             </div>
             <div className="flex flex-col gap-1 mt-1">
-              <p className="text-sm text-muted-foreground font-medium">{formData.email} • ID: #{formData.id}</p>
-              {formData.status === 'suspended' && formData.suspension_reason && (
+              <p className="text-sm text-muted-foreground font-medium">{watchedData.email} • ID: #{watchedData.id}</p>
+              {watchedData.status === 'suspended' && watchedData.suspension_reason && (
                 <p className="text-rose-600 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
-                  <XCircle className="w-3 h-3" /> Reason: {formData.suspension_reason}
+                  <XCircle className="w-3 h-3" /> Reason: {watchedData.suspension_reason}
                 </p>
               )}
             </div>
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <button 
-            onClick={handleSave}
+          <button type="button" onClick={handleSave}
             disabled={isSaving || hasScheduleError}
             className="bg-primary text-primary-foreground px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 disabled:opacity-50"
           >
@@ -205,46 +287,58 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Display Name</label>
                   <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">
-                    {formData.name}
+                    {watchedData.name}
                   </div>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Bio</label>
                   <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground min-h-[60px]">
-                    {formData.bio || 'No bio provided'}
+                    {watchedData.bio || 'No bio provided'}
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Age</label>
-                    <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">
-                      {formData.age || '-'}
-                    </div>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Date of Birth</label>
+                    <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">{watchedData.date_of_birth ? formatDisplayTime(String(watchedData.date_of_birth), userTimezone, 'yyyy-MM-dd') : "-"}</div>
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Gender</label>
                     <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground capitalize">
-                      {formData.gender || '-'}
+                      {watchedData.gender || '-'}
                     </div>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Full Address</label>
+                  <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground min-h-[60px]">
+                    {watchedData.full_address || '-'}
                   </div>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Personal Phone</label>
                   <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">
-                    {formData.personal_phone || '-'}
+                    {watchedData.personal_phone || '-'}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Emergency Contact</label>
-                    <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">
-                      {formData.emergency_contact_name || '-'}
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Emergency Contact</label>
+                      <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">
+                        {watchedData.emergency_contact_name || '-'}
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Emergency Phone</label>
+                      <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">
+                        {watchedData.emergency_contact_phone || '-'}
+                      </div>
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Emergency Phone</label>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Relationship</label>
                     <div className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm font-medium text-muted-foreground">
-                      {formData.emergency_contact_phone || '-'}
+                      {watchedData.emergency_contact_relationship || '-'}
                     </div>
                   </div>
                 </div>
@@ -258,36 +352,40 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
               </h4>
               <div className="grid grid-cols-1 gap-4">
                 <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">National ID</label>
+                  <input type="text" {...register("national_id")} placeholder="National Identification Number" className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${errors.national_id ? "border-red-500" : "border-border"}`} />
+{errors.national_id && <p className="text-xs text-red-500 mt-1">{errors.national_id.message as string}</p>}
+                </div>
+                <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Legal Name</label>
-                  <input 
-                    type="text" 
-                    value={formData.legal_name} 
-                    onChange={(e) => setFormData({...formData, legal_name: e.target.value})}
+                  <input
+                    type="text"
+                    {...register("legal_name")}
+
                     placeholder="Official legal name"
-                    className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                    className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${errors.legal_name ? "border-red-500" : "border-border"}`}
                   />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Hire Date</label>
-                  <input 
-                    type="date" 
-                    value={formData.hire_date} 
-                    onChange={(e) => setFormData({...formData, hire_date: e.target.value})}
-                    className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                  <input
+                    type="date"
+                    {...register("hire_date")}
+                    className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${errors.hire_date ? "border-red-500" : "border-border"}`}
                   />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">ID Photo</label>
                   <div className="flex items-center gap-4">
-                    {formData.id_photo_url && (
-                      <img 
-                        src={formData.id_photo_url.startsWith('http') ? formData.id_photo_url : `${window.location.origin}${formData.id_photo_url}`} 
+                    {watchedData.id_photo_url && (
+                      <img
+                        src={watchedData.id_photo_url.startsWith('http') ? watchedData.id_photo_url : `${window.location.origin}${watchedData.id_photo_url}`}
                         alt="ID Photo"
                         className="w-12 h-12 rounded-lg object-cover border border-border"
                         referrerPolicy="no-referrer"
                       />
                     )}
-                    <input 
+                    <input
                       type="file"
                       accept="image/*"
                       onChange={async (e) => {
@@ -296,8 +394,12 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                           const uploadData = new FormData();
                           uploadData.append('avatar', file);
                           try {
-                            const res = await api.post('/users/upload-avatar', uploadData);
-                            setFormData({ ...formData, id_photo_url: res.data.url });
+                            const res = await api.post('/users/upload-avatar', uploadData, {
+                              headers: {
+                                'Content-Type': 'multipart/form-data',
+                              },
+                            });
+                            reset({ ...watchedData, id_photo_url: res.data.url });
                           } catch (err) {
                             alert('Failed to upload ID photo');
                           }
@@ -318,69 +420,73 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
               <div className="grid grid-cols-1 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Job Role</label>
-                  <select 
-                    value={formData.job_id || ''} 
-                    onChange={(e) => setFormData({...formData, job_id: e.target.value ? Number(e.target.value) : null})}
-                    className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                  <select
+                    {...register("job_id")}
+                    className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${errors.job_id ? "border-red-500" : "border-border"}`}
                   >
-                    {(!employee.job_id || formData.job_id === null) && <option value="">Unassigned</option>}
+                    {(!employee.job_id || watchedData.job_id === null) && <option value="">Unassigned</option>}
                     {jobs?.map((job: any) => (
                       <option key={job.id} value={job.id}>{job.title}</option>
                     ))}
                   </select>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Hourly Rate ($)</label>
-                    <input 
-                      type="number" 
-                      value={formData.hourly_rate} 
-                      onChange={(e) => setFormData({...formData, hourly_rate: Number(e.target.value)})}
-                      className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                    <input
+                      type="number"
+                      {...register("hourly_rate")}
+                      className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${errors.hourly_rate ? "border-red-500" : "border-border"}`}
+                    />
+                    {errors.hourly_rate && <p className="text-xs text-red-500 mt-1">{errors.hourly_rate.message as string}</p>}
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Annual Leave</label>
+                    <input
+                      type="number"
+                      {...register("annual_leave_balance")}
+                      className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${errors.annual_leave_balance ? "border-red-500" : "border-border"}`}
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Leave Balance</label>
-                    <input 
-                      type="number" 
-                      value={formData.leave_balance} 
-                      onChange={(e) => setFormData({...formData, leave_balance: Number(e.target.value)})}
-                      className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Sick Leave</label>
+                    <input
+                      type="number"
+                      {...register("sick_leave_balance")}
+                      className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${errors.sick_leave_balance ? "border-red-500" : "border-border"}`}
                     />
                   </div>
                 </div>
+                {/* Banking info removed as per requirements */}
                 <div className="flex items-center justify-between p-4 bg-muted/30 border border-border rounded-xl">
                   <div className="space-y-0.5">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Overtime Policy</span>
                     <p className="text-xs font-medium">Allow extra hours</p>
                   </div>
-                  <input 
-                    type="checkbox" 
-                    checked={formData.allow_overtime} 
-                    onChange={(e) => setFormData({...formData, allow_overtime: e.target.checked})}
+                  <input
+                    type="checkbox"
+                    {...register("allow_overtime")}
                     className="w-5 h-5 rounded-lg border-border text-primary focus:ring-primary transition-all"
                   />
                 </div>
-                {formData.allow_overtime && (
+                {watchedData.allow_overtime && (
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Max OT Hours / Week</label>
-                    <input 
-                      type="number" 
+                    <input
+                      type="number"
                       step="0.5"
-                      value={formData.max_overtime_hours} 
-                      onChange={(e) => setFormData({...formData, max_overtime_hours: Number(e.target.value)})}
-                      className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                      {...register("max_overtime_hours")}
+                      className={`w-full px-4 py-2.5 bg-background border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${errors.max_overtime_hours ? "border-red-500" : "border-border"}`}
                     />
                   </div>
                 )}
 
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Employment Status</label>
-                  <select 
-                    value={formData.status || 'active'} 
-                    onChange={(e) => setFormData({...formData, status: e.target.value})}
+                  <select
+                    {...register("status")}
                     className={`w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all ${
-                      formData.status === 'active' ? 'text-emerald-600' : 'text-rose-600'
+                      watchedData.status === 'active' ? 'text-emerald-600' : 'text-rose-600'
                     }`}
                   >
                     <option value="active">Active</option>
@@ -389,32 +495,31 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                   </select>
                 </div>
 
-                {formData.status === 'suspended' && (
+                {watchedData.status === 'suspended' && (
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Suspension Reason</label>
-                    <textarea 
-                      value={formData.suspension_reason || ''} 
-                      onChange={(e) => setFormData({...formData, suspension_reason: e.target.value})}
+                    <textarea
+                      {...register("suspension_reason")}
                       placeholder="Enter reason for suspension..."
                       className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all min-h-[80px] resize-none"
                     />
                   </div>
                 )}
-                
+
                 {/* Device Binding Section */}
                 <div className="pt-4 border-t border-border">
                   <div className="flex items-center justify-between p-4 bg-muted/30 border border-border rounded-xl">
                     <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-lg ${formData.device_id ? 'bg-emerald-100 text-emerald-600' : 'bg-muted text-muted-foreground'}`}>
+                      <div className={`p-2 rounded-lg ${watchedData.device_id ? 'bg-emerald-100 text-emerald-600' : 'bg-muted text-muted-foreground'}`}>
                         <Smartphone className="w-4 h-4" />
                       </div>
                       <div className="space-y-0.5">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Device Binding</span>
-                        <p className="text-xs font-medium">{formData.device_id ? 'Device Bound' : 'No Device Linked'}</p>
+                        <p className="text-xs font-medium">{watchedData.device_id ? 'Device Bound' : 'No Device Linked'}</p>
                       </div>
                     </div>
-                    {formData.device_id && (
-                      <button 
+                    {watchedData.device_id && (
+                      <button
                         onClick={() => {
                           if (window.confirm('Are you sure you want to reset this employee\'s device binding? They will be able to clock in from a new device.')) {
                             resetDeviceMutation.mutate();
@@ -428,9 +533,9 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                       </button>
                     )}
                   </div>
-                  {formData.device_id && (
+                  {watchedData.device_id && (
                     <p className="text-[9px] text-muted-foreground mt-2 px-1">
-                      ID: <span className="font-mono">{formData.device_id}</span>
+                      ID: <span className="font-mono">{watchedData.device_id}</span>
                     </p>
                   )}
                 </div>
@@ -450,19 +555,21 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                   <p className="text-xs text-muted-foreground mt-1">Define the standard weekly timeline for this employee.</p>
                 </div>
                 <div className="flex items-center gap-6">
-                  <button 
-                    onClick={() => setFormData({ ...formData, weekly_schedule: {} })}
+                  <button
+                    onClick={() => reset({ ...watchedData, weekly_schedule: {} })}
                     className="text-[10px] font-black uppercase tracking-[0.2em] text-rose-500 hover:text-rose-600 transition-colors"
                   >
                     Reset All
                   </button>
                   <div className="flex items-center gap-4 bg-muted/50 p-2 rounded-2xl border border-border">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-2">Lunch Break</span>
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-2">Lunch Break</span>
+                      <span className="text-[8px] text-muted-foreground ml-2 max-w-[200px]">Set 0-60 mins. Automatically capped at 10% of total daily shifts. Stepaway auto-terminates at shift end.</span>
+                    </div>
                     <div className="flex items-center gap-2">
-                      <input 
-                        type="number" 
-                        value={formData.lunch_break_minutes} 
-                        onChange={(e) => setFormData({...formData, lunch_break_minutes: Number(e.target.value)})}
+                      <input
+                        type="number"
+                        {...register("lunch_break_minutes")}
                         className="w-16 px-3 py-1.5 bg-background border border-border rounded-xl text-xs font-bold focus:ring-2 focus:ring-primary/20 outline-none"
                       />
                       <span className="text-[10px] font-bold text-muted-foreground mr-2">MIN</span>
@@ -470,11 +577,11 @@ export default function EmployeeDetail({ userId, onClose }: EmployeeDetailProps)
                   </div>
                 </div>
               </div>
-              
+
               <div className="min-h-[400px]">
-                <WeeklyScheduleBuilder 
-                  schedule={formData.weekly_schedule}
-                  onChange={(newSchedule) => setFormData({ ...formData, weekly_schedule: newSchedule })}
+                <WeeklyScheduleBuilder
+                  schedule={watchedData.weekly_schedule || {}}
+                  onChange={(newSchedule) => reset({ ...watchedData, weekly_schedule: newSchedule })}
                   onError={setHasScheduleError}
                 />
               </div>

@@ -1,35 +1,157 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/axios';
-import { CheckCircle, XCircle, Clock, FileText, X, AlertCircle } from 'lucide-react';
+import { useAuthStore } from '../../store/useAuthStore';
+import { formatDisplayTime, formatDisplayDate, resolveTimezone, getWebNow as getSystemNow, calculateHoursBetween, getTimestamp, formatDuration } from '../../lib/timeManager';
+import { CheckCircle, XCircle, Clock, FileText, X, AlertCircle, RefreshCw } from 'lucide-react';
 
 interface RequestLog {
   id: number;
   user_name: string;
+  profile_picture_url?: string | null;
   reason: string;
   type: string | null;
   requested_check_in: string | null;
   requested_check_out: string | null;
+  original_check_in?: string | null;
+  original_check_out?: string | null;
+  interruption_start_time?: string | null;
+  interruption_end_time?: string | null;
+  shift_instance_id?: number | null;
+  shift_start_time?: string | null;
+  shift_end_time?: string | null;
+  shift_logical_date?: string | null;
+  attendance_shift_id?: string | null;
+  attendance_date?: string | null;
   status: string;
   created_at: string;
-  details?: string;
+  value?: number;
+  paid_minutes?: number;
+  penalty_minutes?: number;
+  approved_overtime_minutes?: number;
   manager_note?: string;
 }
 
 export default function RequestManagement() {
   const queryClient = useQueryClient();
+  const user = useAuthStore(state => state.user);
   const [filterStatus, setFilterStatus] = useState('pending');
+  const [filterEmployee, setFilterEmployee] = useState('');
+  const [filterType, setFilterType] = useState('all');
+  const [filterStartDate, setFilterStartDate] = useState(() => {
+    const tz = user?.display_timezone || resolveTimezone(user?.display_timezone);
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz
+    }).format(new Date(getSystemNow()));
+  });
+  const [filterEndDate, setFilterEndDate] = useState(() => {
+    const tz = user?.display_timezone || resolveTimezone(user?.display_timezone);
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz
+    }).format(new Date(getSystemNow()));
+  });
   const [selectedRequest, setSelectedRequest] = useState<RequestLog | null>(null);
   const [managerNote, setManagerNote] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [approvedMinutes, setApprovedMinutes] = useState<number>(0);
-  const [isPaidPermission, setIsPaidPermission] = useState(false);
-  const [paidPermissionMinutes, setPaidPermissionMinutes] = useState<number>(0);
-  const [maxPaidMinutes, setMaxPaidMinutes] = useState<number>(0);
+  const [acceptedDurationHHMM, setAcceptedDurationHHMM] = useState('00:00');
   const [penaltyHours, setPenaltyHours] = useState<number>(0);
+  const [applyPenalty, setApplyPenalty] = useState(false);
+  const [penaltyDurationHHMM, setPenaltyDurationHHMM] = useState('00:00');
+  const [showConfirmStep, setShowConfirmStep] = useState(false);
+  const [confirmActionType, setConfirmActionType] = useState<'approve' | 'reject' | null>(null);
   const [isRejecting, setIsRejecting] = useState(false);
+  const [selectedRequestIds, setSelectedRequestIds] = useState<Set<number>>(new Set());
+  const [bulkManagerNote, setBulkManagerNote] = useState('');
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const [isBulkRejecting, setIsBulkRejecting] = useState(false);
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [bulkActionType, setBulkActionType] = useState<'approve' | 'reject' | null>(null);
+  const [bulkPenalties, setBulkPenalties] = useState<Record<number, { apply: boolean; duration: string }>>({});
+  const [bulkModalError, setBulkModalError] = useState<string | null>(null);
 
-  const { data: requests, isLoading } = useQuery<RequestLog[]>({
+  const formatToHHMM = (isoString: string | null | undefined) => {
+    if (!isoString) return '--:--';
+    return formatDisplayTime(isoString, user?.display_timezone, 'HH:mm');
+  };
+
+  const getDurationMins = (start: string | null | undefined, end: string | null | undefined): number => {
+    if (!start || !end) return 0;
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    startDate.setSeconds(0, 0);
+    startDate.setMilliseconds(0);
+    endDate.setSeconds(0, 0);
+    endDate.setMilliseconds(0);
+    return Math.max(0, Math.floor((endDate.getTime() - startDate.getTime()) / 60000));
+  };
+
+  const getUnapprovedAbsenceDurationMinutes = (req: RequestLog): number => {
+    if (req.type === 'permission_to_leave' || req.type === 'shift_interruption_review') {
+      return getDurationMins(req.interruption_start_time, req.interruption_end_time);
+    }
+    if (req.type === 'early_leave_approval' || req.type === 'late_in_approval' || req.type === 'attendance_correction') {
+      if (req.value && req.value > 0) return req.value;
+      if (req.type === 'late_in_approval' && req.original_check_in && req.shift_start_time) {
+        return getDurationMins(req.shift_start_time, req.original_check_in);
+      }
+    }
+    return req.value || 0;
+  };
+
+  const getMaxDurationMins = (req: RequestLog): number => {
+    let maxMins = req.value || 0;
+    if (req.type === 'permission_to_leave' || req.type === 'shift_interruption_review') {
+      if (req.interruption_start_time && req.interruption_end_time) {
+        return getDurationMins(req.interruption_start_time, req.interruption_end_time);
+      }
+    }
+    if (req.type === 'late_in_approval' && !maxMins) {
+      if (req.original_check_in && req.shift_start_time) {
+        return getDurationMins(req.shift_start_time, req.original_check_in);
+      }
+    }
+    if (req.type === 'early_leave_approval' && !maxMins) {
+      if (req.original_check_out && req.shift_end_time) {
+        return getDurationMins(req.original_check_out, req.shift_end_time);
+      }
+    }
+    if (req.type === 'overtime_approval' && !maxMins) {
+      if (req.original_check_in && req.original_check_out) {
+        if (req.shift_start_time && req.shift_end_time && !req.attendance_shift_id?.startsWith('US_')) {
+          const startScheduled = new Date(req.shift_start_time);
+          const endScheduled = new Date(req.shift_end_time);
+          const checkInTime = new Date(req.original_check_in);
+          const checkOutTime = new Date(req.original_check_out);
+          let ot = 0;
+          if (checkInTime < startScheduled) {
+            ot += getDurationMins(req.original_check_in, req.shift_start_time);
+          }
+          if (checkOutTime > endScheduled) {
+            ot += getDurationMins(req.shift_end_time, req.original_check_out);
+          }
+          return ot;
+        } else {
+          return getDurationMins(req.original_check_in, req.original_check_out);
+        }
+      }
+    }
+    return maxMins;
+  };
+
+
+
+  const parseHHMMToMinutes = (val: string): number => {
+    const parts = val.split(':');
+    if (parts.length === 2) {
+      const hours = parseInt(parts[0], 10) || 0;
+      const minutes = parseInt(parts[1], 10) || 0;
+      return hours * 60 + minutes;
+    }
+    const mins = parseInt(val, 10);
+    return isNaN(mins) ? 0 : mins;
+  };
+
+  const { data: requests, isLoading, refetch, isFetching } = useQuery<RequestLog[]>({
     queryKey: ['requests'],
     queryFn: async () => {
       const res = await api.get('/requests');
@@ -38,8 +160,8 @@ export default function RequestManagement() {
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, status, manager_note, approved_minutes, is_paid_permission, paid_permission_minutes, penalty_hours }: { id: number, status: string, manager_note?: string, approved_minutes?: number, is_paid_permission?: boolean, paid_permission_minutes?: number, penalty_hours?: number }) => {
-      const res = await api.put(`/requests/${id}/status`, { status, manager_note, approved_minutes, is_paid_permission, paid_permission_minutes, penalty_hours });
+    mutationFn: async ({ id, status, manager_note, approved_minutes, paid_minutes, penalty_minutes }: { id: number, status: string, manager_note?: string, approved_minutes?: number, paid_minutes?: number, penalty_minutes?: number }) => {
+      const res = await api.put(`/requests/${id}/status`, { status, manager_note, approved_minutes, paid_minutes, penalty_minutes });
       return res.data;
     },
     onSuccess: () => {
@@ -50,102 +172,279 @@ export default function RequestManagement() {
     }
   });
 
+
+  const formatRequestedAt = (isoString: string | null) => {
+    if (!isoString) return '-';
+    return formatDisplayTime(isoString, user?.display_timezone, 'MMM dd, HH:mm');
+  };
+
   const formatTime = (isoString: string | null) => {
     if (!isoString) return '-';
-    return new Date(isoString).toLocaleString([], { 
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
-    });
+    return formatDisplayTime(isoString, user?.display_timezone, 'MMM dd, HH:mm');
   };
 
   const filteredRequests = requests?.filter(req => {
-    if (filterStatus === 'all') return true;
-    return req.status === filterStatus;
+    if (filterStatus !== 'all' && req.status !== filterStatus) return false;
+
+    if (filterEmployee && !req.user_name.toLowerCase().includes(filterEmployee.toLowerCase())) return false;
+
+    if (filterType !== 'all') {
+      const typeStr = req.type || 'manual_clock';
+      if (typeStr !== filterType) return false;
+    }
+
+    const reqLocalDate = formatDisplayDate(req.created_at, user?.display_timezone);
+
+    if (filterStartDate && reqLocalDate < filterStartDate) return false;
+    if (filterEndDate && reqLocalDate > filterEndDate) return false;
+
+    return true;
   });
 
   const openModal = (req: RequestLog) => {
     setSelectedRequest(req);
     setManagerNote(req.manager_note || '');
-    setIsPaidPermission(false);
-    setPaidPermissionMinutes(0);
-    setMaxPaidMinutes(0);
     setPenaltyHours(0);
+    setApplyPenalty(false);
+    setPenaltyDurationHHMM('00:00');
+    setShowConfirmStep(false);
+    setConfirmActionType(null);
     setIsRejecting(false);
     setError(null);
-    
-    if (req.type === 'overtime_approval' && req.details) {
-      try {
-        const details = JSON.parse(req.details);
-        setApprovedMinutes(details.requested_overtime_minutes || details.raw_overtime_minutes || 0);
-      } catch (e) {
-        setApprovedMinutes(0);
-      }
-    } else if (req.type === 'early_leave_approval' || req.type === 'attendance_correction') {
-      try {
-        const details = JSON.parse(req.details || '{}');
-        const missing = details.missing_minutes || details.early_leave_minutes || 0;
-        setMaxPaidMinutes(missing);
-        setPaidPermissionMinutes(missing);
-        setIsPaidPermission(missing > 0);
-      } catch (e) {
-        setMaxPaidMinutes(0);
-        setPaidPermissionMinutes(0);
-      }
-    } else {
-      setApprovedMinutes(0);
+
+    let initialMins = req.value || 0;
+    if ((req.type === 'permission_to_leave' || req.type === 'shift_interruption_review') && !initialMins) {
+      initialMins = getDurationMins(req.interruption_start_time, req.interruption_end_time);
+    } else if (req.type === 'late_in_approval' && !initialMins && req.original_check_in && req.shift_start_time) {
+      initialMins = getDurationMins(req.shift_start_time, req.original_check_in);
     }
+    setAcceptedDurationHHMM(formatDuration(initialMins));
   };
 
   const closeModal = () => {
     setSelectedRequest(null);
     setManagerNote('');
     setError(null);
-    setApprovedMinutes(0);
+    setAcceptedDurationHHMM('00:00');
+    setApplyPenalty(false);
+    setPenaltyDurationHHMM('00:00');
+    setShowConfirmStep(false);
+    setConfirmActionType(null);
   };
 
-  const handleApprove = () => {
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeModal();
+        setShowBulkModal(false);
+        setBulkActionType(null);
+        setBulkModalError(null);
+      }
+    };
+    if (selectedRequest || showBulkModal) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedRequest, showBulkModal]);
+
+  const handleApproveClick = () => {
     if (!selectedRequest) return;
     if (!managerNote.trim()) {
       setError("A manager note is mandatory to approve or reject this request.");
       return;
     }
-    updateStatusMutation.mutate({ 
-      id: selectedRequest.id, 
+    const needsDuration = ['permission_to_leave', 'shift_interruption_review', 'overtime_approval', 'early_leave_approval', 'late_in_approval'].includes(selectedRequest.type || '');
+    if (needsDuration) {
+      if (!/^\d+:[0-5]\d$/.test(acceptedDurationHHMM)) {
+        setError("Accepted duration must be in HH:MM format (e.g., 01:30, 00:45).");
+        return;
+      }
+      const maxMins = getMaxDurationMins(selectedRequest);
+      const inputMins = parseHHMMToMinutes(acceptedDurationHHMM);
+      if (inputMins > maxMins) {
+        setError(`Approved duration (${acceptedDurationHHMM}) cannot exceed the maximum allowed period of ${formatDuration(maxMins)}.`);
+        return;
+      }
+    }
+    setError(null);
+    setConfirmActionType('approve');
+    setShowConfirmStep(true);
+  };
+
+  const handleRejectClick = () => {
+    if (!selectedRequest) return;
+    if (!managerNote.trim()) {
+      setError("A manager note is mandatory to approve or reject this request.");
+      return;
+    }
+    if (applyPenalty && !/^\d+:[0-5]\d$/.test(penaltyDurationHHMM)) {
+      setError("Penalty duration must be in HH:MM format (e.g., 01:30, 00:45).");
+      return;
+    }
+    setError(null);
+    setConfirmActionType('reject');
+    setShowConfirmStep(true);
+  };
+
+  const executeApprove = () => {
+    if (!selectedRequest) return;
+    const durationMinutes = parseHHMMToMinutes(acceptedDurationHHMM);
+    const isOvertime = selectedRequest.type === 'overtime_approval';
+    updateStatusMutation.mutate({
+      id: selectedRequest.id,
       status: 'approved',
       manager_note: managerNote,
-      approved_minutes: selectedRequest.type === 'overtime_approval' ? approvedMinutes : undefined,
-      is_paid_permission: isPaidPermission,
-      paid_permission_minutes: isPaidPermission ? paidPermissionMinutes : 0
+      approved_minutes: isOvertime ? durationMinutes : undefined,
+      paid_minutes: !isOvertime ? durationMinutes : 0
     });
   };
 
-  const handleReject = () => {
+  const executeReject = () => {
     if (!selectedRequest) return;
-    if (!managerNote.trim()) {
-      setError("A manager note is mandatory to approve or reject this request.");
-      return;
-    }
-    updateStatusMutation.mutate({ 
-      id: selectedRequest.id, 
+    const penaltyMinutes = applyPenalty ? parseHHMMToMinutes(penaltyDurationHHMM) : 0;
+    updateStatusMutation.mutate({
+      id: selectedRequest.id,
       status: 'rejected',
       manager_note: managerNote,
-      penalty_hours: penaltyHours
+      penalty_minutes: penaltyMinutes
     });
   };
+
+  const handleBulkActionClick = (actionType: 'approve' | 'reject') => {
+    if (selectedRequestIds.size === 0) return;
+    if (!bulkManagerNote.trim()) {
+      setBulkError(`A manager note is mandatory to ${actionType} these requests.`);
+      return;
+    }
+    setBulkError(null);
+    setBulkModalError(null);
+
+    // Initialize bulk penalties for eligible requests
+    const initialPenalties: Record<number, { apply: boolean; duration: string }> = {};
+    selectedRequestIds.forEach(id => {
+      const req = requests?.find(r => r.id === id);
+      if (req && ['permission_to_leave', 'shift_interruption_review', 'early_leave_approval', 'late_in_approval'].includes(req.type || '')) {
+        initialPenalties[id] = { apply: false, duration: '00:00' };
+      }
+    });
+
+    setBulkPenalties(initialPenalties);
+    setBulkActionType(actionType);
+    setShowBulkModal(true);
+  };
+
 
   return (
     <div className="space-y-6 relative">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold tracking-tight">Requests & Approvals</h2>
-        <select 
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          className="px-4 py-2 bg-card border border-border rounded-lg text-sm font-medium shadow-sm"
-        >
-          <option value="pending">Pending Only</option>
-          <option value="approved">Approved</option>
-          <option value="rejected">Rejected</option>
-          <option value="all">All Requests</option>
-        </select>
+      </div>
+
+      <div className="bg-card border border-border rounded-xl shadow-sm p-4 space-y-4">
+        {selectedRequestIds.size > 0 && (
+          <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between mb-4 animate-in fade-in slide-in-from-top-2">
+            <div className="flex-1 w-full">
+              <label className="text-sm font-bold text-foreground mb-1 block">Bulk Justification <span className="text-destructive">*</span></label>
+              <input
+                type="text"
+                placeholder="Manager note for all selected requests..."
+                value={bulkManagerNote}
+                onChange={(e) => {
+                  setBulkManagerNote(e.target.value);
+                  if (e.target.value.trim()) setBulkError(null);
+                }}
+                className={`w-full px-3 py-2 bg-background border rounded-lg outline-none focus:ring-2 focus:ring-primary/20 ${bulkError ? 'border-destructive' : 'border-border'}`}
+              />
+              {bulkError && <p className="text-xs text-destructive mt-1 font-medium">{bulkError}</p>}
+            </div>
+            <div className="flex items-center gap-2 shrink-0 pt-6 md:pt-0">
+              <button
+                onClick={() => handleBulkActionClick('reject')}
+                className="px-4 py-2 bg-destructive/10 text-destructive text-sm font-medium rounded-lg hover:bg-destructive/20 transition-colors"
+              >
+                Reject Selected ({selectedRequestIds.size})
+              </button>
+              <button
+                onClick={() => handleBulkActionClick('approve')}
+                className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors"
+              >
+                Approve Selected ({selectedRequestIds.size})
+              </button>
+            </div>
+          </div>
+        )}
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
+          <div className="flex flex-col">
+            <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1">Employee</label>
+            <input
+              type="text"
+              placeholder="Search..."
+              value={filterEmployee}
+              onChange={(e) => setFilterEmployee(e.target.value)}
+              className="px-3 py-1.5 bg-background border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+          <div className="flex flex-col">
+            <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1">Type</label>
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="px-3 py-1.5 bg-background border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="all">All</option>
+              <option value="manual_clock">Manual Clock</option>
+              <option value="permission_to_leave">Permission to Leave</option>
+              <option value="shift_interruption_review">Shift Interruption Review</option>
+              <option value="overtime_approval">Overtime</option>
+              <option value="early_leave_approval">Early Leave</option>
+              <option value="late_in_approval">Late In</option>
+              <option value="attendance_correction">Attendance Correction</option>
+            </select>
+          </div>
+          <div className="flex flex-col">
+            <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1">From Date</label>
+            <input
+              type="date"
+              value={filterStartDate}
+              onChange={(e) => setFilterStartDate(e.target.value)}
+              className="px-3 py-1.5 bg-background border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+          <div className="flex flex-col">
+            <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1">To Date</label>
+            <input
+              type="date"
+              value={filterEndDate}
+              onChange={(e) => setFilterEndDate(e.target.value)}
+              className="px-3 py-1.5 bg-background border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+          <div className="flex flex-col">
+            <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1">Status</label>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="px-3 py-1.5 bg-background border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="pending">Pending Only</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+              <option value="all">All</option>
+            </select>
+          </div>
+          <div className="flex flex-col">
+            <button
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="px-4 py-1.5 bg-primary text-primary-foreground text-sm font-semibold rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 h-[34px] cursor-pointer"
+            >
+              <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
+              Search
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
@@ -161,32 +460,96 @@ export default function RequestManagement() {
             <table className="w-full text-sm text-left">
               <thead className="text-xs text-muted-foreground uppercase bg-muted/50">
                 <tr>
+                  <th className="px-6 py-3 font-medium w-10">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 rounded-md border-border text-primary focus:ring-primary cursor-pointer transition-all"
+                      checked={filteredRequests?.length > 0 && Array.from(selectedRequestIds).length === filteredRequests?.filter(req => req.status === 'pending').length && filteredRequests?.filter(req => req.status === 'pending').length > 0}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          const newSet = new Set<number>();
+                          filteredRequests?.forEach(req => {
+                            if (req.status === 'pending') {
+                              newSet.add(req.id);
+                            }
+                          });
+                          setSelectedRequestIds(newSet);
+                        } else {
+                          setSelectedRequestIds(new Set());
+                        }
+                      }}
+                    />
+                  </th>
                   <th className="px-6 py-3 font-medium">Employee</th>
+                  <th className="px-6 py-3 font-medium">Requested At</th>
                   <th className="px-6 py-3 font-medium">Type</th>
                   <th className="px-6 py-3 font-medium">Reason</th>
-                  <th className="px-6 py-3 font-medium">Requested In</th>
-                  <th className="px-6 py-3 font-medium">Requested Out</th>
                   <th className="px-6 py-3 font-medium">Status</th>
-                  <th className="px-6 py-3 font-medium text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {filteredRequests?.map((req) => (
-                  <tr key={req.id} className="hover:bg-muted/50 transition-colors">
-                    <td className="px-6 py-4 font-medium">{req.user_name}</td>
+                  <tr 
+                    key={req.id} 
+                    onClick={() => openModal(req)}
+                    className="hover:bg-muted/50 transition-colors cursor-pointer"
+                  >
+                    <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                      {req.status === 'pending' ? (
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 rounded-md border-border text-primary focus:ring-primary cursor-pointer transition-all"
+                          checked={selectedRequestIds.has(req.id)}
+                          onChange={(e) => {
+                            const newSet = new Set(selectedRequestIds);
+                            if (e.target.checked) {
+                              newSet.add(req.id);
+                            } else {
+                              newSet.delete(req.id);
+                            }
+                            setSelectedRequestIds(newSet);
+                          }}
+                        />
+                      ) : (
+                        <div className="w-4 h-4" />
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="relative w-8 h-8 shrink-0">
+                          {req.profile_picture_url ? (
+                            <img
+                              src={req.profile_picture_url.startsWith('http') ? req.profile_picture_url : `${window.location.origin}${req.profile_picture_url}`}
+                              alt={req.user_name}
+                              className="w-8 h-8 rounded-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none';
+                                (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                              }}
+                            />
+                          ) : null}
+                          <div className={`w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary text-xs uppercase ${req.profile_picture_url ? 'hidden' : ''}`}>
+                            {req.user_name.split(' ').map((n: string) => n[0]).join('')}
+                          </div>
+                        </div>
+                        <div className="font-medium text-foreground">{req.user_name}</div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 font-mono text-xs text-muted-foreground">{formatRequestedAt(req.created_at)}</td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                        req.type === 'permission_to_leave' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' : 
+                        req.type === 'permission_to_leave' ? 'bg-teal-100 text-teal-700 dark:bg-teal-500/20 dark:text-teal-400' :
                         req.type === 'overtime_approval' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' :
                         req.type === 'early_leave_approval' ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400' :
+                        req.type === 'shift_interruption_review' ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-400' :
+                        req.type === 'late_in_approval' ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400' :
+                        req.type === 'attendance_correction' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
                         'bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-400'
                       }`}>
                         {req.type?.replace(/_/g, ' ') || 'Manual Clock'}
                       </span>
                     </td>
                     <td className="px-6 py-4 max-w-xs truncate" title={req.reason}>{req.reason}</td>
-                    <td className="px-6 py-4 font-mono text-xs">{formatTime(req.requested_check_in)}</td>
-                    <td className="px-6 py-4 font-mono text-xs">{formatTime(req.requested_check_out)}</td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                         req.status === 'approved' ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' :
@@ -196,23 +559,6 @@ export default function RequestManagement() {
                       }`}>
                         {req.status.toUpperCase()}
                       </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      {req.status === 'pending' ? (
-                        <button 
-                          onClick={() => openModal(req)}
-                          className="px-3 py-1.5 bg-primary text-primary-foreground text-xs font-medium rounded-md hover:bg-primary/90 transition-colors flex items-center gap-1 ml-auto"
-                        >
-                          <FileText className="w-3 h-3" /> Review
-                        </button>
-                      ) : (
-                        <button 
-                          onClick={() => openModal(req)}
-                          className="px-3 py-1.5 bg-muted text-muted-foreground text-xs font-medium rounded-md hover:bg-muted/80 transition-colors flex items-center gap-1 ml-auto"
-                        >
-                          View Details
-                        </button>
-                      )}
                     </td>
                   </tr>
                 ))}
@@ -232,208 +578,1003 @@ export default function RequestManagement() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
-            <div className="p-6 overflow-y-auto flex-1 space-y-4">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Employee</label>
-                <p className="font-medium">{selectedRequest.user_name}</p>
-              </div>
-              
-              <div>
-                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Type</label>
-                <p className="capitalize">{selectedRequest.type?.replace(/_/g, ' ') || 'Manual Clock'}</p>
-              </div>
 
-              <div>
-                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Reason provided</label>
-                <p className="text-sm mt-1 bg-muted/50 p-3 rounded-lg border border-border">{selectedRequest.reason}</p>
-              </div>
-
-              {selectedRequest.type === 'attendance_correction' && (
-                <div className="space-y-4 pt-2 border-t border-border">
-                  <h4 className="font-semibold text-sm text-primary">Attendance Correction Details</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-muted/30 p-3 rounded-lg border border-border">
-                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">Original (Before)</label>
-                      <div className="space-y-2">
-                        <div>
-                          <span className="text-xs text-muted-foreground">Clock In:</span>
-                          <p className="font-mono text-sm">{formatTime(selectedRequest.original_check_in || null)}</p>
-                        </div>
-                        <div>
-                          <span className="text-xs text-muted-foreground">Clock Out:</span>
-                          <p className="font-mono text-sm">{formatTime(selectedRequest.original_check_out || null)}</p>
-                        </div>
-                      </div>
+            {showConfirmStep ? (
+              <div className="flex-1 overflow-y-auto flex flex-col justify-between">
+                <div className="p-6 space-y-4">
+                  <div className="text-center space-y-2">
+                    <div className={`mx-auto w-12 h-12 rounded-full flex items-center justify-center ${
+                      confirmActionType === 'approve' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400' : 'bg-rose-100 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400'
+                    }`}>
+                      {confirmActionType === 'approve' ? <CheckCircle className="w-6 h-6" /> : <XCircle className="w-6 h-6" />}
                     </div>
-                    <div className="bg-primary/5 p-3 rounded-lg border border-primary/20">
-                      <label className="text-xs font-bold text-primary uppercase tracking-wider mb-2 block">Proposed (After)</label>
-                      <div className="space-y-2">
-                        <div>
-                          <span className="text-xs text-muted-foreground">Clock In:</span>
-                          <p className="font-mono text-sm font-medium">
-                            {(() => {
-                              try {
-                                const details = JSON.parse(selectedRequest.details || '{}');
-                                return formatTime(details.new_clock_in || null);
-                              } catch (e) { return '-'; }
-                            })()}
-                          </p>
-                        </div>
-                        <div>
-                          <span className="text-xs text-muted-foreground">Clock Out:</span>
-                          <p className="font-mono text-sm font-medium">
-                            {(() => {
-                              try {
-                                const details = JSON.parse(selectedRequest.details || '{}');
-                                return formatTime(details.new_clock_out || null);
-                              } catch (e) { return '-'; }
-                            })()}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {selectedRequest.type === 'overtime_approval' && (
-                <div className="space-y-2 pt-2">
-                  <label className="text-sm font-medium">Approved Overtime (Minutes)</label>
-                  <input 
-                    type="number" 
-                    value={approvedMinutes}
-                    onChange={(e) => setApprovedMinutes(Number(e.target.value))}
-                    disabled={selectedRequest.status !== 'pending'}
-                    className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none disabled:opacity-50"
-                  />
-                  <p className="text-xs text-muted-foreground">Adjust the minutes if necessary before approving.</p>
-                </div>
-              )}
-
-              {(selectedRequest.type === 'early_leave_approval' || selectedRequest.type === 'attendance_correction') && (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3 p-3 bg-primary/5 rounded-lg border border-primary/10">
-                    <input 
-                      type="checkbox" 
-                      id="paid-permission"
-                      checked={isPaidPermission}
-                      onChange={(e) => setIsPaidPermission(e.target.checked)}
-                      disabled={selectedRequest.status !== 'pending'}
-                      className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
-                    />
-                    <div>
-                      <label htmlFor="paid-permission" className="text-sm font-semibold block">Mark as Paid Permission</label>
-                      <p className="text-xs text-muted-foreground">If enabled, you can specify how many minutes are paid.</p>
-                    </div>
-                  </div>
-
-                  {isPaidPermission && (
-                    <div className="space-y-2 pl-7">
-                      <label className="text-sm font-medium">Approved Paid Minutes</label>
-                      <input 
-                        type="number" 
-                        value={paidPermissionMinutes}
-                        max={maxPaidMinutes}
-                        onChange={(e) => {
-                          const val = Math.min(maxPaidMinutes, Math.max(0, Number(e.target.value)));
-                          setPaidPermissionMinutes(val);
-                        }}
-                        disabled={selectedRequest.status !== 'pending'}
-                        className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none disabled:opacity-50"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Max allowed: {maxPaidMinutes} minutes.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="space-y-3 pt-4 border-t border-border">
-                <div className="flex justify-between items-center">
-                  <label className="text-sm font-bold text-foreground">Manager Justification <span className="text-destructive">*</span></label>
-                  <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-100 text-amber-700 rounded uppercase">Required for Payroll Audit</span>
-                </div>
-                <textarea 
-                  value={managerNote}
-                  onChange={(e) => {
-                    setManagerNote(e.target.value);
-                    if (e.target.value.trim()) setError(null);
-                  }}
-                  disabled={selectedRequest.status !== 'pending'}
-                  placeholder="Explain why this request is being approved or rejected..."
-                  className={`w-full px-4 py-3 bg-amber-50/30 dark:bg-amber-500/5 border-2 rounded-xl min-h-[100px] focus:ring-4 focus:ring-primary/10 outline-none resize-none transition-all disabled:opacity-50 ${
-                    error ? 'border-destructive' : 'border-amber-200 dark:border-amber-500/20'
-                  }`}
-                />
-                {error && <p className="text-xs text-destructive font-bold flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" /> {error}
-                </p>}
-                <p className="text-[11px] text-muted-foreground italic">
-                  This note will be permanently attached to the payroll transaction and visible to the employee.
-                </p>
-              </div>
-            </div>
-
-            {selectedRequest.status === 'pending' && (
-              <div className="p-6 border-t border-border bg-muted/30 space-y-4">
-                {isRejecting && (
-                  <div className="bg-destructive/5 p-4 rounded-xl border border-destructive/20 animate-in fade-in slide-in-from-top-2">
-                    <label className="text-sm font-bold text-destructive block mb-2">
-                      Apply Disciplinary Penalty (Hours)
-                    </label>
-                    <input 
-                      type="number" 
-                      value={penaltyHours}
-                      onChange={(e) => setPenaltyHours(Math.max(0, Number(e.target.value)))}
-                      placeholder="0.0"
-                      step="0.5"
-                      className="w-full px-3 py-2 bg-background border border-destructive/20 rounded-lg focus:ring-2 focus:ring-destructive/20 outline-none font-mono"
-                    />
-                    <p className="text-[11px] text-muted-foreground mt-2 italic">
-                      Did this unauthorized action disrupt operations? You can apply an additional penalty deduction here.
+                    <h3 className="text-lg font-black tracking-tight text-foreground">
+                      Confirm Action Summary
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      Review the final payroll and attendance effects before saving.
                     </p>
                   </div>
+
+                  <div className="bg-muted/10 border border-border rounded-xl p-4 space-y-3 text-sm">
+                    <div className="flex justify-between items-center py-1 border-b border-border/50">
+                      <span className="text-xs text-muted-foreground">Employee:</span>
+                      <span className="font-bold text-foreground">{selectedRequest.user_name}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-1 border-b border-border/50">
+                      <span className="text-xs text-muted-foreground">Request Type:</span>
+                      <span className="font-semibold text-foreground capitalize">
+                        {selectedRequest.type?.replace(/_/g, ' ') || 'Manual Clock'}
+                      </span>
+                    </div>
+
+                    {confirmActionType === 'approve' ? (
+                      selectedRequest.type === 'attendance_correction' ? (
+                        <div className="bg-emerald-500/5 border border-emerald-500/20 p-3 rounded-lg space-y-2 mt-2">
+                          <div className="text-xs font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">
+                            Attendance Correction Summary
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">
+                            This request will be marked as approved. The shift check-in and check-out times will be updated to the proposed times.
+                          </p>
+                          <div className="space-y-1 text-xs">
+                            <div className="flex justify-between items-center">
+                              <span className="text-muted-foreground">New Clock In:</span>
+                              <span className="font-mono font-semibold text-foreground">
+                                {formatTime(selectedRequest.requested_check_in || selectedRequest.original_check_in || null)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-muted-foreground">New Clock Out:</span>
+                              <span className="font-mono font-semibold text-foreground">
+                                {formatTime(selectedRequest.requested_check_out || selectedRequest.original_check_out || null)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center border-t border-emerald-500/10 pt-1.5 mt-1">
+                              <span className="font-bold text-emerald-800 dark:text-emerald-300">New Duration:</span>
+                              <span className="font-mono font-black text-emerald-600 dark:text-emerald-400 text-base">
+                                {formatDuration(getDurationMins(
+                                  selectedRequest.requested_check_in || selectedRequest.original_check_in,
+                                  selectedRequest.requested_check_out || selectedRequest.original_check_out
+                                ))}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-emerald-500/5 border border-emerald-500/20 p-3 rounded-lg space-y-1 mt-2">
+                          <div className="text-xs font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">
+                            Payroll Credit Impact
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">
+                            This request will be marked as approved. The specified paid duration will be credited to the employee.
+                          </p>
+                          <div className="flex justify-between items-center pt-1">
+                            <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">Paid Credit Duration:</span>
+                            <span className="font-mono font-black text-emerald-600 dark:text-emerald-400 text-base">
+                              {acceptedDurationHHMM}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    ) : (
+                      selectedRequest.type === 'attendance_correction' ? (
+                        <div className="bg-rose-500/5 border border-rose-500/20 p-3 rounded-lg space-y-2 mt-2">
+                          <div className="text-xs font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest">
+                            Attendance Correction Rejection
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">
+                            This request will be rejected. Nothing will change and the existing check-in/out times and duration will remain as is.
+                          </p>
+                          <div className="space-y-1 text-xs">
+                            <div className="flex justify-between items-center">
+                              <span className="text-muted-foreground">Existing Clock In:</span>
+                              <span className="font-mono font-semibold text-foreground">
+                                {formatTime(selectedRequest.original_check_in || null)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-muted-foreground">Existing Clock Out:</span>
+                              <span className="font-mono font-semibold text-foreground">
+                                {formatTime(selectedRequest.original_check_out || null)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center border-t border-rose-500/10 pt-1.5 mt-1">
+                              <span className="font-bold text-rose-800 dark:text-rose-300">Existing Shift Duration:</span>
+                              <span className="font-mono font-black text-rose-600 dark:text-rose-400 text-base">
+                                {formatDuration(getDurationMins(selectedRequest.original_check_in, selectedRequest.original_check_out))}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-3 mt-2">
+                          <div className="bg-rose-500/5 border border-rose-500/20 p-3 rounded-lg space-y-1">
+                            <div className="text-xs font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest">
+                              Payroll Absence Impact
+                            </div>
+                            <p className="text-[11px] text-muted-foreground">
+                              This request will be rejected. The corresponding duration will remain unpaid.
+                            </p>
+                            <div className="flex justify-between items-center pt-1">
+                              <span className="text-xs font-bold text-rose-800 dark:text-rose-300">Unpaid Duration:</span>
+                              <span className="font-mono font-black text-rose-600 dark:text-rose-400 text-base">
+                                {formatDuration(getUnapprovedAbsenceDurationMinutes(selectedRequest))}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className={`p-3 rounded-lg border space-y-1 ${
+                            applyPenalty 
+                              ? 'bg-amber-500/5 border-amber-500/20' 
+                              : 'bg-muted/30 border-border/50'
+                          }`}>
+                            <div className={`text-xs font-black uppercase tracking-widest ${
+                              applyPenalty ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'
+                            }`}>
+                              Extra Disciplinary Penalty
+                            </div>
+                            <p className="text-[11px] text-muted-foreground">
+                              {applyPenalty 
+                                ? 'An additional disciplinary deduction will be applied directly to the payroll ledger.'
+                                : 'No extra disciplinary penalty will be applied.'}
+                            </p>
+                            <div className="flex justify-between items-center pt-1">
+                              <span className="text-xs font-bold text-muted-foreground">Extra Penalty Duration:</span>
+                              <span className={`font-mono font-black text-base ${
+                                applyPenalty ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'
+                              }`}>
+                                {applyPenalty ? penaltyDurationHHMM : 'None (00:00)'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    )}
+
+                    <div className="pt-2">
+                      <span className="text-xs font-bold text-muted-foreground block mb-1">Audit Log Justification:</span>
+                      <div className="p-3 bg-muted/40 rounded-lg text-xs text-foreground italic border border-border/50 max-h-24 overflow-y-auto">
+                        "{managerNote}"
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="p-6 border-t border-border bg-muted/30 flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowConfirmStep(false);
+                      setConfirmActionType(null);
+                    }}
+                    className="flex-1 px-4 py-3 bg-muted text-muted-foreground font-bold rounded-xl hover:bg-muted/80 transition-all border border-border"
+                  >
+                    Back to Editing
+                  </button>
+                  <button
+                    onClick={confirmActionType === 'approve' ? executeApprove : executeReject}
+                    disabled={updateStatusMutation.isPending}
+                    className={`flex-[2] px-4 py-3 text-white font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${
+                      confirmActionType === 'approve' 
+                        ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/20' 
+                        : 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/20'
+                    }`}
+                  >
+                    <CheckCircle className="w-5 h-5" /> Confirm & Submit
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="p-6 overflow-y-auto flex-1 space-y-4">
+                  {(() => {
+                    const parsedDetails = {
+                      new_clock_in: selectedRequest.requested_check_in || selectedRequest.original_check_in,
+                      new_clock_out: selectedRequest.requested_check_out || selectedRequest.original_check_out,
+                      missing_minutes: selectedRequest.value,
+                      early_leave_minutes: selectedRequest.value,
+                      late_in_minutes: selectedRequest.value,
+                      approved_minutes: selectedRequest.approved_overtime_minutes,
+                      paid_permission_minutes: selectedRequest.paid_minutes,
+                      penalty_hours: (selectedRequest.penalty_minutes || 0) / 60
+                    };
+                    
+                    return (
+                      <>
+                        <div>
+                          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Employee</label>
+                          <p className="font-medium">{selectedRequest.user_name}</p>
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Type</label>
+                          <p className="capitalize font-medium">{selectedRequest.type?.replace(/_/g, ' ') || 'Manual Clock'}</p>
+                        </div>
+
+                        {/* Related Shift Section */}
+                        <div className="pt-2 border-t border-border">
+                          <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">Related Shift</label>
+                          {selectedRequest.attendance_shift_id?.startsWith('US_') ? (
+                            <div className="bg-amber-500/5 dark:bg-amber-500/10 p-3 rounded-lg border border-amber-500/20 space-y-1.5 text-sm">
+                              <div className="flex justify-between">
+                                <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">Shift Type:</span>
+                                <span className="font-bold text-amber-700 dark:text-amber-300">Unscheduled Shift</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-xs text-muted-foreground">Shift ID:</span>
+                                <span className="font-mono text-xs text-muted-foreground">{selectedRequest.attendance_shift_id}</span>
+                              </div>
+                            {selectedRequest.attendance_date && (
+                              <div className="flex justify-between">
+                                <span className="text-xs text-muted-foreground">Logical Date:</span>
+                                <span className="font-medium">
+                                  {formatDisplayDate(selectedRequest.original_check_in || selectedRequest.requested_check_in || selectedRequest.attendance_date, user?.display_timezone)}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        ) : selectedRequest.shift_instance_id ? (
+                          <div className="bg-muted/30 p-3 rounded-lg border border-border space-y-1.5 text-sm">
+                            <div className="flex justify-between">
+                              <span className="text-xs text-muted-foreground">Shift ID:</span>
+                              <span className="font-medium">{selectedRequest.shift_instance_id}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-xs text-muted-foreground">Logical Date:</span>
+                              <span className="font-medium">
+                                {formatDisplayDate(selectedRequest.shift_start_time || selectedRequest.shift_logical_date, user?.display_timezone)}
+                              </span>
+                            </div>
+                              <div className="flex justify-between">
+                                <span className="text-xs text-muted-foreground">Scheduled Time:</span>
+                                <span className="font-mono text-xs">
+                                  {formatToHHMM(selectedRequest.shift_start_time)} - {formatToHHMM(selectedRequest.shift_end_time)}
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="bg-muted/10 p-2 rounded-lg border border-border text-xs text-muted-foreground italic">
+                              No related scheduled shift (Unscheduled)
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Reason provided</label>
+                          <p className="text-sm mt-1 bg-muted/50 p-3 rounded-lg border border-border">{selectedRequest.reason}</p>
+                        </div>
+
+                        {/* Specific Request Detail Types */}
+                        {selectedRequest.type === 'permission_to_leave' && (
+                          <div className="space-y-3 pt-2 border-t border-border">
+                            <h4 className="font-semibold text-sm text-primary">Permission Details</h4>
+                            <div className="bg-muted/30 p-3 rounded-lg border border-border space-y-1 text-sm">
+                              <div className="flex justify-between">
+                                <span className="text-xs text-muted-foreground">Away Time:</span>
+                                <span className="font-mono">{formatToHHMM(selectedRequest.interruption_start_time)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-xs text-muted-foreground">Resume Time:</span>
+                                <span className="font-mono">{formatToHHMM(selectedRequest.interruption_end_time)}</span>
+                              </div>
+                              <div className="flex justify-between border-t border-border/50 pt-1 mt-1 font-medium">
+                                <span className="text-xs text-muted-foreground">Total Period Duration:</span>
+                                <span className="font-mono">
+                                  {formatDuration(getDurationMins(selectedRequest.interruption_start_time, selectedRequest.interruption_end_time))}
+                                </span>
+                              </div>
+                            </div>
+
+                            {selectedRequest.status === 'pending' && (
+                              <div className="space-y-2">
+                                <label className="text-sm font-medium block">Accepted Paid Duration (HH:MM)</label>
+                                <input
+                                  type="text"
+                                  placeholder="HH:MM"
+                                  value={acceptedDurationHHMM}
+                                  onChange={(e) => setAcceptedDurationHHMM(e.target.value)}
+                                  className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none font-mono"
+                                />
+                                <p className="text-xs text-muted-foreground">Specify the accepted duration of the permission.</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {selectedRequest.type === 'shift_interruption_review' && (
+                          <div className="space-y-3 pt-2 border-t border-border">
+                            <h4 className="font-semibold text-sm text-primary">Interruption Details</h4>
+                            <div className="bg-muted/30 p-3 rounded-lg border border-border space-y-1 text-sm">
+                              <div className="flex justify-between">
+                                <span className="text-xs text-muted-foreground">Start Gap Time:</span>
+                                <span className="font-mono">{formatToHHMM(selectedRequest.interruption_start_time)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-xs text-muted-foreground">End Gap Time:</span>
+                                <span className="font-mono">{formatToHHMM(selectedRequest.interruption_end_time)}</span>
+                              </div>
+                              <div className="flex justify-between border-t border-border/50 pt-1 mt-1 font-medium">
+                                <span className="text-xs text-muted-foreground">Gap Duration:</span>
+                                <span className="font-mono">
+                                  {formatDuration(getDurationMins(selectedRequest.interruption_start_time, selectedRequest.interruption_end_time))}
+                                </span>
+                              </div>
+                            </div>
+
+                            {selectedRequest.status === 'pending' && (
+                              <div className="space-y-2">
+                                <label className="text-sm font-medium block">Accepted Paid Duration (HH:MM)</label>
+                                <input
+                                  type="text"
+                                  placeholder="HH:MM"
+                                  value={acceptedDurationHHMM}
+                                  onChange={(e) => setAcceptedDurationHHMM(e.target.value)}
+                                  className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none font-mono"
+                                />
+                                <p className="text-xs text-muted-foreground">Specify the accepted duration of the interruption.</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {selectedRequest.type === 'overtime_approval' && (
+                          <div className="space-y-3 pt-2 border-t border-border">
+                            <h4 className="font-semibold text-sm text-primary">Overtime Details</h4>
+                            <div className="bg-muted/30 p-3 rounded-lg border border-border space-y-1 text-sm">
+                              <div className="flex justify-between">
+                                <span className="text-xs text-muted-foreground">Clock In Time:</span>
+                                <span className="font-mono">{formatToHHMM(selectedRequest.original_check_in)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-xs text-muted-foreground">Clock Out Time:</span>
+                                <span className="font-mono">{formatToHHMM(selectedRequest.original_check_out)}</span>
+                              </div>
+                              <div className="flex justify-between border-t border-border/50 pt-1 mt-1 font-medium">
+                                <span className="text-xs text-muted-foreground">Total Working Duration:</span>
+                                <span className="font-mono">
+                                  {formatDuration(getDurationMins(selectedRequest.original_check_in, selectedRequest.original_check_out))}
+                                </span>
+                              </div>
+                            </div>
+
+                            {selectedRequest.status === 'pending' && (
+                              <div className="space-y-2">
+                                <label className="text-sm font-medium block">Accepted Overtime Duration (HH:MM)</label>
+                                <input
+                                  type="text"
+                                  placeholder="HH:MM"
+                                  value={acceptedDurationHHMM}
+                                  onChange={(e) => setAcceptedDurationHHMM(e.target.value)}
+                                  className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none font-mono"
+                                />
+                                <p className="text-xs text-muted-foreground">Specify the approved overtime duration.</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {selectedRequest.type === 'early_leave_approval' && (
+                          <div className="space-y-3 pt-2 border-t border-border">
+                            <h4 className="font-semibold text-sm text-primary">Early Leave Details</h4>
+                            <div className="bg-muted/30 p-3 rounded-lg border border-border space-y-1 text-sm">
+                              <div className="flex justify-between">
+                                <span className="text-xs text-muted-foreground">Leave Time:</span>
+                                <span className="font-mono">{formatToHHMM(selectedRequest.original_check_out)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-xs text-muted-foreground">Missing Duration:</span>
+                                <span className="font-mono">
+                                  {formatDuration(parsedDetails.missing_minutes || parsedDetails.early_leave_minutes || 0)}
+                                </span>
+                              </div>
+                            </div>
+
+                            {selectedRequest.status === 'pending' && (
+                              <div className="space-y-2">
+                                <label className="text-sm font-medium block">Accepted Paid Duration (HH:MM)</label>
+                                <input
+                                  type="text"
+                                  placeholder="HH:MM"
+                                  value={acceptedDurationHHMM}
+                                  onChange={(e) => setAcceptedDurationHHMM(e.target.value)}
+                                  className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none font-mono"
+                                />
+                                <p className="text-xs text-muted-foreground">Specify the accepted paid duration for the missing early leave time.</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {selectedRequest.type === 'late_in_approval' && (
+                          <div className="space-y-3 pt-2 border-t border-border">
+                            <h4 className="font-semibold text-sm text-primary">Late In Details</h4>
+                            <div className="bg-muted/30 p-3 rounded-lg border border-border space-y-1 text-sm">
+                              <div className="flex justify-between">
+                                <span className="text-xs text-muted-foreground">Login Time:</span>
+                                <span className="font-mono">{formatToHHMM(selectedRequest.original_check_in)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-xs text-muted-foreground">Missing Duration:</span>
+                                <span className="font-mono">
+                                  {(() => {
+                                    const mins = parsedDetails.missing_minutes || parsedDetails.late_in_minutes || 0;
+                                    if (mins > 0) return formatDuration(mins);
+                                    if (selectedRequest.original_check_in && selectedRequest.shift_start_time) {
+                                      return formatDuration(getDurationMins(selectedRequest.shift_start_time, selectedRequest.original_check_in));
+                                    }
+                                    return '--:--';
+                                  })()}
+                                </span>
+                              </div>
+                            </div>
+
+                            {selectedRequest.status === 'pending' && (
+                              <div className="space-y-2">
+                                <label className="text-sm font-medium block">Accepted Paid Duration (HH:MM)</label>
+                                <input
+                                  type="text"
+                                  placeholder="HH:MM"
+                                  value={acceptedDurationHHMM}
+                                  onChange={(e) => setAcceptedDurationHHMM(e.target.value)}
+                                  className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none font-mono"
+                                />
+                                <p className="text-xs text-muted-foreground">Specify the accepted paid duration for the late check-in.</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {selectedRequest.type === 'attendance_correction' && (
+                          <div className="space-y-4 pt-2 border-t border-border">
+                            <h4 className="font-semibold text-sm text-primary">Attendance Correction Details</h4>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="bg-muted/30 p-3 rounded-lg border border-border">
+                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">Original (Before)</label>
+                                <div className="space-y-2">
+                                  <div>
+                                    <span className="text-xs text-muted-foreground">Clock In:</span>
+                                    <p className="font-mono text-xs">{formatTime(selectedRequest.original_check_in || null)}</p>
+                                  </div>
+                                  <div>
+                                    <span className="text-xs text-muted-foreground">Clock Out:</span>
+                                    <p className="font-mono text-xs">{formatTime(selectedRequest.original_check_out || null)}</p>
+                                  </div>
+                                  <div className="border-t border-border/50 pt-1 mt-1">
+                                    <span className="text-xs text-muted-foreground">Duration:</span>
+                                    <p className="font-mono text-xs font-medium">
+                                      {formatDuration(getDurationMins(selectedRequest.original_check_in, selectedRequest.original_check_out))}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="bg-primary/5 p-3 rounded-lg border border-primary/20">
+                                <label className="text-xs font-bold text-primary uppercase tracking-wider mb-2 block">Proposed (After)</label>
+                                <div className="space-y-2">
+                                  <div>
+                                    <span className="text-xs text-muted-foreground">Clock In:</span>
+                                    <p className="font-mono text-xs font-medium font-mono font-medium">
+                                      {formatTime(parsedDetails.new_clock_in || null)}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <span className="text-xs text-muted-foreground">Clock Out:</span>
+                                    <p className="font-mono text-xs font-medium font-mono font-medium">
+                                      {formatTime(parsedDetails.new_clock_out || null)}
+                                    </p>
+                                  </div>
+                                  <div className="border-t border-primary/20 pt-1 mt-1">
+                                    <span className="text-xs text-muted-foreground">Duration:</span>
+                                    <p className="font-mono text-xs font-medium">
+                                      {formatDuration(getDurationMins(parsedDetails.new_clock_in, parsedDetails.new_clock_out))}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {selectedRequest.status !== 'pending' && (
+                          <div className="bg-muted/20 p-3 rounded-lg border border-border space-y-1.5 text-sm pt-2 border-t border-border">
+                            <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-1 block">Processed Details</h4>
+                            {selectedRequest.type === 'overtime_approval' && parsedDetails.approved_minutes !== undefined && (
+                              <div className="flex justify-between">
+                                <span className="text-xs text-muted-foreground">Approved Overtime:</span>
+                                <span className="font-mono font-medium">{formatDuration(parsedDetails.approved_minutes)}</span>
+                              </div>
+                            )}
+                            {['permission_to_leave', 'shift_interruption_review', 'early_leave_approval', 'late_in_approval'].includes(selectedRequest.type || '') && parsedDetails.paid_permission_minutes !== undefined && (
+                              <div className="flex justify-between">
+                                <span className="text-xs text-muted-foreground">Approved Paid Duration:</span>
+                                <span className="font-mono font-medium">{formatDuration(parsedDetails.paid_permission_minutes)}</span>
+                              </div>
+                            )}
+                            {selectedRequest.status === 'rejected' && selectedRequest.penalty_minutes !== undefined && selectedRequest.penalty_minutes > 0 && (
+                              <div className="flex justify-between text-destructive">
+                                <span className="text-xs">Disciplinary Penalty Applied:</span>
+                                <span className="font-mono font-bold">{formatDuration(selectedRequest.penalty_minutes)}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+
+                  <div className="space-y-3 pt-4 border-t border-border">
+                    <div className="flex justify-between items-center">
+                      <label className="text-sm font-bold text-foreground">Manager Justification <span className="text-destructive">*</span></label>
+                      <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-100 text-amber-700 rounded uppercase">Required for Payroll Audit</span>
+                    </div>
+                    <textarea
+                      value={managerNote}
+                      onChange={(e) => {
+                        setManagerNote(e.target.value);
+                        if (e.target.value.trim()) setError(null);
+                      }}
+                      disabled={selectedRequest.status !== 'pending'}
+                      placeholder="Explain why this request is being approved or rejected..."
+                      className={`w-full px-4 py-3 bg-amber-50/30 dark:bg-amber-500/5 border-2 rounded-xl min-h-[100px] focus:ring-4 focus:ring-primary/10 outline-none resize-none transition-all disabled:opacity-50 ${
+                        error ? 'border-destructive' : 'border-amber-200 dark:border-amber-500/20'
+                      }`}
+                    />
+                    {error && <p className="text-xs text-destructive font-bold flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" /> {error}
+                    </p>}
+                    <p className="text-[11px] text-muted-foreground italic">
+                      This note will be permanently attached to the payroll transaction and visible to the employee.
+                    </p>
+                  </div>
+                </div>
+
+                {selectedRequest.status === 'pending' && (
+                  <div className="p-6 border-t border-border bg-muted/30 space-y-4">
+                    {isRejecting && ['permission_to_leave', 'shift_interruption_review', 'early_leave_approval', 'late_in_approval'].includes(selectedRequest.type || '') && (
+                      <div className="bg-destructive/5 p-4 rounded-xl border border-destructive/20 animate-in fade-in slide-in-from-top-2 space-y-3">
+                        <label className="flex items-center gap-3 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={applyPenalty}
+                            onChange={(e) => {
+                              setApplyPenalty(e.target.checked);
+                              if (e.target.checked) {
+                                setPenaltyDurationHHMM('00:00');
+                              }
+                            }}
+                            className="w-4 h-4 rounded border-destructive/30 text-destructive focus:ring-destructive/20 bg-background"
+                          />
+                          <span className="text-sm font-bold text-destructive font-black">
+                            Apply Extra Disciplinary Penalty?
+                          </span>
+                        </label>
+                        {applyPenalty && (
+                          <div className="space-y-3 animate-in fade-in slide-in-from-top-1">
+                            <div className="space-y-1">
+                              <label className="text-xs font-bold text-destructive/80 block">
+                                Extra Penalty Duration (HH:MM)
+                              </label>
+                              <input
+                                type="text"
+                                value={penaltyDurationHHMM}
+                                onChange={(e) => setPenaltyDurationHHMM(e.target.value)}
+                                placeholder="01:00"
+                                className="w-32 px-3 py-1.5 bg-background border border-destructive/30 rounded-lg focus:ring-2 focus:ring-destructive/20 outline-none font-mono text-sm text-destructive"
+                              />
+                            </div>
+                            <p className="text-[11px] text-muted-foreground italic leading-normal">
+                              This is an additional penalty deduction on top of not paying for the unapproved absence. (e.g. 01:00 = 1 hour deduction).
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex gap-3">
+                      {!isRejecting ? (
+                        <>
+                          <button
+                            onClick={() => setIsRejecting(true)}
+                            className="flex-1 px-4 py-3 bg-destructive/10 text-destructive font-bold rounded-xl hover:bg-destructive/20 transition-all flex items-center justify-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            <XCircle className="w-5 h-5" /> Reject
+                          </button>
+                          <button
+                            onClick={handleApproveClick}
+                            disabled={updateStatusMutation.isPending || !managerNote.trim()}
+                            className="flex-1 px-4 py-3 bg-primary text-primary-foreground font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2 disabled:opacity-30 disabled:grayscale disabled:cursor-not-allowed"
+                          >
+                            <CheckCircle className="w-5 h-5" /> Approve
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => setIsRejecting(false)}
+                            className="px-4 py-3 bg-muted text-muted-foreground font-bold rounded-xl hover:bg-muted/80 transition-all"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={handleRejectClick}
+                            disabled={updateStatusMutation.isPending || !managerNote.trim()}
+                            className="flex-1 px-4 py-3 bg-destructive text-white font-bold rounded-xl hover:bg-destructive/90 shadow-lg shadow-destructive/20 transition-all flex items-center justify-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            <XCircle className="w-5 h-5" /> Confirm Rejection
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
                 )}
-                
-                <div className="flex gap-3">
-                  {!isRejecting ? (
-                    <>
-                      <button 
-                        onClick={() => setIsRejecting(true)}
-                        className="flex-1 px-4 py-3 bg-destructive/10 text-destructive font-bold rounded-xl hover:bg-destructive/20 transition-all flex items-center justify-center gap-2"
-                      >
-                        <XCircle className="w-5 h-5" /> Reject
-                      </button>
-                      <button 
-                        onClick={handleApprove}
-                        disabled={updateStatusMutation.isPending || !managerNote.trim()}
-                        className="flex-1 px-4 py-3 bg-primary text-primary-foreground font-bold rounded-xl hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2 disabled:opacity-30 disabled:grayscale"
-                      >
-                        <CheckCircle className="w-5 h-5" /> Approve
-                      </button>
-                    </>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showBulkModal && bulkActionType && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-card w-full max-w-2xl rounded-xl shadow-2xl border border-border overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-4 border-b border-border flex justify-between items-center bg-muted/30">
+              <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
+                {bulkActionType === 'approve' ? (
+                  <CheckCircle className="w-5 h-5 text-emerald-500" />
+                ) : (
+                  <XCircle className="w-5 h-5 text-rose-500" />
+                )}
+                Bulk Action Preview & Confirmation ({selectedRequestIds.size} Requests)
+              </h3>
+              <button 
+                onClick={() => {
+                  setShowBulkModal(false);
+                  setBulkActionType(null);
+                  setBulkModalError(null);
+                }} 
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+              {/* Overall Summary Card */}
+              <div className="bg-muted/30 border border-border rounded-xl p-4 space-y-2">
+                <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                  Summary of Action: {bulkActionType === 'approve' ? 'Approve' : 'Reject'}
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-1">
+                  <div>
+                    <span className="text-[10px] text-muted-foreground block">Total Requests</span>
+                    <span className="text-lg font-black text-foreground">{selectedRequestIds.size}</span>
+                  </div>
+                  {bulkActionType === 'approve' ? (
+                    <div>
+                      <span className="text-[10px] text-muted-foreground block">Total Paid Duration</span>
+                      <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">
+                        {(() => {
+                          let totalMinutes = 0;
+                          selectedRequestIds.forEach(id => {
+                            const req = requests?.find(r => r.id === id);
+                            if (req) {
+                              if (req.type === 'overtime_approval') {
+                                totalMinutes += req.value || 0;
+                              } else if (req.type === 'early_leave_approval' || req.type === 'attendance_correction') {
+                                totalMinutes += req.value || 0;
+                              } else if (req.type === 'permission_to_leave' || req.type === 'shift_interruption_review') {
+                                totalMinutes += req.value || getDurationMins(req.interruption_start_time, req.interruption_end_time);
+                              } else if (req.type === 'late_in_approval') {
+                                let missing = req.value || 0;
+                                if (!missing && req.original_check_in && req.shift_start_time) {
+                                  missing = getDurationMins(req.shift_start_time, req.original_check_in);
+                                }
+                                totalMinutes += missing;
+                              }
+                            }
+                          });
+                          return formatDuration(totalMinutes);
+                        })()}
+                      </span>
+                    </div>
                   ) : (
                     <>
-                      <button 
-                        onClick={() => setIsRejecting(false)}
-                        className="px-4 py-3 bg-muted text-muted-foreground font-bold rounded-xl hover:bg-muted/80 transition-all"
-                      >
-                        Cancel
-                      </button>
-                      <button 
-                        onClick={handleReject}
-                        disabled={updateStatusMutation.isPending || !managerNote.trim()}
-                        className="flex-1 px-4 py-3 bg-destructive text-white font-bold rounded-xl hover:bg-destructive/90 shadow-lg shadow-destructive/20 transition-all flex items-center justify-center gap-2 disabled:opacity-30"
-                      >
-                        <XCircle className="w-5 h-5" /> Confirm Rejection
-                      </button>
+                      <div>
+                        <span className="text-[10px] text-muted-foreground block">Total Unpaid Absence</span>
+                        <span className="text-lg font-black text-rose-600 dark:text-rose-400">
+                          {(() => {
+                            let totalMinutes = 0;
+                            selectedRequestIds.forEach(id => {
+                              const req = requests?.find(r => r.id === id);
+                              if (req) {
+                                totalMinutes += getUnapprovedAbsenceDurationMinutes(req);
+                              }
+                            });
+                            return formatDuration(totalMinutes);
+                          })()}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-muted-foreground block">Total Penalty Deductions</span>
+                        <span className="text-lg font-black text-amber-600 dark:text-amber-400">
+                          {(() => {
+                            let totalMins = 0;
+                            selectedRequestIds.forEach(id => {
+                              const penalty = bulkPenalties[id];
+                              if (penalty?.apply) {
+                                totalMins += parseHHMMToMinutes(penalty.duration);
+                              }
+                            });
+                            return formatDuration(totalMins);
+                          })()}
+                        </span>
+                      </div>
                     </>
                   )}
                 </div>
               </div>
-            )}
+
+              {/* Selected Requests List */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                  Affected Requests
+                </h4>
+                <div className="space-y-3 max-h-[30vh] overflow-y-auto pr-2 border border-border rounded-xl p-3 bg-muted/10 divide-y divide-border/50">
+                  {(() => {
+                    const selectedRequestsList = Array.from(selectedRequestIds)
+                      .map(id => requests?.find(r => r.id === id))
+                      .filter((req): req is RequestLog => !!req);
+
+                    const sortedRequests = [...selectedRequestsList].sort((a, b) => {
+                      const nameA = a.user_name.toLowerCase();
+                      const nameB = b.user_name.toLowerCase();
+                      if (nameA !== nameB) {
+                        return nameA.localeCompare(nameB);
+                      }
+                      
+                      const typeA = (a.type || '').toLowerCase();
+                      const typeB = (b.type || '').toLowerCase();
+                      if (typeA !== typeB) {
+                        return typeA.localeCompare(typeB);
+                      }
+                      
+                      const dateA = new Date(a.created_at).getTime();
+                      const dateB = new Date(b.created_at).getTime();
+                      return dateA - dateB;
+                    });
+
+                    return sortedRequests.map((req, index) => {
+                      const isPenaltyEligible = ['permission_to_leave', 'shift_interruption_review', 'early_leave_approval', 'late_in_approval'].includes(req.type || '');
+                      return (
+                        <div key={req.id} className={`py-3 ${index === 0 ? 'pt-0' : ''} space-y-2`}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="relative w-8 h-8 shrink-0">
+                                {req.profile_picture_url ? (
+                                  <img
+                                    src={req.profile_picture_url.startsWith('http') ? req.profile_picture_url : `${window.location.origin}${req.profile_picture_url}`}
+                                    alt={req.user_name}
+                                    className="w-8 h-8 rounded-full object-cover"
+                                  />
+                                ) : null}
+                                <div className={`w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary text-xs uppercase ${req.profile_picture_url ? 'hidden' : ''}`}>
+                                  {req.user_name.split(' ').map((n: string) => n[0]).join('')}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="font-bold text-sm text-foreground">{req.user_name}</div>
+                                <div className="text-[10px] text-muted-foreground">
+                                  Reason: <span className="italic">"{req.reason}"</span>
+                                </div>
+                              </div>
+                            </div>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              req.type === 'permission_to_leave' ? 'bg-teal-100 text-teal-700 dark:bg-teal-500/20 dark:text-teal-400' :
+                              req.type === 'overtime_approval' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' :
+                              req.type === 'early_leave_approval' ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400' :
+                              req.type === 'shift_interruption_review' ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-400' :
+                              req.type === 'late_in_approval' ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400' :
+                              req.type === 'attendance_correction' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
+                              'bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-400'
+                            }`}>
+                              {req.type?.replace(/_/g, ' ') || 'Manual Clock'}
+                            </span>
+                          </div>
+
+                          {/* Impact Details per Request */}
+                          <div className="pl-11 text-xs">
+                            {bulkActionType === 'approve' ? (
+                              req.type === 'attendance_correction' ? (
+                                <div className="text-muted-foreground flex gap-4">
+                                  <div>Proposed Clock: <span className="font-mono font-semibold">{formatTime(req.requested_check_in || req.original_check_in || null)} - {formatTime(req.requested_check_out || req.original_check_out || null)}</span></div>
+                                  <div>Duration: <span className="font-mono font-semibold">{formatDuration(getDurationMins(req.requested_check_in || req.original_check_in, req.requested_check_out || req.original_check_out))}</span></div>
+                                </div>
+                              ) : (
+                                <div className="text-muted-foreground">
+                                  Paid Credit Duration: <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{(() => {
+                                    if (req.type === 'overtime_approval') {
+                                      return formatDuration(req.value || 0);
+                                    } else if (req.type === 'early_leave_approval' || req.type === 'attendance_correction') {
+                                      return formatDuration(req.value || 0);
+                                    } else if (req.type === 'permission_to_leave' || req.type === 'shift_interruption_review') {
+                                      return formatDuration(req.value || getDurationMins(req.interruption_start_time, req.interruption_end_time));
+                                    } else if (req.type === 'late_in_approval') {
+                                      let missing = req.value || 0;
+                                      if (!missing && req.original_check_in && req.shift_start_time) {
+                                        missing = getDurationMins(req.shift_start_time, req.original_check_in);
+                                      }
+                                      return formatDuration(missing);
+                                    }
+                                    return '00:00';
+                                  })()}</span>
+                                </div>
+                              )
+                            ) : (
+                              <div className="space-y-2">
+                                <div className="text-muted-foreground">
+                                  Unpaid Absence Duration: <span className="font-mono font-semibold">{formatDuration(getUnapprovedAbsenceDurationMinutes(req))}</span>
+                                </div>
+                                {isPenaltyEligible && (
+                                  <div className="bg-destructive/5 p-3 rounded-lg border border-destructive/10 space-y-2">
+                                    <label className="flex items-center gap-2 cursor-pointer select-none font-medium text-destructive">
+                                      <input
+                                        type="checkbox"
+                                        checked={bulkPenalties[req.id]?.apply || false}
+                                        onChange={(e) => {
+                                          setBulkPenalties(prev => ({
+                                            ...prev,
+                                            [req.id]: {
+                                              apply: e.target.checked,
+                                              duration: prev[req.id]?.duration || '00:00'
+                                            }
+                                          }));
+                                        }}
+                                        className="w-3.5 h-3.5 rounded border-destructive/30 text-destructive focus:ring-destructive/20 bg-background"
+                                      />
+                                      <span>Apply Extra Disciplinary Penalty?</span>
+                                    </label>
+                                    {bulkPenalties[req.id]?.apply && (
+                                      <div className="flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
+                                        <span className="text-[11px] text-muted-foreground">Duration (HH:MM):</span>
+                                        <input
+                                          type="text"
+                                          value={bulkPenalties[req.id]?.duration || '00:00'}
+                                          onChange={(e) => {
+                                            const val = e.target.value;
+                                            setBulkPenalties(prev => ({
+                                              ...prev,
+                                              [req.id]: {
+                                                ...prev[req.id],
+                                                duration: val
+                                              }
+                                            }));
+                                          }}
+                                          placeholder="01:00"
+                                          className="w-20 px-2 py-1 bg-background border border-destructive/30 rounded focus:ring-1 focus:ring-destructive/20 outline-none font-mono text-xs text-destructive"
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+
+              {/* Manager Note Justification inside Modal */}
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-foreground">Manager Justification Note <span className="text-destructive">*</span></label>
+                <textarea
+                  value={bulkManagerNote}
+                  onChange={(e) => {
+                    setBulkManagerNote(e.target.value);
+                    if (e.target.value.trim()) setBulkModalError(null);
+                  }}
+                  placeholder="Explain the reason for this bulk decision..."
+                  className={`w-full px-3 py-2 bg-amber-50/30 dark:bg-amber-500/5 border-2 rounded-xl min-h-[80px] focus:ring-4 focus:ring-primary/10 outline-none resize-none transition-all ${
+                    bulkModalError && !bulkManagerNote.trim() ? 'border-destructive' : 'border-amber-200 dark:border-amber-500/20'
+                  }`}
+                />
+              </div>
+
+              {bulkModalError && (
+                <div className="p-3 bg-destructive/10 border border-destructive/20 text-destructive rounded-xl text-xs font-bold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  {bulkModalError}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-border bg-muted/30 flex gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setShowBulkModal(false);
+                  setBulkActionType(null);
+                  setBulkModalError(null);
+                }}
+                className="px-4 py-2 bg-muted text-muted-foreground font-bold rounded-xl hover:bg-muted/80 transition-all border border-border text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  // Validate manager note
+                  if (!bulkManagerNote.trim()) {
+                    setBulkModalError("A manager justification note is mandatory for this bulk action.");
+                    return;
+                  }
+
+                  // If rejecting, validate formats of any checked penalties
+                  if (bulkActionType === 'reject') {
+                    for (const id of Array.from(selectedRequestIds)) {
+                      const penalty = bulkPenalties[id];
+                      if (penalty?.apply) {
+                        if (!/^\d+:[0-5]\d$/.test(penalty.duration)) {
+                          const req = requests?.find(r => r.id === id);
+                          setBulkModalError(`Penalty duration for ${req?.user_name || 'request'} must be in HH:MM format (e.g., 01:00).`);
+                          return;
+                        }
+                      }
+                    }
+                  }
+
+                  setBulkModalError(null);
+
+                  // Execute status updates
+                  try {
+                    for (const id of Array.from(selectedRequestIds)) {
+                      const req = requests?.find(r => r.id === id);
+                      let payload: any = { id: id as number, manager_note: bulkManagerNote };
+
+                      if (bulkActionType === 'approve') {
+                        payload.status = 'approved';
+                        if (req?.type === 'overtime_approval') {
+                          payload.approved_minutes = req.value || 0;
+                        } else if (req?.type === 'early_leave_approval' || req?.type === 'attendance_correction') {
+                          const missing = req.value || 0;
+                          if (missing > 0) {
+                              payload.paid_minutes = missing;
+                          }
+                        } else if (req?.type === 'permission_to_leave' || req?.type === 'shift_interruption_review') {
+                          const duration = req.value || getDurationMins(req.interruption_start_time, req.interruption_end_time);
+                          payload.paid_minutes = duration;
+                        } else if (req?.type === 'late_in_approval') {
+                          let missing = req.value || 0;
+                          if (!missing && req.original_check_in && req.shift_start_time) {
+                            missing = getDurationMins(req.shift_start_time, req.original_check_in);
+                          }
+                          payload.paid_minutes = missing;
+                        }
+                      } else {
+                        payload.status = 'rejected';
+                        const penalty = bulkPenalties[id];
+                        payload.penalty_minutes = penalty?.apply ? parseHHMMToMinutes(penalty.duration) : 0;
+                      }
+
+                      await updateStatusMutation.mutateAsync(payload);
+                    }
+
+                    // Success cleanup
+                    setSelectedRequestIds(new Set());
+                    setBulkManagerNote('');
+                    setShowBulkModal(false);
+                    setBulkActionType(null);
+                  } catch (err: any) {
+                    setBulkModalError(err?.message || "Failed to update status for some requests.");
+                  }
+                }}
+                disabled={updateStatusMutation.isPending}
+                className={`px-6 py-2 text-white font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 text-sm ${
+                  bulkActionType === 'approve' 
+                    ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/20' 
+                    : 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/20'
+                }`}
+              >
+                <CheckCircle className="w-4 h-4" /> Confirm & Submit
+              </button>
+            </div>
           </div>
         </div>
       )}

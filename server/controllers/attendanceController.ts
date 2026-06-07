@@ -1,10 +1,59 @@
+import { evaluateUserAttendance } from "../services/attendanceEvaluationService.js";
+import logger from '../utils/logger.js';
+
 import { Request, Response } from 'express';
 import db from '../db/index.js';
-import { getDateStringInTimezone } from '../utils/dateUtils.js';
+import { getAppNow, getDifferenceInMinutes, generateUnscheduledShiftId } from '../utils/timeManager.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
-import { getLogicalShiftDetails } from '../utils/shiftUtils.js';
 import { logAudit } from '../services/auditService.js';
 import { getSettingsCache, setSettingsCache } from '../utils/cache.js';
+import { recalculateUserDailyAttendance } from "../services/dailyAttendanceService.js";
+
+// Helper to insert overtime request with min overtime check
+function insertOvertimeRequest(userId: number, attendanceId: number | null, reason: string, value: number) {
+    let settings = getSettingsCache();
+    if (!settings) {
+        settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+        setSettingsCache(settings);
+    }
+    const minOT = settings?.min_overtime_minutes || 0;
+    const status = value < minOT ? 'rejected' : 'pending';
+    const managerNote = value < minOT ? 'Auto-rejected: request duration is less than the minimum overtime period.' : null;
+    
+    db.prepare(`
+        INSERT INTO requests (user_id, attendance_id, type, reason, value, status, manager_note)
+        VALUES (?, ?, 'overtime_approval', ?, ?, ?, ?)
+    `).run(userId, attendanceId, reason, value, status, managerNote);
+}
+
+// Helper to insert late in or early leave request with grace period check
+function insertLateInOrEarlyLeaveRequest(userId: number, attendanceId: number, type: 'late_in_approval' | 'early_leave_approval', reason: string, value: number) {
+    let settings = getSettingsCache();
+    if (!settings) {
+        settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+        setSettingsCache(settings);
+    }
+    const grace = settings?.late_grace_period || 0;
+    const status = value <= grace ? 'approved' : 'pending';
+    const managerNote = value <= grace ? 'Auto-approved: within late grace period.' : null;
+    
+    db.prepare(`
+        INSERT INTO requests (user_id, attendance_id, type, reason, value, status, manager_note)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(userId, attendanceId, type, reason, value, status, managerNote);
+    
+    if (status === 'approved') {
+        if (type === 'late_in_approval') {
+            db.prepare("UPDATE attendance SET checkin_status = 'on_time' WHERE id = ?").run(attendanceId);
+        } else {
+            db.prepare("UPDATE attendance SET checkout_status = 'on_time' WHERE id = ?").run(attendanceId);
+        }
+        const att = db.prepare("SELECT date FROM attendance WHERE id = ?").get(attendanceId) as any;
+        if (att) {
+            recalculateUserDailyAttendance(userId, att.date);
+        }
+    }
+}
 
 // Haversine formula to calculate distance between two points in meters
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -15,22 +64,90 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
     const Δλ = (lon2 - lon1) * Math.PI / 180;
 
     const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-              Math.cos(φ1) * Math.cos(φ2) *
-              Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+        Math.cos(φ1) * Math.cos(φ2) *
+        Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
     return R * c;
 };
 
-// getClosestShift has been moved and refactored as getLogicalShiftDetails in shiftUtils.ts
-export { getLogicalShiftDetails } from '../utils/shiftUtils.js';
-
-function processAttendanceEvent(userId: number, type: string, timestamp: string, lat: number, lng: number, userProfile: any, timezone: string, schedule: any) {
+function processAttendanceEvent(userId: number, type: string, timestamp: string, lat: number, lng: number, userProfile: any, schedule: any) {
     if (type === 'check_in') {
-        const shiftDetails = getLogicalShiftDetails(schedule, timestamp, timezone, 'check_in');
-        const logicalDate = shiftDetails.logicalDate;
-        const scheduledTime = shiftDetails.scheduledTime;
-        const matchedShift = shiftDetails.shift;
+        let settings = getSettingsCache();
+        if (!settings) {
+            settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+            setSettingsCache(settings);
+        }
+        const gracePeriod = settings?.late_grace_period !== undefined ? settings.late_grace_period : 0;
+
+        // Find the applicable shift instance for this check-in
+        const shiftInstance = db.prepare(`
+            SELECT * FROM shift_instances
+            WHERE user_id = ?
+              AND ? BETWEEN datetime(start_time, '-' || ? || ' minutes') AND end_time
+            ORDER BY start_time ASC
+            LIMIT 1
+        `).get(userId, timestamp, gracePeriod) as any;
+
+        const logicalDate = shiftInstance ? shiftInstance.logical_date : timestamp.split('T')[0];
+        const scheduledTime = shiftInstance ? new Date(shiftInstance.start_time) : null;
+
+        // Generate an unscheduled ID if there's no shift instance
+        let shiftId = shiftInstance ? shiftInstance.id.toString() : generateUnscheduledShiftId(userId, timestamp);
+
+        // Check if unscheduled clock in is allowed
+        let isUnscheduled = false;
+        if (!shiftInstance || !scheduledTime) {
+            isUnscheduled = true;
+        } else {
+            const clockInTime = new Date(timestamp);
+            if (clockInTime < scheduledTime) {
+                const diffMinutes = getDifferenceInMinutes(clockInTime, scheduledTime);
+                if (diffMinutes > gracePeriod) {
+                    isUnscheduled = true;
+                }
+            }
+        }
+
+        if (isUnscheduled) {
+            if (!userProfile.allow_overtime) {
+                return { status: 403, error: 'Unscheduled check-in blocked: Overtime is not allowed for this employee.' };
+            }
+            const date = new Date(timestamp);
+            const day = date.getUTCDay();
+            const diffToMonday = day === 0 ? -6 : 1 - day;
+            
+            const monday = new Date(date);
+            monday.setUTCDate(date.getUTCDate() + diffToMonday);
+            monday.setUTCHours(0, 0, 0, 0);
+            
+            const sunday = new Date(monday);
+            sunday.setUTCDate(monday.getUTCDate() + 6);
+            sunday.setUTCHours(23, 59, 59, 999);
+            
+            const startStr = monday.toISOString().split('T')[0];
+            const endStr = sunday.toISOString().split('T')[0];
+            
+            const otSum = db.prepare(`
+                SELECT COALESCE(SUM(r.value), 0) as total_ot
+                FROM requests r
+                LEFT JOIN attendance a ON r.attendance_id = a.id
+                WHERE r.user_id = ?
+                  AND r.type = 'overtime_approval'
+                  AND r.status IN ('approved', 'pending')
+                  AND (
+                      (a.date IS NOT NULL AND a.date >= ? AND a.date <= ?)
+                      OR
+                      (a.date IS NULL AND substr(r.created_at, 1, 10) >= ? AND substr(r.created_at, 1, 10) <= ?)
+                  )
+            `).get(userId, startStr, endStr, startStr, endStr) as any;
+            
+            const totalOtMinutes = otSum ? otSum.total_ot : 0;
+            const maxOtMinutes = (userProfile.max_overtime_hours || 0) * 60;
+            if (totalOtMinutes >= maxOtMinutes) {
+                return { status: 403, error: 'Unscheduled check-in blocked: You have reached your maximum allowed overtime for this week.' };
+            }
+        }
 
         // Re-entry logic: Is there already a closed attendance for this user and logical date?
         const existingAttendance = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ? ORDER BY check_in DESC LIMIT 1').get(userId, logicalDate) as any;
@@ -40,111 +157,137 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
                 return { status: 400, error: 'You already have an active session for this shift. Please check out first.' };
             }
 
-            // Auto-Resume existing session
-            const resumeTransaction = db.transaction(() => {
-                db.prepare(`
-                    UPDATE attendance
-                    SET check_out = NULL,
-                        current_status = ?,
-                        status = CASE WHEN status = 'early_out' THEN 'on_time' ELSE status END
-                    WHERE id = ?
-                `).run('working', existingAttendance.id);
+            // --- THE FIX: SMART RESUME GUARD ---
+            let isOldShiftExpired = false;
+            let isSwitchingToNewShift = false;
 
-                // 1. Void the Old Request (early_leave_approval)
-                const oldRequest = db.prepare(`
-                    SELECT id FROM requests
-                    WHERE attendance_id = ? AND type = 'early_leave_approval' AND status != 'rejected'
-                `).get(existingAttendance.id) as any;
-
-                if (oldRequest) {
-                    db.prepare(`
-                        UPDATE requests
-                        SET status = 'rejected',
-                            manager_note = COALESCE(manager_note, '') || '\nSYSTEM: Auto-canceled because the employee returned. Replaced by a shift interruption request.'
-                        WHERE id = ?
-                    `).run(oldRequest.id);
-
-                    // 2. Payroll Ledger Reversal
-                    db.prepare(`
-                        UPDATE payroll_transactions
-                        SET status = 'voided', amount = 0, manager_notes = COALESCE(manager_notes, '') || '\nSYSTEM: Voided due to employee return'
-                        WHERE reference_id = ?
-                    `).run(oldRequest.id);
+            if (existingAttendance.shift_id && !existingAttendance.shift_id.startsWith('US_')) {
+                const oldShiftInstance = db.prepare('SELECT end_time FROM shift_instances WHERE id = ?').get(existingAttendance.shift_id) as any;
+                if (oldShiftInstance) {
+                    const oldEndTime = new Date(oldShiftInstance.end_time).getTime();
+                    // If the old official shift has already ended (even including grace period), it is expired.
+                    if (new Date(timestamp).getTime() > (oldEndTime + (gracePeriod * 60000))) {
+                        isOldShiftExpired = true;
+                    }
                 }
+            }
 
-                const insertInterruption = db.prepare(`
-                    INSERT INTO shift_interruptions (attendance_id, start_time, end_time, type, status)
-                    VALUES (?, ?, ?, 'step_away', 'pending_manager')
-                `);
-                const info = insertInterruption.run(existingAttendance.id, existingAttendance.check_out, timestamp);
-                const interruptionId = info.lastInsertRowid;
+            if (shiftInstance && existingAttendance.shift_id !== shiftInstance.id.toString()) {
+                isSwitchingToNewShift = true;
+            }
 
-                db.prepare(`
-                    INSERT INTO requests (user_id, attendance_id, type, reference_id, reason, status)
-                    VALUES (?, ?, 'shift_interruption_review', ?, 'Auto-resumed shift gap review', 'pending')
-                `).run(userId, existingAttendance.id, interruptionId);
-            });
+            // We must NOT resume if:
+            // 1. Moving to a different official shift.
+            // 2. The old session was unscheduled (always start a new record for unscheduled check-ins).
+            // 3. The old official shift has completely expired (prevents resuming a finished day as 'overtime').
+            if (isSwitchingToNewShift || existingAttendance.checkin_status === 'unscheduled' || isOldShiftExpired) {
+                logger.info(`Guard triggered for user ${userId}: Skipping Auto-Resume (Expired or Switching). Starting a new check-in.`);
+                // Do nothing. Let it fall through to create a NEW check-in record.
+            } else {
+                // Auto-Resume existing session (Normal behavior for breaks within the active shift duration)
+                const resumeTransaction = db.transaction(() => {
+                    db.prepare(`
+                        UPDATE attendance
+                        SET check_out = NULL,
+                            working_status = ?,
+                            checkout_status = NULL
+                        WHERE id = ?
+                    `).run('working', existingAttendance.id);
 
-            resumeTransaction();
+                    // 1. Void the Old Request (early_leave_approval)
+                    const oldRequest = db.prepare(`
+                        SELECT id FROM requests
+                        WHERE attendance_id = ? AND type = 'early_leave_approval' AND status != 'rejected'
+                    `).get(existingAttendance.id) as any;
 
-            const updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(existingAttendance.id);
-            return { status: 200, data: updatedRecord };
+                    if (oldRequest) {
+                        db.prepare(`
+                            UPDATE requests
+                            SET status = 'rejected',
+                                manager_note = COALESCE(manager_note, '') || '\nSYSTEM: Auto-canceled because the employee returned. Replaced by a shift interruption request.'
+                            WHERE id = ?
+                        `).run(oldRequest.id);
+                    }
+
+                    const insertInterruption = db.prepare(`
+                        INSERT INTO shift_interruptions (attendance_id, start_time, end_time, type, status)
+                        VALUES (?, ?, ?, 'step_away', 'pending_manager')
+                    `);
+                    const info = insertInterruption.run(existingAttendance.id, existingAttendance.check_out, timestamp);
+                    const interruptionId = info.lastInsertRowid;
+
+                    db.prepare(`
+                        INSERT INTO requests (user_id, attendance_id, type, shift_interruption_id, reason, status)
+                        VALUES (?, ?, 'shift_interruption_review', ?, 'Auto-resumed shift gap review', 'pending')
+                    `).run(userId, existingAttendance.id, interruptionId);
+                });
+
+                resumeTransaction();
+
+                const updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(existingAttendance.id);
+                return { status: 200, data: updatedRecord };
+            }
         }
 
         // Normal Check-in logic
         let status = 'on_time';
-        let isUnscheduled = false;
+        isUnscheduled = false;
         let otMinutes = 0;
 
         // Pure Schedule-Driven Logic:
         const clockInTime = new Date(timestamp);
-        let settings = getSettingsCache();
-        if (!settings) {
-            settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
-            setSettingsCache(settings);
-        }
-        const gracePeriod = settings?.late_grace_period !== undefined ? settings.late_grace_period : (userProfile.grace_period || 15);
 
-        if (!matchedShift || !scheduledTime) {
+        if (!shiftInstance || !scheduledTime) {
             status = 'unscheduled';
             isUnscheduled = true;
         } else {
-            const diffMinutes = (clockInTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
+            const isAfterStart = clockInTime > scheduledTime;
+            const diffMinutes = isAfterStart
+                ? getDifferenceInMinutes(scheduledTime, clockInTime)
+                : getDifferenceInMinutes(clockInTime, scheduledTime);
 
-            if (diffMinutes > gracePeriod) {
-                status = 'late_in';
-            } else if (diffMinutes < -gracePeriod) {
-                // Early Entry: status remains 'on_time' but otMinutes > 0 triggers request
-                otMinutes = Math.floor(Math.abs(diffMinutes));
+            if (isAfterStart) {
+                if (diffMinutes > gracePeriod) {
+                    // دخول متأخر بعد فترة السماح
+                    status = 'late_in';
+                }
+            } else {
+                if (diffMinutes > gracePeriod) {
+                    // دخول مبكر جداً (قبل فترة السماح) -> يعتبر Unscheduled
+                    status = 'unscheduled';
+                    isUnscheduled = true;
+                    shiftId = generateUnscheduledShiftId(userId, clockInTime);
+                }
             }
         }
 
         const insertTransaction = db.transaction(() => {
             const insert = db.prepare(`
-                INSERT INTO attendance (user_id, check_in, date, location_lat, location_lng, status)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO attendance (user_id, check_in, date, check_in_lat, check_in_lng, checkin_status, checkout_status, working_status, shift_id)
+                VALUES (?, ?, ?, ?, ?, ?, NULL, 'working', ?)
             `);
-            const info = insert.run(userId, timestamp, logicalDate, lat, lng, status);
+            const info = insert.run(userId, timestamp, logicalDate, lat, lng, status, shiftId);
             const newId = info.lastInsertRowid;
 
-            if (isUnscheduled) {
-                db.prepare(`
-                    INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
-                    VALUES (?, 'overtime_approval', ?, ?, 'Unscheduled Check-in', '{}', 'pending')
-                `).run(userId, newId, newId);
-            } else if (otMinutes > 0) {
-                const maxOtMinutes = (userProfile.max_overtime_hours || 0) * 60;
-                const requestedOtMinutes = maxOtMinutes > 0 ? Math.min(otMinutes, maxOtMinutes) : otMinutes;
-
-                db.prepare(`
-                    INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
-                    VALUES (?, 'overtime_approval', ?, ?, ?, ?, 'pending')
-                `).run(
+            if (status === 'late_in') {
+                const lateMinutes = getDifferenceInMinutes(scheduledTime, clockInTime);
+                insertLateInOrEarlyLeaveRequest(
                     userId,
                     newId,
+                    'late_in_approval',
+                    `Late check-in by ${lateMinutes} minutes.`,
+                    lateMinutes
+                );
+            }
+
+            if (otMinutes > 0 && !isUnscheduled) {
+                const maxOtMinutes = (userProfile.max_overtime_hours || 0) * 60;
+                const requestedOtMinutes = maxOtMinutes > 0 ? Math.min(otMinutes, maxOtMinutes) : otMinutes;
+                insertOvertimeRequest(
+                    userId,
                     newId,
                     `Early clock-in by ${otMinutes} minutes`,
-                    JSON.stringify({ raw_overtime_minutes: otMinutes, requested_overtime_minutes: requestedOtMinutes })
+                    requestedOtMinutes
                 );
             }
 
@@ -162,73 +305,253 @@ function processAttendanceEvent(userId: number, type: string, timestamp: string,
             return { status: 400, error: 'No active check-in record found to check out.' };
         }
 
+        // Handle edge case where user clocks out while still "away"
+        if (activeSession.working_status === 'away') {
+            const activeInterruption = db.prepare(`
+                SELECT * FROM shift_interruptions
+                WHERE attendance_id = ? AND end_time IS NULL
+                ORDER BY start_time DESC LIMIT 1
+            `).get(activeSession.id) as any;
+
+            if (activeInterruption) {
+                db.prepare('UPDATE shift_interruptions SET end_time = ? WHERE id = ?').run(timestamp, activeInterruption.id);
+            }
+            db.prepare('UPDATE attendance SET working_status = ? WHERE id = ?').run('working', activeSession.id);
+            activeSession.working_status = 'working';
+        }
+
         const oldSession = { ...activeSession };
 
-        db.prepare(`
-            UPDATE attendance
-            SET check_out = ?, location_lat = ?, location_lng = ?
-            WHERE id = ?
-        `).run(timestamp, lat, lng, activeSession.id);
+        const checkOutTime = new Date(timestamp);
+        const checkInTime = new Date(activeSession.check_in);
 
-        let updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id) as any;
+        // Retrospective splitting: evaluate session against official shift boundaries
+        // Look up the exact shift instance using the relational shift_id stored on check-in
+        let shiftInstance = null;
+        if (activeSession.shift_id && !activeSession.shift_id.startsWith('US_')) {
+            shiftInstance = db.prepare('SELECT * FROM shift_instances WHERE id = ?').get(activeSession.shift_id) as any;
+        }
 
-        const shiftDetails = getLogicalShiftDetails(schedule, timestamp, timezone, 'check_out', activeSession.check_in);
-        const scheduledTime = shiftDetails.scheduledTime;
-        const matchedShift = shiftDetails.shift;
+        const shiftStart = shiftInstance ? new Date(shiftInstance.start_time) : null;
+        const shiftEnd = shiftInstance ? new Date(shiftInstance.end_time) : null;
+        const logicalDate = shiftInstance ? shiftInstance.logical_date : timestamp.split('T')[0];
 
-        if (!matchedShift) {
-            // Was checked in unscheduled, create another overtime request for the checkout if needed, or it's handled by manager
-        } else if (scheduledTime) {
-            const clockOutTime = new Date(timestamp);
-            const diffMinutes = (clockOutTime.getTime() - scheduledTime.getTime()) / (1000 * 60);
-            let settings = getSettingsCache();
-            if (!settings) {
-                settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
-                setSettingsCache(settings);
-            }
-            const gracePeriod = settings?.late_grace_period !== undefined ? settings.late_grace_period : (userProfile.grace_period || 15);
+        let settings = getSettingsCache();
+        if (!settings) {
+            settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+            setSettingsCache(settings);
+        }
+        const gracePeriod = settings?.late_grace_period !== undefined ? settings.late_grace_period : 0;
 
-            if (diffMinutes > gracePeriod) {
-                const otMins = Math.floor(diffMinutes);
-                const maxOtMinutes = (userProfile.max_overtime_hours || 0) * 60;
-                const requestedOtMinutes = maxOtMinutes > 0 ? Math.min(otMins, maxOtMinutes) : otMins;
+        // --- Same-minute / Min-duration checks ---
+        const minClockSessionMins = settings?.min_clock_session_minutes !== undefined ? settings.min_clock_session_minutes : 1;
+        const diffMs = checkOutTime.getTime() - checkInTime.getTime();
+        const diffMinsFloat = diffMs / 60000;
 
-                if (requestedOtMinutes > 0) {
-                    db.prepare(`
-                        INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
-                        VALUES (?, 'overtime_approval', ?, ?, ?, ?, 'pending')
-                    `).run(
-                        userId,
-                        activeSession.id,
-                        activeSession.id,
-                        `System detected ${otMins} minutes of overtime at checkout.`,
-                        JSON.stringify({ raw_overtime_minutes: otMins, requested_overtime_minutes: requestedOtMinutes })
-                    );
-                }
-            } else if (diffMinutes < -gracePeriod) {
-                const earlyMinutes = Math.floor(Math.abs(diffMinutes));
+        let shouldDelete = false;
+        let deleteReason = '';
+        let deleteLimit = 0;
 
-                db.prepare(`
-                    UPDATE attendance
-                    SET status = CASE WHEN status = 'on_time' THEN 'early_out' ELSE status END
-                    WHERE id = ?
-                `).run(activeSession.id);
+        // 1. Fast Clock-Out check
+        if (diffMinsFloat < minClockSessionMins) {
+            shouldDelete = true;
+            deleteReason = 'fast_clock_out';
+            deleteLimit = minClockSessionMins;
+        }
 
-                updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id) as any;
-
-                db.prepare(`
-                    INSERT INTO requests (user_id, type, reference_id, attendance_id, reason, details, status)
-                    VALUES (?, 'early_leave_approval', ?, ?, ?, ?, 'pending')
-                `).run(
-                    userId,
-                    activeSession.id,
-                    activeSession.id,
-                    `System detected early leave by ${earlyMinutes} minutes.`,
-                    JSON.stringify({ early_leave_minutes: earlyMinutes, missing_minutes: earlyMinutes })
-                );
+        // 2. Pure Unscheduled Session check
+        if (!shouldDelete && (!shiftStart || !shiftEnd || !shiftInstance)) {
+            const otMins = getDifferenceInMinutes(checkInTime, checkOutTime);
+            const minUnscheduledSessionMins = settings?.min_unscheduled_session_minutes !== undefined ? settings.min_unscheduled_session_minutes : 5;
+            if (otMins < minUnscheduledSessionMins) {
+                shouldDelete = true;
+                deleteReason = 'unscheduled';
+                deleteLimit = minUnscheduledSessionMins;
             }
         }
 
+        // 3. Out-of-bounds Unscheduled Session check
+        if (!shouldDelete && shiftStart && shiftEnd && shiftInstance) {
+            if (checkOutTime <= shiftStart || checkInTime >= shiftEnd) {
+                const otMins = getDifferenceInMinutes(checkInTime, checkOutTime);
+                const minUnscheduledSessionMins = settings?.min_unscheduled_session_minutes !== undefined ? settings.min_unscheduled_session_minutes : 5;
+                if (otMins < minUnscheduledSessionMins) {
+                    shouldDelete = true;
+                    deleteReason = 'unscheduled_out_of_bounds';
+                    deleteLimit = minUnscheduledSessionMins;
+                }
+            }
+        }
+
+        if (shouldDelete) {
+            const deleteTransaction = db.transaction(() => {
+                db.prepare('DELETE FROM requests WHERE attendance_id = ?').run(activeSession.id);
+                db.prepare('DELETE FROM shift_interruptions WHERE attendance_id = ?').run(activeSession.id);
+                db.prepare('DELETE FROM attendance WHERE id = ?').run(activeSession.id);
+            });
+            deleteTransaction();
+
+            recalculateUserDailyAttendance(userId, activeSession.date);
+
+            logger.info(`Session ignored: User ${userId} clocked out. Reason: ${deleteReason} (limit: ${deleteLimit} mins, actual: ${diffMinsFloat.toFixed(2)} mins). Record deleted.`);
+            logAudit('attendance', activeSession.id, 'DELETE', userId, activeSession, null);
+
+            return {
+                status: 200,
+                data: {
+                    id: activeSession.id,
+                    user_id: userId,
+                    check_in: activeSession.check_in,
+                    check_out: timestamp,
+                    date: activeSession.date,
+                    ignored: true,
+                    message: `Clock session ignored. Reason: ${deleteReason}`
+                }
+            };
+        }
+
+        let updatedRecord: any = null;
+
+        const updateTransaction = db.transaction(() => {
+            // Case 1: Pure Unscheduled Session (No official shift)
+            if (!shiftStart || !shiftEnd || !shiftInstance) {
+                db.prepare(`
+                    UPDATE attendance
+                    SET check_out = ?, check_out_lat = ?, check_out_lng = ?, checkout_status = 'unscheduled'
+                    WHERE id = ?
+                `).run(timestamp, lat, lng, activeSession.id);
+                updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id);
+
+                const otMins = getDifferenceInMinutes(checkInTime, checkOutTime);
+                if (otMins > 0) {
+                    insertOvertimeRequest(userId, activeSession.id, 'Unscheduled Check-in', otMins);
+                }
+                return;
+            }
+
+            // Case 2: Session overlaps with an official shift
+
+            let earlySegmentStart: Date | null = null;
+            let earlySegmentEnd: Date | null = null;
+            let lateSegmentStart: Date | null = null;
+            let lateSegmentEnd: Date | null = null;
+
+            // Case 2A: Pure unscheduled session that happened completely outside bounds
+            if (checkOutTime <= shiftStart || checkInTime >= shiftEnd) {
+                db.prepare(`
+                    UPDATE attendance
+                    SET check_out = ?, check_out_lat = ?, check_out_lng = ?, checkin_status = 'unscheduled', checkout_status = 'unscheduled'
+                    WHERE id = ?
+                `).run(timestamp, lat, lng, activeSession.id);
+                updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id);
+
+                const otMins = getDifferenceInMinutes(checkInTime, checkOutTime);
+                if (otMins > 0) {
+                    insertOvertimeRequest(userId, activeSession.id, 'Unscheduled Session', otMins);
+                }
+                return;
+            }
+
+            let officialSegmentStart = checkInTime > shiftStart ? checkInTime : shiftStart;
+            let officialSegmentEnd = checkOutTime < shiftEnd ? checkOutTime : shiftEnd;
+
+            if (checkInTime < shiftStart) {
+                earlySegmentStart = checkInTime;
+                earlySegmentEnd = checkOutTime < shiftStart ? checkOutTime : shiftStart;
+            }
+
+            if (checkOutTime > shiftEnd) {
+                lateSegmentStart = checkInTime > shiftEnd ? checkInTime : shiftEnd;
+                lateSegmentEnd = checkOutTime;
+            }
+
+            // Update original record as the official segment
+            let newCheckInStr = officialSegmentStart.toISOString();
+            let newCheckOutStr = officialSegmentEnd.toISOString();
+
+            // The official shift_id is just the shift_instances id
+            const officialShiftId = shiftInstance.id.toString();
+
+            let checkinStatus = activeSession.checkin_status;
+            if (checkinStatus === 'unscheduled') {
+                const diffMinutes = getDifferenceInMinutes(shiftStart, officialSegmentStart);
+                checkinStatus = diffMinutes > gracePeriod ? 'late_in' : 'on_time';
+            }
+
+            let checkoutStatus = 'on_time';
+            if (checkOutTime < shiftEnd) {
+                const outDiffMinutes = getDifferenceInMinutes(checkOutTime, shiftEnd);
+                if (outDiffMinutes > gracePeriod) {
+                    checkoutStatus = 'early_out';
+                }
+            }
+
+            db.prepare(`
+                UPDATE attendance
+                SET check_in = ?, check_out = ?, check_out_lat = ?, check_out_lng = ?, checkin_status = ?, checkout_status = ?, shift_id = ?
+                WHERE id = ?
+            `).run(newCheckInStr, newCheckOutStr, lat, lng, checkinStatus, checkoutStatus, officialShiftId, activeSession.id);
+
+            updatedRecord = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeSession.id);
+
+            // Insert Early Segment
+            if (earlySegmentStart && earlySegmentEnd) {
+                const earlyMins = getDifferenceInMinutes(earlySegmentStart, earlySegmentEnd);
+                const minUnscheduledSessionMins = settings?.min_unscheduled_session_minutes !== undefined ? settings.min_unscheduled_session_minutes : 5;
+                if (earlyMins >= minUnscheduledSessionMins) {
+                    const earlyShiftId = generateUnscheduledShiftId(userId, earlySegmentStart);
+                    const insertEarly = db.prepare(`
+                        INSERT INTO attendance (user_id, check_in, check_out, date, check_in_lat, check_in_lng, check_out_lat, check_out_lng, checkin_status, checkout_status, working_status, shift_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'unscheduled', 'unscheduled', 'working', ?)
+                    `);
+                    const info = insertEarly.run(
+                        userId,
+                        earlySegmentStart.toISOString(),
+                        earlySegmentEnd.toISOString(),
+                        activeSession.date,
+                        activeSession.check_in_lat,
+                        activeSession.check_in_lng,
+                        activeSession.check_in_lat,
+                        activeSession.check_in_lng,
+                        earlyShiftId
+                    );
+
+                    insertOvertimeRequest(userId, Number(info.lastInsertRowid), 'Early Clock-in (Unscheduled)', earlyMins);
+                } else {
+                    logger.info(`Early segment ignored for User ${userId}: duration is ${earlyMins} mins (minimum required unscheduled: ${minUnscheduledSessionMins} mins).`);
+                }
+            }
+
+            // Insert Late Segment
+            if (lateSegmentStart && lateSegmentEnd) {
+                const lateMins = getDifferenceInMinutes(lateSegmentStart, lateSegmentEnd);
+                const minUnscheduledSessionMins = settings?.min_unscheduled_session_minutes !== undefined ? settings.min_unscheduled_session_minutes : 5;
+                if (lateMins >= minUnscheduledSessionMins) {
+                    const lateShiftId = generateUnscheduledShiftId(userId, lateSegmentStart);
+                    const insertLate = db.prepare(`
+                        INSERT INTO attendance (user_id, check_in, check_out, date, check_in_lat, check_in_lng, check_out_lat, check_out_lng, checkin_status, checkout_status, working_status, shift_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'unscheduled', 'unscheduled', 'working', ?)
+                    `);
+                    const info = insertLate.run(
+                        userId,
+                        lateSegmentStart.toISOString(),
+                        lateSegmentEnd.toISOString(),
+                        activeSession.date,
+                        lat,
+                        lng,
+                        lat,
+                        lng,
+                        lateShiftId
+                    );
+
+                    insertOvertimeRequest(userId, Number(info.lastInsertRowid), 'Late Clock-out (Unscheduled)', lateMins);
+                } else {
+                    logger.info(`Late segment ignored for User ${userId}: duration is ${lateMins} mins (minimum required unscheduled: ${minUnscheduledSessionMins} mins).`);
+                }
+            }
+        });
+
+        updateTransaction();
         logAudit('attendance', activeSession.id, 'UPDATE', userId, oldSession, updatedRecord);
         return { status: 200, data: updatedRecord };
     }
@@ -241,7 +564,7 @@ function handleClockAction(userId: number, type: string, lat: number, lng: numbe
     let userProfile = prefetchedProfile;
     if (!userProfile) {
         userProfile = db.prepare(`
-            SELECT p.status, p.device_id, p.weekly_schedule, j.grace_period, p.allow_overtime, p.max_overtime_hours
+            SELECT p.status, p.device_id, p.weekly_schedule, p.allow_overtime, p.max_overtime_hours
             FROM profiles p
             LEFT JOIN jobs j ON p.job_id = j.id
             WHERE p.user_id = ?
@@ -262,18 +585,6 @@ function handleClockAction(userId: number, type: string, lat: number, lng: numbe
         return { status: 403, error: 'REASON: SUSPENDED' };
     }
 
-    // 3. Device Binding Security Check
-    if (!userProfile.device_id) {
-        // First time clocking in, bind device
-        const existingDevice = db.prepare('SELECT user_id FROM profiles WHERE device_id = ?').get(deviceId) as any;
-        if (existingDevice && existingDevice.user_id !== userId) {
-            return { status: 403, error: 'Security Alert: This device is already registered to another employee.' };
-        }
-        db.prepare('UPDATE profiles SET device_id = ? WHERE user_id = ?').run(deviceId, userId);
-    } else if (userProfile.device_id !== deviceId) {
-        return { status: 403, error: 'Security Alert: Unauthorized device.' };
-    }
-
     // Check for prefetched settings first, then fall back to global cache
     let settings = (typeof prefetchedSettings !== 'undefined' ? prefetchedSettings : null) || getSettingsCache();
 
@@ -286,6 +597,23 @@ function handleClockAction(userId: number, type: string, lat: number, lng: numbe
         }
     }
 
+    // 3. Device Binding Security Check
+    const isWhitelisted = settings && settings.whitelist_device_ids && 
+        settings.whitelist_device_ids.split(',').map((id: string) => id.trim()).includes(deviceId);
+
+    if (!isWhitelisted && (!settings || settings.device_binding_enforced === 1)) {
+        if (!userProfile.device_id) {
+            // First time clocking in, bind device
+            const existingDevice = db.prepare('SELECT user_id FROM profiles WHERE device_id = ?').get(deviceId) as any;
+            if (existingDevice && existingDevice.user_id !== userId) {
+                return { status: 403, error: 'Security Alert: This device is already registered to another employee.' };
+            }
+            db.prepare('UPDATE profiles SET device_id = ? WHERE user_id = ?').run(deviceId, userId);
+        } else if (userProfile.device_id !== deviceId) {
+            return { status: 403, error: 'Security Alert: Unauthorized device.' };
+        }
+    }
+
     if (settings && settings.geofence_toggle) {
         const distance = calculateDistance(lat, lng, settings.office_lat, settings.office_lng);
         if (distance > settings.geofence_radius) {
@@ -293,25 +621,25 @@ function handleClockAction(userId: number, type: string, lat: number, lng: numbe
         }
     }
 
-    const timezone = settings?.company_timezone || 'UTC';
+
 
     let schedule = null;
     if (userProfile.weekly_schedule) {
         try {
             schedule = JSON.parse(userProfile.weekly_schedule);
         } catch (e) {
-            console.error('Error parsing weekly schedule:', e);
+            logger.error('Error parsing weekly schedule:', e);
         }
     }
 
-    return processAttendanceEvent(userId, type, timestamp, lat, lng, userProfile, timezone, schedule);
+    return processAttendanceEvent(userId, type, timestamp, lat, lng, userProfile, schedule);
 }
 
 export const clockAttendance = (req: AuthRequest, res: Response): void => {
     try {
         const userId = req.user!.id;
         const { type, lat, lng, deviceId } = req.body;
-        const timestamp = new Date().toISOString();
+        const timestamp = getAppNow();
 
         if (!type || !['check_in', 'check_out'].includes(type) || lat === undefined || lng === undefined || !deviceId) {
             res.status(400).json({ error: 'Missing required fields or deviceId' });
@@ -335,7 +663,7 @@ export const clockAttendance = (req: AuthRequest, res: Response): void => {
         // Now TypeScript knows 'result' must contain 'data'
         res.status(result.status).json(result.data);
     } catch (error) {
-        console.error('Error clocking attendance:', error);
+        logger.error('Error clocking attendance:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -361,7 +689,7 @@ export const syncOfflineLogs = (req: AuthRequest, res: Response): void => {
                 let profile = profileMap.get(userId);
                 if (!profile) {
                     profile = db.prepare(`
-                        SELECT p.status, p.device_id, p.weekly_schedule, j.grace_period, p.allow_overtime, p.max_overtime_hours
+                        SELECT p.status, p.device_id, p.weekly_schedule, p.allow_overtime, p.max_overtime_hours
                         FROM profiles p
                         LEFT JOIN jobs j ON p.job_id = j.id
                         WHERE p.user_id = ?
@@ -377,10 +705,10 @@ export const syncOfflineLogs = (req: AuthRequest, res: Response): void => {
                 if ('error' in result) {
                     results.push({ logId: log.id, status: 'skipped', reason: result.error });
                 } else {
-                    results.push({ 
-                        logId: log.id, 
-                        status: 'success', 
-                        action: result.status === 201 ? 'inserted' : 'updated' 
+                    results.push({
+                        logId: log.id,
+                        status: 'success',
+                        action: result.status === 201 ? 'inserted' : 'updated'
                     });
                 }
             }
@@ -390,7 +718,7 @@ export const syncOfflineLogs = (req: AuthRequest, res: Response): void => {
         const syncResults = syncTransaction(logs);
         res.json({ message: 'Sync completed', results: syncResults });
     } catch (error) {
-        console.error('Error syncing offline logs:', error);
+        logger.error('Error syncing offline logs:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -398,10 +726,26 @@ export const syncOfflineLogs = (req: AuthRequest, res: Response): void => {
 export const getMyLogs = (req: AuthRequest, res: Response): void => {
     try {
         const userId = req.user!.id;
+        evaluateUserAttendance(userId);
         const logs = db.prepare(`
-            SELECT * FROM attendance
-            WHERE user_id = ?
-            ORDER BY date DESC, check_in DESC
+            SELECT a.*, s.start_time as shift_start_time, s.end_time as shift_end_time, s.status as shift_status
+            FROM attendance a
+            LEFT JOIN shift_instances s ON (
+                (a.shift_id IS NOT NULL AND a.shift_id = s.id AND a.shift_id NOT LIKE 'US_%')
+                OR
+                (
+                    (a.shift_id IS NULL OR a.shift_id LIKE 'US_%') 
+                    AND s.id = (
+                        SELECT id FROM shift_instances 
+                        WHERE user_id = a.user_id 
+                          AND logical_date = a.date
+                          AND status != 'Cancelled'
+                        LIMIT 1
+                    )
+                )
+            )
+            WHERE a.user_id = ?
+            ORDER BY a.date DESC, a.check_in DESC
         `).all(userId) as any[];
 
         if (logs.length > 0) {
@@ -441,19 +785,45 @@ export const getMyLogs = (req: AuthRequest, res: Response): void => {
 
         res.json(logs);
     } catch (error) {
-        console.error('Error fetching my attendance logs:', error);
+        logger.error('Error fetching my attendance logs:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
 
 export const getAttendanceLogs = (req: Request, res: Response): void => {
     try {
+        // Find active users and evaluate them JIT
+        const activeUsers = db.prepare(`
+            SELECT DISTINCT user_id
+            FROM attendance
+            WHERE check_out IS NULL
+        `).all() as any[];
+
+        for (const u of activeUsers) {
+            evaluateUserAttendance(u.user_id);
+        }
+
         const logs = db.prepare(`
-            SELECT a.*, u.name as user_name, j.title as job_title
+            SELECT a.*, u.name as user_name, j.title as job_title, p.profile_picture_url,
+                   s.start_time as shift_start_time, s.end_time as shift_end_time, s.status as shift_status
             FROM attendance a
             JOIN users u ON a.user_id = u.id
             LEFT JOIN profiles p ON u.id = p.user_id
             LEFT JOIN jobs j ON p.job_id = j.id
+            LEFT JOIN shift_instances s ON (
+                (a.shift_id IS NOT NULL AND a.shift_id = s.id AND a.shift_id NOT LIKE 'US_%')
+                OR
+                (
+                    (a.shift_id IS NULL OR a.shift_id LIKE 'US_%') 
+                    AND s.id = (
+                        SELECT id FROM shift_instances 
+                        WHERE user_id = a.user_id 
+                          AND logical_date = a.date
+                          AND status != 'Cancelled'
+                        LIMIT 1
+                    )
+                )
+            )
             ORDER BY a.date DESC, a.check_in DESC
         `).all() as any[];
 
@@ -494,14 +864,22 @@ export const getAttendanceLogs = (req: Request, res: Response): void => {
 
         res.json(logs);
     } catch (error) {
-        console.error('Error fetching attendance logs:', error);
+        logger.error('Error fetching attendance logs:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
 
 export const getAttendanceStats = (req: Request, res: Response): void => {
     try {
-        const statusDist = db.prepare('SELECT status as name, COUNT(*) as value FROM attendance GROUP BY status').all();
+        const statusDist = db.prepare(`
+            SELECT status as name, SUM(value) as value
+            FROM (
+                SELECT checkin_status as status, COUNT(*) as value FROM attendance GROUP BY checkin_status
+                UNION ALL
+                SELECT checkout_status as status, COUNT(*) as value FROM attendance WHERE checkout_status IS NOT NULL GROUP BY checkout_status
+            )
+            GROUP BY status
+        `).all();
 
         const dailyHours = db.prepare(`
             SELECT date, ROUND(SUM((julianday(check_out) - julianday(check_in)) * 24), 2) as hours
@@ -512,15 +890,13 @@ export const getAttendanceStats = (req: Request, res: Response): void => {
             LIMIT 7
         `).all();
 
-        const settingsForTz = db.prepare('SELECT company_timezone FROM settings WHERE id = 1').get() as any;
-        const timezone = settingsForTz?.company_timezone || 'UTC';
-        const todayDateStr = getDateStringInTimezone(new Date(), timezone);
+        const todayDateStr = getAppNow().split('T')[0];
 
         const todayStats = db.prepare(`
             SELECT
-                SUM(CASE WHEN status = 'on_time' THEN 1 ELSE 0 END) as present,
-                SUM(CASE WHEN status = 'late_in' THEN 1 ELSE 0 END) as late,
-                SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) as absent
+                SUM(CASE WHEN checkin_status = 'on_time' THEN 1 ELSE 0 END) as present,
+                SUM(CASE WHEN checkin_status = 'late_in' THEN 1 ELSE 0 END) as late,
+                0 as absent
             FROM attendance
             WHERE date = ?
         `).get(todayDateStr) as any;
@@ -535,51 +911,126 @@ export const getAttendanceStats = (req: Request, res: Response): void => {
             }
         });
     } catch (error) {
-        console.error('Error fetching attendance stats:', error);
+        logger.error('Error fetching attendance stats:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
 
 export const stepAway = (req: AuthRequest, res: Response): void => {
+    logger.debug('[stepAway] Entry: userId=', req.user?.id, 'deviceId=', req.body.deviceId);
     try {
         const userId = req.user!.id;
         const { deviceId } = req.body;
-        const timestamp = new Date().toISOString(); // Server is the single source of truth
+        const timestamp = getAppNow(); // Server is the single source of truth
 
         if (!deviceId) {
+            logger.debug('[stepAway] Missing deviceId');
             res.status(400).json({ error: 'Missing deviceId' });
             return;
         }
 
         // Device Binding Security Check
         const profile = db.prepare('SELECT device_id FROM profiles WHERE user_id = ?').get(userId) as any;
-        if (!profile.device_id || profile.device_id !== deviceId) {
-            res.status(403).json({ error: 'Security Alert: Unauthorized device.' });
-            return;
+        logger.debug('[stepAway] profile=', profile);
+        
+        let settings = getSettingsCache();
+        if (!settings) {
+            settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+            if (settings) {
+                setSettingsCache(settings);
+            }
+        }
+        const isWhitelisted = settings && settings.whitelist_device_ids && 
+            settings.whitelist_device_ids.split(',').map((id: string) => id.trim()).includes(deviceId);
+
+        if (!isWhitelisted && (!settings || settings.device_binding_enforced === 1)) {
+            if (!profile.device_id || profile.device_id !== deviceId) {
+                logger.debug('[stepAway] Security Alert: Unauthorized device.');
+                res.status(403).json({ error: 'Security Alert: Unauthorized device.' });
+                return;
+            }
         }
 
         const activeAttendance = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND check_out IS NULL ORDER BY check_in DESC LIMIT 1').get(userId) as any;
+        logger.debug('[stepAway] activeAttendance=', activeAttendance);
 
         if (!activeAttendance) {
+            logger.debug('[stepAway] No active attendance found for today');
             res.status(400).json({ error: 'No active attendance found for today' });
             return;
         }
 
-        if (activeAttendance.current_status === 'away') {
+        if (activeAttendance.working_status === 'away') {
+            logger.debug('[stepAway] Already stepped away');
             res.status(400).json({ error: 'Already stepped away' });
             return;
         }
 
-        const breakProfile = db.prepare('SELECT lunch_break_minutes FROM profiles WHERE user_id = ?').get(userId) as any;
-        const hasBreakBalance = breakProfile && breakProfile.lunch_break_minutes > 0;
+        if (activeAttendance.checkin_status === 'unscheduled') {
+            logger.debug('[stepAway] Cannot step away during an unscheduled shift');
+            res.status(400).json({ error: 'Cannot step away during an unscheduled shift' });
+            return;
+        }
 
+        // Clock-out Safety Logic: Prevent Late Requests
+        let activeShift: any = null;
+        if (activeAttendance.shift_id && !activeAttendance.shift_id.startsWith('US_')) {
+            activeShift = db.prepare('SELECT * FROM shift_instances WHERE id = ?').get(activeAttendance.shift_id) as any;
+        }
+
+        if (activeShift) {
+            const nowMs = new Date(timestamp).getTime(); // Strictly use server execution time for safety check
+            const shiftEndMs = new Date(activeShift.end_time).getTime();
+            logger.debug('[stepAway] activeShift Branch Entry: shiftEndMs=', shiftEndMs, 'nowMs=', nowMs);
+            // Block if request is after or within 1 minute of shift end
+            if (nowMs >= shiftEndMs - 60000) {
+                logger.debug('[stepAway] Shift has ended. Please clock out instead.');
+                res.status(400).json({ error: 'Shift has about to end. Please clock out instead.' });
+                return;
+            }
+        }
+
+        // Lunch Break & 10% Cap Logic
+        const breakProfile = db.prepare('SELECT lunch_break_minutes FROM profiles WHERE user_id = ?').get(userId) as any;
+        const adminSetValue = breakProfile ? (breakProfile.lunch_break_minutes || 0) : 0;
+
+        let totalDailyMinutes = 0;
+        if (activeShift && activeShift.logical_date) {
+            const todayShifts = db.prepare('SELECT start_time, end_time FROM shift_instances WHERE user_id = ? AND logical_date = ? AND status != \'Cancelled\'').all(userId, activeShift.logical_date) as any[];
+            todayShifts.forEach(shift => {
+                totalDailyMinutes += getDifferenceInMinutes(shift.start_time, shift.end_time);
+            });
+        }
+
+        const maxAllowed = Math.floor(totalDailyMinutes * 0.1);
+        logger.debug('[stepAway] totalDailyMinutes=', totalDailyMinutes, 'maxAllowed=', maxAllowed);
+        const autoApprovedLimit = Math.min(adminSetValue, maxAllowed);
+        logger.debug('[stepAway] adminSetValue=', adminSetValue, 'autoApprovedLimit=', autoApprovedLimit);
+
+        // Calculate consumed break minutes for today
+        let consumedBreakMinutes = 0;
+        const todayInterruptions = db.prepare(`
+            SELECT start_time, end_time FROM shift_interruptions
+            WHERE attendance_id IN (
+                SELECT id FROM attendance WHERE user_id = ? AND date = ?
+            ) AND type = 'step_away' AND status = 'auto_approved'
+        `).all(userId, activeAttendance.date) as any[];
+
+        todayInterruptions.forEach(intr => {
+            consumedBreakMinutes += getDifferenceInMinutes(intr.start_time, intr.end_time || timestamp);
+        });
+
+        const hasBreakBalance = (autoApprovedLimit - consumedBreakMinutes) > 0;
+        logger.debug('[stepAway] consumedBreakMinutes=', consumedBreakMinutes, 'hasBreakBalance=', hasBreakBalance);
         const status = hasBreakBalance ? 'auto_approved' : 'pending_manager';
+        logger.debug('[stepAway] status=', status);
 
         const stepAwayTransaction = db.transaction(() => {
+            logger.debug('[stepAway] Transaction Entry');
             const oldAttendance = { ...activeAttendance };
 
             // Update attendance status
-            db.prepare('UPDATE attendance SET current_status = ? WHERE id = ?').run('away', activeAttendance.id);
+            db.prepare('UPDATE attendance SET working_status = ? WHERE id = ?').run('away', activeAttendance.id);
 
             // Insert shift interruption
             const insertInterruption = db.prepare(`
@@ -590,14 +1041,8 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
             const interruptionId = info.lastInsertRowid;
 
             // If no break balance, create a request
-            if (!hasBreakBalance) {
-                const reqInsert = db.prepare(`
-                    INSERT INTO requests (user_id, attendance_id, type, reference_id, reason, status)
-                    VALUES (?, ?, 'permission_to_leave', ?, 'Step away with 0 break balance', 'pending')
-                `).run(userId, activeAttendance.id, interruptionId);
-                const newReq = db.prepare('SELECT * FROM requests WHERE id = ?').get(reqInsert.lastInsertRowid);
-                logAudit('requests', Number(reqInsert.lastInsertRowid), 'CREATE', userId, null, newReq);
-            }
+            // If no break balance, the request is not created here.
+            // It will be created in resumeWork once the duration is finalized.
 
             const updatedAttendance = db.prepare('SELECT * FROM attendance WHERE id = ?').get(activeAttendance.id);
             logAudit('attendance', activeAttendance.id, 'UPDATE', userId, oldAttendance, updatedAttendance);
@@ -610,6 +1055,7 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
 
         const result = stepAwayTransaction();
 
+        logger.debug('[stepAway] Exit. Success.');
         res.status(201).json({
             message: 'Stepped away successfully',
             status: result.status,
@@ -617,7 +1063,7 @@ export const stepAway = (req: AuthRequest, res: Response): void => {
             hasBreakBalance
         });
     } catch (error) {
-        console.error('Error stepping away:', error);
+        logger.error('Error stepping away:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -626,7 +1072,7 @@ export const resumeWork = (req: AuthRequest, res: Response): void => {
     try {
         const userId = req.user!.id;
         const { deviceId } = req.body;
-        const timestamp = new Date().toISOString(); // Server is the single source of truth
+        const timestamp = getAppNow(); // Server is the single source of truth
 
         if (!deviceId) {
             res.status(400).json({ error: 'Missing deviceId' });
@@ -635,9 +1081,22 @@ export const resumeWork = (req: AuthRequest, res: Response): void => {
 
         // Device Binding Security Check
         const profile = db.prepare('SELECT device_id FROM profiles WHERE user_id = ?').get(userId) as any;
-        if (!profile.device_id || profile.device_id !== deviceId) {
-            res.status(403).json({ error: 'Security Alert: Unauthorized device.' });
-            return;
+        
+        let settings = getSettingsCache();
+        if (!settings) {
+            settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+            if (settings) {
+                setSettingsCache(settings);
+            }
+        }
+        const isWhitelisted = settings && settings.whitelist_device_ids && 
+            settings.whitelist_device_ids.split(',').map((id: string) => id.trim()).includes(deviceId);
+
+        if (!isWhitelisted && (!settings || settings.device_binding_enforced === 1)) {
+            if (!profile.device_id || profile.device_id !== deviceId) {
+                res.status(403).json({ error: 'Security Alert: Unauthorized device.' });
+                return;
+            }
         }
 
         const activeAttendance = db.prepare('SELECT * FROM attendance WHERE user_id = ? AND check_out IS NULL ORDER BY check_in DESC LIMIT 1').get(userId) as any;
@@ -647,7 +1106,7 @@ export const resumeWork = (req: AuthRequest, res: Response): void => {
             return;
         }
 
-        if (activeAttendance.current_status === 'working') {
+        if (activeAttendance.working_status === 'working') {
             res.status(400).json({ error: 'Already working' });
             return;
         }
@@ -671,7 +1130,18 @@ export const resumeWork = (req: AuthRequest, res: Response): void => {
             db.prepare('UPDATE shift_interruptions SET end_time = ? WHERE id = ?').run(timestamp, activeInterruption.id);
 
             // Update attendance status
-            db.prepare('UPDATE attendance SET current_status = ? WHERE id = ?').run('working', activeAttendance.id);
+            db.prepare('UPDATE attendance SET working_status = ? WHERE id = ?').run('working', activeAttendance.id);
+
+            // If no break balance (status was pending_manager), create the request now that it is finalized
+            if (activeInterruption.status === 'pending_manager') {
+                const duration = getDifferenceInMinutes(activeInterruption.start_time, timestamp);
+                const reqInsert = db.prepare(`
+                    INSERT INTO requests (user_id, attendance_id, type, shift_interruption_id, reason, value, status)
+                    VALUES (?, ?, 'permission_to_leave', ?, 'Step away with 0 break balance', ?, 'pending')
+                `).run(userId, activeAttendance.id, activeInterruption.id, duration);
+                const newReq = db.prepare('SELECT * FROM requests WHERE id = ?').get(reqInsert.lastInsertRowid);
+                logAudit('requests', Number(reqInsert.lastInsertRowid), 'CREATE', userId, null, newReq);
+            }
 
             const updatedInterruption = db.prepare('SELECT * FROM shift_interruptions WHERE id = ?').get(activeInterruption.id);
             logAudit('shift_interruptions', activeInterruption.id, 'UPDATE', userId, oldInterruption, updatedInterruption);
@@ -684,7 +1154,55 @@ export const resumeWork = (req: AuthRequest, res: Response): void => {
 
         res.json({ message: 'Resumed work successfully' });
     } catch (error) {
-        console.error('Error resuming work:', error);
+        logger.error('Error resuming work:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+let insertHeartbeatStmt: any = null;
+const getInsertHeartbeatStmt = () => {
+    if (!insertHeartbeatStmt) {
+        insertHeartbeatStmt = db.prepare(`
+            INSERT INTO attendance_heartbeats (user_id, timestamp, ssid, status)
+            VALUES (?, ?, ?, ?)
+        `);
+    }
+    return insertHeartbeatStmt;
+};
+
+export const heartbeatAttendance = (req: AuthRequest, res: Response): void => {
+    try {
+        const userId = req.user!.id;
+        const { timestamp, currentSsid } = req.body;
+
+        if (!timestamp) {
+            res.status(400).json({ error: 'Missing timestamp' });
+            return;
+        }
+
+        // Fetch company settings to validate SSID
+        let settings = getSettingsCache();
+        if (!settings) {
+            settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
+            if (settings) {
+                setSettingsCache(settings);
+            }
+        }
+
+        let status = 'success';
+        if (settings && settings.wifi_validation_toggle) {
+            const companySsid = settings.company_wifi_ssid;
+            if (companySsid && currentSsid !== companySsid) {
+                status = 'failed';
+            }
+        }
+
+        // Store heartbeat log in database
+        getInsertHeartbeatStmt().run(userId, timestamp, currentSsid || null, status);
+
+        res.json({ status: 'ok', heartbeatStatus: status });
+    } catch (error) {
+        logger.error('Error logging attendance heartbeat:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

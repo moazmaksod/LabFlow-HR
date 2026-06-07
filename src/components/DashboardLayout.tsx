@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
+import api from '../lib/axios';
 import { useAppStore } from '../store/useAppStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { Moon, Sun, Globe, LayoutDashboard, Users, Calendar, FileText, Settings, LogOut, Briefcase, DollarSign, Activity, Building2, CreditCard, Shield, FileText as FileTextIcon } from 'lucide-react';
@@ -24,6 +25,14 @@ export default function DashboardLayout() {
       const res = await axios.get('/api/settings', {
         headers: { Authorization: `Bearer ${token}` }
       });
+      return res.data;
+    }
+  });
+
+  const { data: profileData } = useQuery({
+    queryKey: ['manager-profile'],
+    queryFn: async () => {
+      const res = await api.get('/users/profile');
       return res.data;
     }
   });
@@ -180,13 +189,24 @@ export default function DashboardLayout() {
               )}
             </button>
 
-            {/* User Avatar Placeholder & Profile Link */}
+            {/* User Avatar & Profile Link */}
             <NavLink
               to="/profile"
               className="flex items-center gap-2 hover:bg-muted p-1.5 rounded-lg transition-colors"
               title="My Profile"
             >
-              <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-sm uppercase">
+              {profileData?.profile_picture_url ? (
+                <img
+                  src={profileData.profile_picture_url.startsWith('http') ? profileData.profile_picture_url : `${window.location.origin}${profileData.profile_picture_url}`}
+                  alt={user?.name || 'Profile'}
+                  className="w-8 h-8 rounded-full object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                    (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                  }}
+                />
+              ) : null}
+              <div className={`w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-sm uppercase ${profileData?.profile_picture_url ? 'hidden' : ''}`}>
                 {user?.name?.charAt(0) || 'M'}
               </div>
             </NavLink>

@@ -16,6 +16,7 @@ import jwt from 'jsonwebtoken';
  */
 describe('Payroll API', () => {
   let adminToken: string;
+  let adminId: number;
   let employeeId: number;
   let sharedPasswordHash: string;
 
@@ -26,7 +27,7 @@ describe('Payroll API', () => {
   });
 
   afterEach(() => {
-    db.exec('DELETE FROM users; DELETE FROM attendance; DELETE FROM profiles; DELETE FROM requests; DELETE FROM jobs; DELETE FROM payrolls; DELETE FROM payroll_transactions;');
+    db.exec('DELETE FROM payrolls; DELETE FROM requests; DELETE FROM attendance; DELETE FROM profiles; DELETE FROM users; DELETE FROM jobs;');
   });
 
   afterAll(() => {
@@ -40,7 +41,8 @@ describe('Payroll API', () => {
       VALUES (?, ?, ?, ?)
     `);
     const adminInfo = insertAdmin.run('Admin', 'admin@test.com', sharedPasswordHash, 'manager');
-    adminToken = jwt.sign({ id: adminInfo.lastInsertRowid, role: 'manager' }, process.env.JWT_SECRET as string);
+    adminId = adminInfo.lastInsertRowid as number;
+    adminToken = jwt.sign({ id: adminId, role: 'manager' }, process.env.JWT_SECRET as string);
 
     // Create an employee user
     const insertEmployee = db.prepare(`
@@ -73,8 +75,8 @@ describe('Payroll API', () => {
 
     // Mock attendance logs
     const insertAttendance = db.prepare(`
-      INSERT INTO attendance (user_id, check_in, check_out, date, status)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO attendance (user_id, check_in, check_out, date, checkin_status, checkout_status, working_status)
+      VALUES (?, ?, ?, ?, ?, 'on_time', 'working')
     `);
 
     // Day 1: 9 hours (08:00 to 17:00)
@@ -84,6 +86,21 @@ describe('Payroll API', () => {
       '2023-10-01T17:00:00.000Z',
       '2023-10-01',
       'on_time'
+    );
+
+    // Mock daily_attendance
+    const insertDailyAttendance = db.prepare(`
+      INSERT INTO daily_attendance (user_id, date, scheduled_working_minutes, scheduled_non_working_minutes, unscheduled_working_minutes, deduction_minutes, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    insertDailyAttendance.run(
+      employeeId,
+      '2023-10-01',
+      540, // 9 hours (540 minutes)
+      0,
+      0,
+      0,
+      'processed'
     );
   });
   it('should calculate payroll correctly for a given date range', async () => {
@@ -202,69 +219,31 @@ describe('Payroll API', () => {
     });
   });
 
-  describe('POST /api/payroll/generate', () => {
-    it('should generate draft payrolls successfully for given month and year', async () => {
+  describe('POST /api/payroll/records/pay', () => {
+    it('should record payment successfully for a valid employee and range', async () => {
       const res = await request(app)
-        .post('/api/payroll/generate')
-        .query({ month: '03', year: '2026' })
+        .post('/api/payroll/records/pay')
+        .send({ user_id: employeeId, startDate: '2023-10-01', endDate: '2023-10-01' })
         .set('Authorization', `Bearer ${adminToken}`);
 
       expect(res.status).toBe(200);
-      expect(res.body).toHaveProperty('message', 'Draft payrolls generated successfully');
-      expect(Array.isArray(res.body.payrolls)).toBe(true);
-      expect(res.body.payrolls.length).toBeGreaterThan(0);
-
-      const employeePayroll = res.body.payrolls.find((p: any) => p.user_id === employeeId);
-      expect(employeePayroll).toBeDefined();
-
-      // Verify the database record
-      const payrollRecord = db.prepare(`SELECT * FROM payrolls WHERE id = ?`).get(employeePayroll.payroll_id) as any;
-      expect(payrollRecord).toBeDefined();
-      expect(payrollRecord.status).toBe('draft');
-      expect(payrollRecord.user_id).toBe(employeeId);
+      expect(res.body).toHaveProperty('message', 'Payment recorded successfully');
+      expect(res.body.record).toBeDefined();
+      expect(res.body.record.status).toBe('paid');
+      expect(res.body.record.user_id).toBe(employeeId);
     });
 
-    it('should return 400 if month is missing', async () => {
-      const res = await request(app)
-        .post('/api/payroll/generate')
-        .query({ year: '2026' })
-        .set('Authorization', `Bearer ${adminToken}`);
-
-      expect(res.status).toBe(400);
-      expect(res.body).toHaveProperty('error', 'Month and year are required');
-    });
-
-    it('should return 400 if year is missing', async () => {
-      const res = await request(app)
-        .post('/api/payroll/generate')
-        .query({ month: '03' })
-        .set('Authorization', `Bearer ${adminToken}`);
-
-      expect(res.status).toBe(400);
-      expect(res.body).toHaveProperty('error', 'Month and year are required');
-    });
-
-    it('should return 400 if both month and year are missing', async () => {
-      const res = await request(app)
-        .post('/api/payroll/generate')
-        .set('Authorization', `Bearer ${adminToken}`);
-
-      expect(res.status).toBe(400);
-      expect(res.body).toHaveProperty('error', 'Month and year are required');
-    });
-
-    it('should forbid non-manager users from generating payrolls', async () => {
+    it('should forbid non-manager users from recording payments', async () => {
       const employeeToken = jwt.sign({ id: employeeId, role: 'employee' }, process.env.JWT_SECRET as string);
 
       const res = await request(app)
-        .post('/api/payroll/generate')
-        .query({ month: '03', year: '2026' })
+        .post('/api/payroll/records/pay')
+        .send({ user_id: employeeId, startDate: '2023-10-01', endDate: '2023-10-01' })
         .set('Authorization', `Bearer ${employeeToken}`);
 
       expect(res.status).toBe(403);
       expect(res.body).toHaveProperty('error', 'Forbidden: Insufficient permissions');
     });
-
   });
 
   describe('GET /api/payroll/my-records', () => {
@@ -282,18 +261,18 @@ describe('Payroll API', () => {
       const otherEmployeeInfo = insertEmployee.run('Other Employee', 'other@test.com', sharedPasswordHash, 'employee');
       otherEmployeeId = otherEmployeeInfo.lastInsertRowid as number;
 
-      // Insert payrolls
+      // Insert payrolls matching schema
       const insertPayroll = db.prepare(`
-        INSERT INTO payrolls (user_id, start_date, end_date, base_salary, net_salary, status)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO payrolls (user_id, start_date, end_date, hourly_rate, scheduled_working_minutes, net_salary, status, paid_by)
+        VALUES (?, ?, ?, ?, ?, ?, 'paid', ?)
       `);
 
       // Current employee payrolls
-      insertPayroll.run(employeeId, '2023-10-01', '2023-10-31', 2000, 2000, 'finalized');
-      insertPayroll.run(employeeId, '2023-09-01', '2023-09-30', 2000, 2000, 'paid');
+      insertPayroll.run(employeeId, '2023-10-01', '2023-10-31', 25.00, 4800, 2000, adminId);
+      insertPayroll.run(employeeId, '2023-09-01', '2023-09-30', 25.00, 4800, 2000, adminId);
 
       // Other employee payroll
-      insertPayroll.run(otherEmployeeId, '2023-10-01', '2023-10-31', 2500, 2500, 'finalized');
+      insertPayroll.run(otherEmployeeId, '2023-10-01', '2023-10-31', 25.00, 4800, 2500, adminId);
     });
 
     it('should return all payrolls for the authenticated user', async () => {
@@ -337,74 +316,6 @@ describe('Payroll API', () => {
 
       const otherPayroll = res.body.find((p: any) => p.user_id === otherEmployeeId);
       expect(otherPayroll).toBeUndefined();
-    });
-  });
-
-  describe('GET /api/payroll/my-records/:payroll_id/transactions', () => {
-    let employeeToken: string;
-    let employeePayrollId: number;
-    let otherEmployeePayrollId: number;
-
-    beforeEach(async () => {
-      employeeToken = jwt.sign({ id: employeeId, role: 'employee' }, process.env.JWT_SECRET as string);
-
-      // Create another employee
-      const insertEmployee = db.prepare(`
-        INSERT INTO users (name, email, password_hash, role)
-        VALUES (?, ?, ?, ?)
-      `);
-      const otherEmployeeInfo = insertEmployee.run('Other Employee', 'other@test.com', sharedPasswordHash, 'employee');
-      const otherEmployeeId = otherEmployeeInfo.lastInsertRowid as number;
-
-      // Insert payrolls
-      const insertPayroll = db.prepare(`
-        INSERT INTO payrolls (user_id, start_date, end_date, base_salary, net_salary, status)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `);
-
-      const p1 = insertPayroll.run(employeeId, '2023-10-01', '2023-10-31', 2000, 2050, 'finalized');
-      employeePayrollId = p1.lastInsertRowid as number;
-
-      const p2 = insertPayroll.run(otherEmployeeId, '2023-10-01', '2023-10-31', 2500, 2500, 'finalized');
-      otherEmployeePayrollId = p2.lastInsertRowid as number;
-
-      // Insert transactions
-      const insertTransaction = db.prepare(`
-        INSERT INTO payroll_transactions (payroll_id, type, amount, status)
-        VALUES (?, ?, ?, ?)
-      `);
-      insertTransaction.run(employeePayrollId, 'bonus', 50, 'applied');
-      insertTransaction.run(otherEmployeePayrollId, 'bonus', 100, 'applied');
-    });
-
-    it('should return transactions for the owned payroll', async () => {
-      const res = await request(app)
-        .get(`/api/payroll/my-records/${employeePayrollId}/transactions`)
-        .set('Authorization', `Bearer ${employeeToken}`);
-
-      expect(res.status).toBe(200);
-      expect(Array.isArray(res.body)).toBe(true);
-      expect(res.body.length).toBe(1);
-      expect(res.body[0].payroll_id).toBe(employeePayrollId);
-      expect(res.body[0].amount).toBe(50);
-    });
-
-    it('should return 403 when trying to access transactions of another user\'s payroll', async () => {
-      const res = await request(app)
-        .get(`/api/payroll/my-records/${otherEmployeePayrollId}/transactions`)
-        .set('Authorization', `Bearer ${employeeToken}`);
-
-      expect(res.status).toBe(403);
-      expect(res.body).toHaveProperty('error', 'Access denied');
-    });
-
-    it('should return 403 if the payroll does not exist', async () => {
-      const res = await request(app)
-        .get('/api/payroll/my-records/9999/transactions')
-        .set('Authorization', `Bearer ${employeeToken}`);
-
-      expect(res.status).toBe(403);
-      expect(res.body).toHaveProperty('error', 'Access denied');
     });
   });
 });

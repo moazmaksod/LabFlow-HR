@@ -1,5 +1,14 @@
 import { Router } from 'express';
-import { getPayrollSummary, getAllPayroll, generateDraftPayroll, getPayrolls, getPayrollTransactions, updatePayrollStatus, getMyPayrolls, getMyPayrollTransactions } from '../controllers/payrollController.js';
+import { 
+    recalculateDailyAttendance, 
+    getPayrollSummary, 
+    getAllPayroll, 
+    getPayrolls, 
+    getPayrollDetails, 
+    recordPayment, 
+    getMyPayrolls,
+    getSalaryEstimate
+} from '../controllers/payrollController.js';
 import { authenticate, requireRole } from '../middlewares/authMiddleware.js';
 
 const router = Router();
@@ -8,14 +17,14 @@ router.use(authenticate);
 router.get('/', requireRole(['manager']), getAllPayroll);
 router.get('/summary', requireRole(['manager']), getPayrollSummary);
 
-// New persistent payroll endpoints
-router.post('/generate', requireRole(['manager']), generateDraftPayroll);
+// Manager endpoints
+router.post('/recalculate-daily', requireRole(['manager']), recalculateDailyAttendance);
 router.get('/records', requireRole(['manager']), getPayrolls);
-router.get('/records/:payroll_id/transactions', requireRole(['manager']), getPayrollTransactions);
-router.put('/records/:id/status', requireRole(['manager']), updatePayrollStatus);
+router.get('/records/:user_id/details', requireRole(['manager']), getPayrollDetails);
+router.post('/records/pay', requireRole(['manager']), recordPayment);
 
 // Employee endpoints
+router.get('/estimate', getSalaryEstimate);
 router.get('/my-records', getMyPayrolls);
-router.get('/my-records/:payroll_id/transactions', getMyPayrollTransactions);
 
 export default router;

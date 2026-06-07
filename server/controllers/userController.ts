@@ -1,36 +1,27 @@
+import { evaluateUserAttendance } from "../services/attendanceEvaluationService.js";
+import logger from '../utils/logger.js';
+
 import { Request, Response } from 'express';
 import db from '../db/index.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
 import { logAudit } from '../services/auditService.js';
 import fs from 'fs';
 import path from 'path';
-import { getLogicalShiftDetails } from '../utils/shiftUtils.js';
+import { generateShiftInstances } from '../services/shiftInstanceService.js';
 
-let cachedTz: string | null = null;
-let tzExpiry = 0;
-
-const getCachedTimezone = () => {
-    const now = Date.now();
-    if (cachedTz && now < tzExpiry) return cachedTz;
-
-    const settings = db.prepare('SELECT company_timezone FROM settings WHERE id = 1').get() as any;
-    cachedTz = settings?.company_timezone || 'UTC';
-    tzExpiry = now + 5 * 60 * 1000;
-    return cachedTz;
-};
 
 export const getUsers = (req: Request, res: Response): void => {
     try {
-        const timezone = getCachedTimezone();
+
         const currentServerTime = new Date().toISOString();
 
         // Get users with their profile and job info, excluding managers
         const users = db.prepare(`
             SELECT
                 u.id, u.name, u.email, u.role, u.created_at,
-                p.status, p.job_id, p.weekly_schedule, p.device_id,
+                p.status, p.job_id, p.device_id,
                 j.title as job_title,
-                (SELECT current_status FROM attendance a WHERE a.user_id = u.id AND a.check_out IS NULL ORDER BY a.check_in DESC LIMIT 1) as raw_current_status,
+                (SELECT working_status FROM attendance a WHERE a.user_id = u.id AND a.check_out IS NULL ORDER BY a.check_in DESC LIMIT 1) as raw_current_status,
                 (SELECT date FROM attendance a WHERE a.user_id = u.id AND a.check_out IS NULL ORDER BY a.check_in DESC LIMIT 1) as current_attendance_date
             FROM users u
             LEFT JOIN profiles p ON u.id = p.user_id
@@ -41,32 +32,26 @@ export const getUsers = (req: Request, res: Response): void => {
 
         // Refine current_status strictly based on the schedule
         users.forEach(user => {
-            let schedule = null;
-            if (user.weekly_schedule) {
-                try {
-                    schedule = JSON.parse(user.weekly_schedule);
-                } catch (e) {
-                    console.error('Error parsing weekly schedule:', e);
-                }
-            }
-
-            // Remove weekly_schedule from payload as it's large and unnecessary here
-            delete user.weekly_schedule;
-
             if (user.raw_current_status) {
-                // We only consider the status valid if the logic date matches the current shift date
-                const shiftDetails = getLogicalShiftDetails(schedule, currentServerTime, timezone, 'check_in');
+                // Fetch the current active logical shift for the user
+                const currentShift = db.prepare(`
+                    SELECT logical_date
+                    FROM shift_instances
+                    WHERE user_id = ?
+                      AND ? BETWEEN start_time AND end_time
+                    LIMIT 1
+                `).get(user.id, currentServerTime) as any;
 
                 // If the user's open attendance record date matches the current logical shift date,
                 // or if there is no scheduled shift at all but they are working, we show their status.
                 // Otherwise, the open shift is stale.
-                if (user.current_attendance_date === shiftDetails.logicalDate || !shiftDetails.shift) {
-                    user.current_status = user.raw_current_status;
+                if (user.current_attendance_date === currentShift?.logical_date || !currentShift) {
+                    user.working_status = user.raw_current_status;
                 } else {
-                    user.current_status = null;
+                    user.working_status = null;
                 }
             } else {
-                user.current_status = null;
+                user.working_status = null;
             }
 
             delete user.raw_current_status;
@@ -75,7 +60,7 @@ export const getUsers = (req: Request, res: Response): void => {
 
         res.json(users);
     } catch (error) {
-        console.error('Error fetching users:', error);
+        logger.error('Error fetching users:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -103,12 +88,28 @@ export const updateUserRole = (req: Request, res: Response): void => {
             if (role === 'employee' || role === 'manager') {
                 profileExists = !!db.prepare('SELECT id FROM profiles WHERE user_id = ?').get(id);
 
+                // Fetch job blueprint defaults
+                let jobBlueprint: any = null;
+                if (job_id) {
+                    jobBlueprint = db.prepare('SELECT hourly_rate, default_annual_leave_days, default_sick_leave_days, allow_overtime FROM jobs WHERE id = ?').get(job_id);
+                }
+
                 if (profileExists) {
-                    db.prepare('UPDATE profiles SET job_id = ?, status = ? WHERE user_id = ?')
-                      .run(job_id || null, 'active', id);
+                    if (jobBlueprint) {
+                        db.prepare('UPDATE profiles SET job_id = ?, status = ?, hourly_rate = COALESCE(NULLIF(hourly_rate, 0), ?), annual_leave_balance = ?, sick_leave_balance = ?, allow_overtime = ? WHERE user_id = ?')
+                          .run(job_id, 'active', jobBlueprint.hourly_rate, jobBlueprint.default_annual_leave_days, jobBlueprint.default_sick_leave_days, jobBlueprint.allow_overtime, id);
+                    } else {
+                        db.prepare('UPDATE profiles SET job_id = ?, status = ? WHERE user_id = ?')
+                          .run(job_id || null, 'active', id);
+                    }
                 } else {
-                    db.prepare('INSERT INTO profiles (user_id, job_id, status) VALUES (?, ?, ?)')
-                      .run(id, job_id || null, 'active');
+                    if (jobBlueprint) {
+                        db.prepare('INSERT INTO profiles (user_id, job_id, status, hourly_rate, annual_leave_balance, sick_leave_balance, allow_overtime) VALUES (?, ?, ?, ?, ?, ?, ?)')
+                          .run(id, job_id, 'active', jobBlueprint.hourly_rate, jobBlueprint.default_annual_leave_days, jobBlueprint.default_sick_leave_days, jobBlueprint.allow_overtime);
+                    } else {
+                        db.prepare('INSERT INTO profiles (user_id, job_id, status) VALUES (?, ?, ?)')
+                          .run(id, job_id || null, 'active');
+                    }
                 }
             }
 
@@ -140,20 +141,25 @@ export const updateUserRole = (req: Request, res: Response): void => {
 
         res.json(updatedUser);
     } catch (error) {
-        console.error('Error updating user:', error);
+        logger.error('Error updating user:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
 
 export const getProfile = (req: AuthRequest, res: Response): void => {
+    logger.debug('[getProfile] Entry: userId=', req.user?.id);
     try {
         const userId = req.user!.id;
+        evaluateUserAttendance(userId);
+
         const user = db.prepare(`
             SELECT
-                u.id, u.name, u.email, u.role,
-                p.age, p.gender, p.profile_picture_url, p.status,
+                u.id, u.name, u.email, u.role, u.display_timezone,
+                p.date_of_birth, p.gender, p.profile_picture_url, p.status,
                 p.weekly_schedule, p.hourly_rate, p.lunch_break_minutes,
-                p.emergency_contact_name, p.emergency_contact_phone, p.leave_balance,
+                p.emergency_contact_name, p.emergency_contact_phone, p.emergency_contact_relationship,
+                p.annual_leave_balance, p.sick_leave_balance,
+                p.full_address, p.national_id, p.bank_name, p.bank_account_iban,
                 p.bio, p.personal_phone, p.legal_name, p.id_photo_url, p.hire_date,
                 p.allow_overtime, p.max_overtime_hours,
                 p.job_id, j.title as job_title
@@ -162,52 +168,158 @@ export const getProfile = (req: AuthRequest, res: Response): void => {
             LEFT JOIN jobs j ON p.job_id = j.id
             WHERE u.id = ?
         `).get(userId) as any;
+        logger.debug('[getProfile] user=', user);
 
         if (!user) {
+            logger.debug('[getProfile] User not found');
             res.status(404).json({ error: 'User not found' });
             return;
         }
 
-        const timezone = getCachedTimezone();
+        if (!user.display_timezone) {
+            logger.warn(`getProfile: User ${userId} has no display_timezone configured. Defaulting to UTC.`);
+        }
+
+        const timezone = 'UTC';
         const currentServerTime = new Date().toISOString();
 
-        let parsedSchedule = null;
-        try {
-            if (user.weekly_schedule) {
-                parsedSchedule = JSON.parse(user.weekly_schedule);
-            }
-        } catch (e) {
-            console.error('Error parsing weekly_schedule', e);
+        const activeSessionRecord = db.prepare(`
+            SELECT * FROM attendance
+            WHERE user_id = ? AND check_out IS NULL
+            ORDER BY check_in DESC
+            LIMIT 1
+        `).get(userId) as any;
+
+        let currentShiftRecord = null;
+        if (activeSessionRecord && activeSessionRecord.shift_id && !activeSessionRecord.shift_id.startsWith('US_')) {
+            currentShiftRecord = db.prepare(`
+                SELECT * FROM shift_instances
+                WHERE id = ?
+            `).get(activeSessionRecord.shift_id) as any;
         }
 
-        const shiftDetails = getLogicalShiftDetails(parsedSchedule, currentServerTime, timezone, 'check_in');
+        if (!currentShiftRecord) {
+            const displayTimezone = user.display_timezone || 'UTC';
+            const localTodayStr = new Intl.DateTimeFormat('en-CA', {
+                timeZone: displayTimezone,
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            }).format(new Date());
+
+            // 1. Get the first shift today that has not ended yet
+            currentShiftRecord = db.prepare(`
+                SELECT * FROM shift_instances
+                WHERE user_id = ? AND logical_date = ? AND status != 'Cancelled'
+                  AND ? <= end_time
+                ORDER BY start_time ASC
+                LIMIT 1
+            `).get(userId, localTodayStr, currentServerTime) as any;
+        }
+
+        if (!currentShiftRecord) {
+            // 2. Fall back to any active/upcoming shift on future days
+            currentShiftRecord = db.prepare(`
+                SELECT * FROM shift_instances
+                WHERE user_id = ? AND status != 'Cancelled'
+                  AND ? <= end_time
+                ORDER BY start_time ASC
+                LIMIT 1
+            `).get(userId, currentServerTime) as any;
+        }
+
+        if (!currentShiftRecord) {
+            // 3. Fall back to the last completed/cancelled shift of today to display historical progress
+            const displayTimezone = user.display_timezone || 'UTC';
+            const localTodayStr = new Intl.DateTimeFormat('en-CA', {
+                timeZone: displayTimezone,
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            }).format(new Date());
+
+            currentShiftRecord = db.prepare(`
+                SELECT * FROM shift_instances
+                WHERE user_id = ? AND logical_date = ? AND status != 'Cancelled'
+                ORDER BY start_time DESC
+                LIMIT 1
+            `).get(userId, localTodayStr) as any;
+        }
+        logger.debug('[getProfile] currentShiftRecord=', currentShiftRecord);
+
+        // Fetch all today shifts to calculate TotalDailyMinutes for break limits.
+        // For night shifts, if they are currently in a shift, use that shift's logical date
+        let logicalDateToUse = currentServerTime.split('T')[0];
+        if (currentShiftRecord) {
+            logger.debug('[getProfile] currentShiftRecord Branch Entry');
+            logicalDateToUse = currentShiftRecord.logical_date;
+        }
+
+        const todayShifts = db.prepare(`
+            SELECT start_time, end_time FROM shift_instances
+            WHERE user_id = ? AND logical_date = ? AND status != 'Cancelled'
+        `).all(userId, logicalDateToUse) as any[];
+        logger.debug('[getProfile] todayShifts=', todayShifts);
 
         let current_shift = null;
-        if (shiftDetails.shift && shiftDetails.scheduledTime) {
-            const shiftStartUtc = shiftDetails.scheduledTime.toISOString();
-
-            // Calculate end time
-            const [startH, startM] = shiftDetails.shift.start.split(':').map(Number);
-            const [endH, endM] = shiftDetails.shift.end.split(':').map(Number);
-            let durationMins = (endH * 60 + endM) - (startH * 60 + startM);
-            if (durationMins < 0) durationMins += 24 * 60; // night shift
-
-            const shiftEndUtc = new Date(shiftDetails.scheduledTime.getTime() + durationMins * 60 * 1000).toISOString();
+        if (currentShiftRecord) {
+            logger.debug('[getProfile] currentShiftRecord Branch Entry');
+            // Need to calculate local start/end times based on the display timezone for the response payload
+            const displayTimezone = user.display_timezone || timezone;
+            const formatter = new Intl.DateTimeFormat('en-US', {
+                timeZone: displayTimezone,
+                hour: '2-digit', minute: '2-digit',
+                hour12: false
+            });
+            const startLocal = formatter.format(new Date(currentShiftRecord.start_time));
+            const endLocal = formatter.format(new Date(currentShiftRecord.end_time));
 
             current_shift = {
-                start: shiftDetails.shift.start,
-                end: shiftDetails.shift.end,
-                date: shiftDetails.logicalDate,
-                start_utc: shiftStartUtc,
-                end_utc: shiftEndUtc
+                id: currentShiftRecord.id,
+                start: startLocal,
+                end: endLocal,
+                date: currentShiftRecord.logical_date,
+                start_utc: currentShiftRecord.start_time,
+                end_utc: currentShiftRecord.end_time
             };
         }
+
+        const nextShiftRecord = db.prepare(`
+            SELECT * FROM shift_instances
+            WHERE user_id = ?
+              AND ? < start_time AND status != 'Cancelled'
+            ORDER BY start_time ASC
+            LIMIT 1
+        `).get(userId, currentServerTime) as any;
+
+        let next_shift = null;
+        if (nextShiftRecord) {
+            const displayTimezone = user.display_timezone || timezone;
+            const formatter = new Intl.DateTimeFormat('en-US', {
+                timeZone: displayTimezone,
+                hour: '2-digit', minute: '2-digit',
+                hour12: false
+            });
+            const startLocal = formatter.format(new Date(nextShiftRecord.start_time));
+            const endLocal = formatter.format(new Date(nextShiftRecord.end_time));
+
+            next_shift = {
+                id: nextShiftRecord.id,
+                start: startLocal,
+                end: endLocal,
+                date: nextShiftRecord.logical_date,
+                start_utc: nextShiftRecord.start_time,
+                end_utc: nextShiftRecord.end_time
+            };
+        }
+
         user.current_shift = current_shift;
-        user.next_shift = null; // We don't need next_shift anymore, current_shift handles the nearest shift
+        user.today_shifts = todayShifts;
+        user.next_shift = next_shift;
 
         res.json(user);
     } catch (error) {
-        console.error('Error fetching profile:', error);
+        logger.error('Error fetching profile:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -221,8 +333,20 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
             const oldUser = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
             const oldProfile = db.prepare('SELECT * FROM profiles WHERE user_id = ?').get(userId);
 
+            const userUpdateFields = [];
+            const userUpdateValues = [];
+
             if (body.name) {
-                db.prepare('UPDATE users SET name = ? WHERE id = ?').run(body.name, userId);
+                userUpdateFields.push('name = ?');
+                userUpdateValues.push(body.name);
+            }
+            if (body.display_timezone !== undefined) {
+                userUpdateFields.push('display_timezone = ?');
+                userUpdateValues.push(body.display_timezone || null);
+            }
+            if (userUpdateFields.length > 0) {
+                userUpdateValues.push(userId);
+                db.prepare(`UPDATE users SET ${userUpdateFields.join(', ')} WHERE id = ?`).run(...userUpdateValues);
             }
 
             const profileExists = db.prepare('SELECT id FROM profiles WHERE user_id = ?').get(userId);
@@ -232,10 +356,10 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
                 const values = [];
 
                 const allowedFields = [
-                    'age', 'gender', 'profile_picture_url', 'weekly_schedule',
-                    'hourly_rate', 'lunch_break_minutes', 'emergency_contact_name',
-                    'emergency_contact_phone', 'leave_balance', 'bio', 'personal_phone',
-                    'legal_name', 'id_photo_url', 'hire_date', 'allow_overtime', 'max_overtime_hours'
+                    'gender', 'profile_picture_url',
+                    'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
+                    'bio', 'personal_phone', 'legal_name', 'id_photo_url',
+                    'full_address', 'national_id', 'bank_name', 'bank_account_iban', 'date_of_birth'
                 ];
 
                 for (const field of allowedFields) {
@@ -259,31 +383,28 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
             } else {
                 db.prepare(`
                     INSERT INTO profiles (
-                        user_id, age, gender, profile_picture_url, status,
-                        weekly_schedule, hourly_rate, lunch_break_minutes,
-                        emergency_contact_name, emergency_contact_phone, leave_balance,
-                        bio, personal_phone, legal_name, id_photo_url, hire_date,
-                        allow_overtime, max_overtime_hours
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        user_id, date_of_birth, gender, profile_picture_url, status,
+                        emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
+                        bio, personal_phone, legal_name, id_photo_url,
+                        full_address, national_id, bank_name, bank_account_iban
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `).run(
                     userId,
-                    body.age || null,
+                    body.date_of_birth || null,
                     body.gender || null,
                     body.profile_picture_url || null,
                     'active',
-                    body.weekly_schedule ? JSON.stringify(body.weekly_schedule) : null,
-                    body.hourly_rate || 0,
-                    body.lunch_break_minutes || 0,
                     body.emergency_contact_name || null,
                     body.emergency_contact_phone || null,
-                    body.leave_balance || 21,
+                    body.emergency_contact_relationship || null,
                     body.bio || null,
                     body.personal_phone || null,
                     body.legal_name || null,
                     body.id_photo_url || null,
-                    body.hire_date || null,
-                    body.allow_overtime ? 1 : 0,
-                    body.max_overtime_hours || 0
+                    body.full_address || null,
+                    body.national_id || null,
+                    body.bank_name || null,
+                    body.bank_account_iban || null
                 );
             }
 
@@ -302,10 +423,12 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
 
         const updatedUser = db.prepare(`
             SELECT
-                u.id, u.name, u.email, u.role,
-                p.age, p.gender, p.profile_picture_url,
+                u.id, u.name, u.email, u.role, u.display_timezone,
+                p.date_of_birth, p.gender, p.profile_picture_url,
                 p.weekly_schedule, p.hourly_rate, p.lunch_break_minutes,
-                p.emergency_contact_name, p.emergency_contact_phone, p.leave_balance,
+                p.emergency_contact_name, p.emergency_contact_phone, p.emergency_contact_relationship,
+                p.annual_leave_balance, p.sick_leave_balance,
+                p.full_address, p.national_id, p.bank_name, p.bank_account_iban,
                 p.bio, p.personal_phone, p.legal_name, p.id_photo_url, p.hire_date,
                 p.allow_overtime, p.max_overtime_hours,
                 p.job_id, j.title as job_title
@@ -317,7 +440,7 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
 
         res.json(updatedUser);
     } catch (error) {
-        console.error('Error updating profile:', error);
+        logger.error('Error updating profile:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -325,12 +448,16 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
 export const getUserById = (req: Request, res: Response): void => {
     try {
         const { id } = req.params;
+        evaluateUserAttendance(Number(id));
+
         const user = db.prepare(`
             SELECT
                 u.id, u.name, u.email, u.role,
-                p.age, p.gender, p.profile_picture_url,
+                p.date_of_birth, p.gender, p.profile_picture_url,
                 p.weekly_schedule, p.hourly_rate, p.lunch_break_minutes,
-                p.emergency_contact_name, p.emergency_contact_phone, p.leave_balance,
+                p.emergency_contact_name, p.emergency_contact_phone, p.emergency_contact_relationship,
+                p.annual_leave_balance, p.sick_leave_balance,
+                p.full_address, p.national_id, p.bank_name, p.bank_account_iban,
                 p.bio, p.personal_phone, p.legal_name, p.id_photo_url, p.hire_date,
                 p.job_id, j.title as job_title,
                 p.status, p.suspension_reason,
@@ -343,13 +470,14 @@ export const getUserById = (req: Request, res: Response): void => {
         `).get(id);
 
         if (!user) {
+            logger.debug('[getProfile] User not found');
             res.status(404).json({ error: 'User not found' });
             return;
         }
 
         res.json(user);
     } catch (error) {
-        console.error('Error fetching user by id:', error);
+        logger.error('Error fetching user by id:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -371,9 +499,24 @@ export const updateUserProfile = (req: Request, res: Response): void => {
                 roleToSet = 'employee';
             }
 
-            if (body.name || roleToSet) {
-                db.prepare('UPDATE users SET name = COALESCE(?, name), role = COALESCE(?, role) WHERE id = ?')
-                  .run(body.name || null, roleToSet || null, id);
+            const userUpdateFields = [];
+            const userUpdateValues = [];
+
+            if (body.name !== undefined) {
+                userUpdateFields.push('name = COALESCE(?, name)');
+                userUpdateValues.push(body.name || null);
+            }
+            if (roleToSet !== undefined) {
+                userUpdateFields.push('role = COALESCE(?, role)');
+                userUpdateValues.push(roleToSet || null);
+            }
+            if (body.display_timezone !== undefined) {
+                userUpdateFields.push('display_timezone = ?');
+                userUpdateValues.push(body.display_timezone || null);
+            }
+            if (userUpdateFields.length > 0) {
+                userUpdateValues.push(id);
+                db.prepare(`UPDATE users SET ${userUpdateFields.join(', ')} WHERE id = ?`).run(...userUpdateValues);
             }
 
             const profileExists = db.prepare('SELECT id FROM profiles WHERE user_id = ?').get(id);
@@ -382,11 +525,13 @@ export const updateUserProfile = (req: Request, res: Response): void => {
                 const values = [];
 
                 const allowedFields = [
-                    'age', 'gender', 'profile_picture_url', 'weekly_schedule',
+                    'date_of_birth', 'gender', 'profile_picture_url', 'weekly_schedule',
                     'hourly_rate', 'lunch_break_minutes', 'emergency_contact_name',
-                    'emergency_contact_phone', 'leave_balance', 'job_id', 'status',
+                    'emergency_contact_phone', 'emergency_contact_relationship',
+                    'annual_leave_balance', 'sick_leave_balance', 'job_id', 'status',
                     'suspension_reason', 'allow_overtime', 'max_overtime_hours',
-                    'bio', 'personal_phone', 'legal_name', 'id_photo_url', 'hire_date'
+                    'bio', 'personal_phone', 'legal_name', 'id_photo_url', 'hire_date',
+                    'full_address', 'national_id', 'bank_name', 'bank_account_iban'
                 ];
 
                 for (const field of allowedFields) {
@@ -413,15 +558,17 @@ export const updateUserProfile = (req: Request, res: Response): void => {
             } else {
                 db.prepare(`
                     INSERT INTO profiles (
-                        user_id, age, gender, profile_picture_url, status, suspension_reason,
+                        user_id, date_of_birth, gender, profile_picture_url, status, suspension_reason,
                         weekly_schedule, hourly_rate, lunch_break_minutes,
-                        emergency_contact_name, emergency_contact_phone, leave_balance, job_id,
+                        emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
+                        annual_leave_balance, sick_leave_balance, job_id,
                         allow_overtime, max_overtime_hours,
-                        bio, personal_phone, legal_name, id_photo_url, hire_date
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        bio, personal_phone, legal_name, id_photo_url, hire_date,
+                        full_address, national_id, bank_name, bank_account_iban
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `).run(
                     id,
-                    body.age || null,
+                    body.date_of_birth || null,
                     body.gender || null,
                     body.profile_picture_url || null,
                     body.status || 'active',
@@ -431,7 +578,9 @@ export const updateUserProfile = (req: Request, res: Response): void => {
                     body.lunch_break_minutes || 0,
                     body.emergency_contact_name || null,
                     body.emergency_contact_phone || null,
-                    body.leave_balance || 21,
+                    body.emergency_contact_relationship || null,
+                    body.annual_leave_balance ?? 21,
+                    body.sick_leave_balance ?? 7,
                     body.job_id || null,
                     body.allow_overtime ? 1 : 0,
                     body.max_overtime_hours || 0,
@@ -439,7 +588,11 @@ export const updateUserProfile = (req: Request, res: Response): void => {
                     body.personal_phone || null,
                     body.legal_name || null,
                     body.id_photo_url || null,
-                    body.hire_date || null
+                    body.hire_date || null,
+                    body.full_address || null,
+                    body.national_id || null,
+                    body.bank_name || null,
+                    body.bank_account_iban || null
                 );
             }
 
@@ -456,12 +609,23 @@ export const updateUserProfile = (req: Request, res: Response): void => {
 
         updateTransaction();
 
+        if (body.weekly_schedule) {
+            try {
+                // Generate new future shifts based on the updated schedule
+                generateShiftInstances(Number(id), body.weekly_schedule);
+            } catch (err) {
+                logger.error(`Failed to regenerate shifts for user ${id} after profile update:`, err);
+            }
+        }
+        
         const updatedUser = db.prepare(`
             SELECT
-                u.id, u.name, u.email, u.role,
-                p.age, p.gender, p.profile_picture_url,
+                u.id, u.name, u.email, u.role, u.display_timezone,
+                p.date_of_birth, p.gender, p.profile_picture_url,
                 p.weekly_schedule, p.hourly_rate, p.lunch_break_minutes,
-                p.emergency_contact_name, p.emergency_contact_phone, p.leave_balance,
+                p.emergency_contact_name, p.emergency_contact_phone, p.emergency_contact_relationship,
+                p.annual_leave_balance, p.sick_leave_balance,
+                p.full_address, p.national_id, p.bank_name, p.bank_account_iban,
                 p.bio, p.personal_phone, p.legal_name, p.id_photo_url, p.hire_date,
                 p.job_id, j.title as job_title,
                 p.status, p.suspension_reason,
@@ -474,7 +638,7 @@ export const updateUserProfile = (req: Request, res: Response): void => {
 
         res.json(updatedUser);
     } catch (error) {
-        console.error('Error updating user profile:', error);
+        logger.error('Error updating user profile:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -491,7 +655,7 @@ export const resetDevice = (req: Request, res: Response): void => {
 
         res.json({ message: 'Device binding reset successfully' });
     } catch (error) {
-        console.error('Error resetting device binding:', error);
+        logger.error('Error resetting device binding:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -520,7 +684,7 @@ export const uploadAvatar = (req: Request, res: Response): void => {
                         }
                     }
                 } catch (unlinkError) {
-                    console.error('Error deleting old avatar file:', unlinkError);
+                    logger.error('Error deleting old avatar file:', unlinkError);
                 }
             }
         }
@@ -528,7 +692,7 @@ export const uploadAvatar = (req: Request, res: Response): void => {
         const imageUrl = `/uploads/${req.file.filename}`;
         res.json({ url: imageUrl });
     } catch (error) {
-        console.error('Error uploading avatar:', error);
+        logger.error('Error uploading avatar:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

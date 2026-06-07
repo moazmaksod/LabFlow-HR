@@ -10,11 +10,9 @@ interface Settings {
   id: number;
   company_name: string;
   company_logo_url: string;
+  company_favicon_url: string;
   brand_primary_color: string;
-  company_timezone: string;
   support_contact: string;
-  payroll_cycle_type: string;
-  custom_payroll_cycle_days: number;
   overtime_rate_percent: number;
   weekend_rate_percent: number;
   attendance_bonus_amount: number;
@@ -26,6 +24,9 @@ interface Settings {
   time_sync_interval: number;
   max_drift_threshold: number;
   accuracy_meters: number;
+  wifi_validation_toggle: number;
+  company_wifi_ssid: string | null;
+  company_wifi_bssid: string | null;
   device_binding_enforced: number;
   auto_checkout: number;
   step_away_grace_period: number;
@@ -34,17 +35,11 @@ interface Settings {
   enable_reminders: number;
   send_daily_report: number;
   maintenance_mode: number;
+  min_overtime_minutes: number;
+  whitelist_device_ids: string;
+  min_clock_session_minutes: number;
+  min_unscheduled_session_minutes: number;
 }
-
-const TIMEZONE_GROUPS = {
-  "UTC": ["UTC"],
-  "Africa": ["Africa/Cairo", "Africa/Casablanca", "Africa/Johannesburg", "Africa/Lagos", "Africa/Nairobi"],
-  "America": ["America/Chicago", "America/Los_Angeles", "America/Mexico_City", "America/New_York", "America/Sao_Paulo", "America/Toronto"],
-  "Asia": ["Asia/Bangkok", "Asia/Dubai", "Asia/Hong_Kong", "Asia/Jakarta", "Asia/Karachi", "Asia/Kolkata", "Asia/Riyadh", "Asia/Seoul", "Asia/Shanghai", "Asia/Singapore", "Asia/Tokyo"],
-  "Australia": ["Australia/Brisbane", "Australia/Melbourne", "Australia/Perth", "Australia/Sydney"],
-  "Europe": ["Europe/Amsterdam", "Europe/Berlin", "Europe/Istanbul", "Europe/London", "Europe/Madrid", "Europe/Moscow", "Europe/Paris", "Europe/Rome"],
-  "Pacific": ["Pacific/Auckland", "Pacific/Fiji", "Pacific/Honolulu"]
-};
 
 export default function SettingsView() {
   const { t } = useTranslation();
@@ -63,6 +58,7 @@ export default function SettingsView() {
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingFavicon, setUploadingFavicon] = useState(false);
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['settings'],
@@ -111,6 +107,40 @@ export default function SettingsView() {
     if (e.target.files && e.target.files[0]) {
       setUploadingLogo(true);
       uploadLogoMutation.mutate(e.target.files[0]);
+    }
+  };
+
+  const uploadFaviconMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const form = new FormData();
+      form.append('favicon', file);
+      const res = await axios.post('/api/settings/favicon', form, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return res.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      setFormData(data.settings);
+      setSuccessMsg('Favicon uploaded successfully!');
+      setTimeout(() => setSuccessMsg(''), 3000);
+    },
+    onError: (error: any) => {
+      setErrorMsg(error.response?.data?.error || 'Failed to upload favicon');
+      setTimeout(() => setErrorMsg(''), 3000);
+    },
+    onSettled: () => {
+      setUploadingFavicon(false);
+    }
+  });
+
+  const handleFaviconUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setUploadingFavicon(true);
+      uploadFaviconMutation.mutate(e.target.files[0]);
     }
   };
 
@@ -179,10 +209,11 @@ export default function SettingsView() {
 
     // Convert to float/int where necessary to ensure type safety in backend
     const numericFields = [
-      'custom_payroll_cycle_days', 'overtime_rate_percent', 'weekend_rate_percent', 'attendance_bonus_amount',
+      'overtime_rate_percent', 'weekend_rate_percent', 'attendance_bonus_amount',
       'office_lat', 'office_lng', 'geofence_radius', 'time_sync_interval',
       'max_drift_threshold', 'accuracy_meters', 'step_away_grace_period',
-      'late_grace_period', 'max_monthly_permissions'
+      'late_grace_period', 'max_monthly_permissions', 'min_overtime_minutes',
+      'min_clock_session_minutes', 'min_unscheduled_session_minutes'
     ];
 
     for (const field of numericFields) {
@@ -232,7 +263,7 @@ export default function SettingsView() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <label className="block text-sm font-medium text-muted-foreground mb-2">Company Name</label>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Company Name / Website Title</label>
                       <input
                         type="text"
                         name="company_name"
@@ -255,6 +286,24 @@ export default function SettingsView() {
                             className="hidden"
                             onChange={handleLogoUpload}
                             disabled={uploadingLogo}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Website Favicon</label>
+                      <div className="flex items-center gap-4">
+                        {formData.company_favicon_url && (
+                          <img src={formData.company_favicon_url} alt="Company Favicon" className="h-8 w-8 object-contain bg-background rounded" />
+                        )}
+                        <label className="cursor-pointer px-4 py-2 bg-muted text-muted-foreground border border-input rounded-xl hover:bg-accent transition-colors text-sm font-medium">
+                          {uploadingFavicon ? 'Uploading...' : 'Choose File'}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleFaviconUpload}
+                            disabled={uploadingFavicon}
                           />
                         </label>
                       </div>
@@ -283,23 +332,6 @@ export default function SettingsView() {
                         placeholder="Email or Phone"
                       />
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-muted-foreground mb-2">Company Timezone</label>
-                      <select
-                        name="company_timezone"
-                        value={formData.company_timezone || 'UTC'}
-                        onChange={handleChange}
-                        className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
-                      >
-                        {Object.entries(TIMEZONE_GROUPS).map(([region, zones]) => (
-                          <optgroup key={region} label={region}>
-                            {zones.map(zone => (
-                              <option key={zone} value={zone}>{zone}</option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </select>
-                    </div>
                   </div>
                 </>
               )}
@@ -311,31 +343,6 @@ export default function SettingsView() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <label className="block text-sm font-medium text-muted-foreground mb-2">Payroll Cycle Type</label>
-                      <select
-                        name="payroll_cycle_type"
-                        value={formData.payroll_cycle_type || 'calendar_month'}
-                        onChange={handleChange}
-                        className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
-                      >
-                        <option value="calendar_month">Calendar Month</option>
-                        <option value="fixed_30">Fixed 30 Days</option>
-                        <option value="custom">Custom</option>
-                      </select>
-                      {formData.payroll_cycle_type === 'custom' && (
-                        <div className="mt-4">
-                          <label className="block text-sm font-medium text-muted-foreground mb-2">Custom Cycle Days</label>
-                          <input
-                            type="number"
-                            name="custom_payroll_cycle_days"
-                            value={formData.custom_payroll_cycle_days ?? 0}
-                            onChange={handleChange}
-                            className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
-                          />
-                        </div>
-                      )}
-                    </div>
-                    <div>
                       <label className="block text-sm font-medium text-muted-foreground mb-2">Overtime Rate (%)</label>
                       <input
                         type="number"
@@ -346,14 +353,17 @@ export default function SettingsView() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-muted-foreground mb-2">Weekend Rate (%)</label>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Minimum Overtime Period (mins)</label>
                       <input
                         type="number"
-                        name="weekend_rate_percent"
-                        value={formData.weekend_rate_percent ?? 200}
+                        name="min_overtime_minutes"
+                        value={formData.min_overtime_minutes ?? 0}
                         onChange={handleChange}
                         className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
                       />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Determines the threshold for creating valid overtime requests. Any computed overtime shorter than this limit will be automatically rejected, but the attendance record is preserved.
+                      </p>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-muted-foreground mb-2">Attendance Bonus Amount</label>
@@ -484,6 +494,61 @@ export default function SettingsView() {
                         Enforce Mobile Device Binding (One device per user)
                       </label>
                     </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Whitelisted Device IDs (comma-separated)</label>
+                      <input
+                        type="text"
+                        name="whitelist_device_ids"
+                        value={formData.whitelist_device_ids || ''}
+                        onChange={handleChange}
+                        className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
+                        placeholder="e.g. device_id_1, device_id_2"
+                      />
+                    </div>
+                  </div>
+
+                  <h3 className="text-md font-semibold text-foreground mt-8 mb-4 border-b border-border pb-2">Network Security</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="md:col-span-2 flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        id="wifi_validation_toggle"
+                        name="wifi_validation_toggle"
+                        checked={!!formData.wifi_validation_toggle}
+                        onChange={handleChange}
+                        className="w-5 h-5 rounded border-input text-primary focus:ring-primary"
+                      />
+                      <label htmlFor="wifi_validation_toggle" className="text-sm font-medium text-muted-foreground">
+                        Require Company Wi-Fi Connection
+                      </label>
+                    </div>
+
+                    {!!formData.wifi_validation_toggle && (
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium text-muted-foreground mb-2">Company Wi-Fi SSID (Name)</label>
+                          <input
+                            type="text"
+                            name="company_wifi_ssid"
+                            value={formData.company_wifi_ssid || ''}
+                            onChange={handleChange}
+                            className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
+                            placeholder="e.g. LabFlow_Corporate"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-muted-foreground mb-2">Router BSSID (MAC - Optional)</label>
+                          <input
+                            type="text"
+                            name="company_wifi_bssid"
+                            value={formData.company_wifi_bssid || ''}
+                            onChange={handleChange}
+                            className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
+                            placeholder="e.g. 00:1A:2B:3C:4D:5E"
+                          />
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   {user?.role === 'manager' && (
@@ -533,6 +598,9 @@ export default function SettingsView() {
                         onChange={handleChange}
                         className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
                       />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Allows employees to check in late or leave early by up to this many minutes without triggering late/early leave penalization requests. (Keeps records but marks them as on-time).
+                      </p>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-muted-foreground mb-2">Step Away Grace Period (mins)</label>
@@ -554,21 +622,34 @@ export default function SettingsView() {
                         className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
                       />
                     </div>
+                    <div>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Minimum Clock Session Duration (mins)</label>
+                      <input
+                        type="number"
+                        name="min_clock_session_minutes"
+                        value={formData.min_clock_session_minutes ?? 1}
+                        onChange={handleChange}
+                        className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Sessions shorter than this are considered accidental clicks (e.g., immediate checkout) and will be completely deleted from the database.
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Minimum Unscheduled Segment Duration (mins)</label>
+                      <input
+                        type="number"
+                        name="min_unscheduled_session_minutes"
+                        value={formData.min_unscheduled_session_minutes ?? 5}
+                        onChange={handleChange}
+                        className="w-full px-4 py-2 bg-background border border-input rounded-xl focus:ring-2 focus:ring-primary "
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Unscheduled shifts or early check-in/late check-out segments shorter than this limit will be ignored and deleted to keep the database clean.
+                      </p>
+                    </div>
 
                     <div className="md:col-span-2 space-y-4 pt-4 border-t border-border">
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="checkbox"
-                          id="auto_checkout"
-                          name="auto_checkout"
-                          checked={!!formData.auto_checkout}
-                          onChange={handleChange}
-                          className="w-5 h-5 rounded border-input text-primary focus:ring-primary"
-                        />
-                        <label htmlFor="auto_checkout" className="text-sm font-medium text-muted-foreground">
-                          Enable Auto-Checkout at end of shift
-                        </label>
-                      </div>
                       <div className="flex items-center gap-3">
                         <input
                           type="checkbox"

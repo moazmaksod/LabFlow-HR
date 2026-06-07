@@ -1,9 +1,10 @@
 import request from 'supertest';
 import express from 'express';
 import db from '../../db/index.js';
-import attendanceRoutes from '../../routes/attendanceRoutes.js';
 import { schema } from '../../db/schema.js';
 import jwt from 'jsonwebtoken';
+
+import attendanceRoutes from '../../routes/attendanceRoutes.js';
 
 const app = express();
 app.use(express.json());
@@ -43,7 +44,7 @@ describe('Attendance Interruptions API', () => {
         employeeId = userInsert.lastInsertRowid as number;
 
         // Ensure job exists
-        db.prepare(`INSERT INTO jobs (id, title, hourly_rate, required_hours, grace_period) VALUES (1, 'Test', 20, 8, 15)`).run();
+        db.prepare(`INSERT INTO jobs (id, title, hourly_rate, required_hours) VALUES (1, 'Test', 20, 8)`).run();
 
         const weekly_schedule = JSON.stringify({
             monday: [{ start: "00:00", end: "23:59" }],
@@ -61,14 +62,24 @@ describe('Attendance Interruptions API', () => {
         );
 
         // Create settings
-        db.prepare(`INSERT INTO settings (id, office_lat, office_lng, geofence_radius, company_timezone) VALUES (1, 0, 0, 1000000, 'UTC')`).run();
+        db.prepare(`UPDATE settings SET office_lat = 0, office_lng = 0, geofence_radius = 1000000 WHERE id = 1`).run();
 
         employeeToken = jwt.sign({ id: employeeId, role: 'employee' }, JWT_SECRET);
     });
 
     it('should create a pending_manager request when stepping away with 0 break balance', async () => {
         const timestamp = new Date().toISOString();
-        
+
+        // Ensure there is an official shift instance so it's not unscheduled
+        const testDate = new Date().toISOString().split('T')[0];
+        const past = new Date(); past.setHours(0,0,0,0);
+        const future = new Date(); future.setHours(23,59,59,999);
+        db.prepare(`
+            INSERT INTO shift_instances (user_id, start_time, end_time, logical_date, status)
+            VALUES (?, ?, ?, ?, 'Scheduled')
+        `).run(employeeId, past.toISOString(), future.toISOString(), testDate);
+
+
         // 1. Check in first
         await request(app)
             .post('/attendance/clock')
@@ -96,16 +107,14 @@ describe('Attendance Interruptions API', () => {
         expect(interruption).toBeDefined();
         expect(interruption.status).toBe('pending_manager');
 
-        // 4. Verify requests record
+        // 4. Verify requests record is NOT created yet (timing requirement: sent only after resuming)
         const reqRecord = db.prepare('SELECT * FROM requests WHERE user_id = ? AND type = ?').get(employeeId, 'permission_to_leave') as any;
-        expect(reqRecord).toBeDefined();
-        expect(reqRecord.status).toBe('pending');
-        expect(reqRecord.reference_id).toBe(interruption.id);
+        expect(reqRecord).toBeUndefined();
     });
 
     it('should resume work and close the interruption', async () => {
         const timestamp = new Date().toISOString();
-        
+
         const response = await request(app)
             .post('/attendance/resume-work')
             .set('Authorization', `Bearer ${employeeToken}`)
@@ -120,19 +129,41 @@ describe('Attendance Interruptions API', () => {
 
         // Verify attendance status is back to working
         const attendance = db.prepare('SELECT * FROM attendance WHERE user_id = ?').get(employeeId) as any;
-        expect(attendance.current_status).toBe('working');
+        expect(attendance.working_status).toBe('working');
+
+        // Verify requests record is now created after resuming work
+        const reqRecord = db.prepare('SELECT * FROM requests WHERE user_id = ? AND type = ?').get(employeeId, 'permission_to_leave') as any;
+        expect(reqRecord).toBeDefined();
+        expect(reqRecord.status).toBe('pending');
+        expect(reqRecord.shift_interruption_id).toBe(interruption.id);
     });
 
     it('should auto_approve when stepping away with break balance > 0', async () => {
         // Update profile to have break balance
         db.prepare('UPDATE profiles SET lunch_break_minutes = 30 WHERE user_id = ?').run(employeeId);
-        
+
+        // The 10% logic requires shift_instances to calculate totalDailyMinutes
+        const testDate = new Date().toISOString().split('T')[0];
+        const past = new Date(); past.setHours(8,0,0,0);
+        const future = new Date(); future.setHours(23,0,0,0); future.setDate(future.getDate() + 1); // Set far in the future so we don't trigger the late block limit
+        // Get active attendance to set correct logical date and shift ID
+        const activeAtt = db.prepare('SELECT * FROM attendance WHERE user_id = ?').get(employeeId) as any;
+        db.prepare(`
+            INSERT INTO shift_instances (user_id, start_time, end_time, logical_date, status)
+            VALUES (?, ?, ?, ?, 'Completed')
+        `).run(employeeId, past.toISOString(), future.toISOString(), activeAtt.date);
+
+        const shiftInstanceId = db.prepare('SELECT last_insert_rowid()').get() as any;
+
+        db.prepare('UPDATE attendance SET shift_id = ? WHERE id = ?').run(shiftInstanceId['last_insert_rowid()'], activeAtt.id);
+
+
         // Clear previous interruption for clean test
         db.prepare('DELETE FROM shift_interruptions').run();
-        db.prepare('UPDATE attendance SET current_status = ? WHERE user_id = ?').run('working', employeeId);
+        db.prepare('UPDATE attendance SET working_status = ? WHERE user_id = ?').run('working', employeeId);
 
         const timestamp = new Date().toISOString();
-        
+
         const response = await request(app)
             .post('/attendance/step-away')
             .set('Authorization', `Bearer ${employeeToken}`)

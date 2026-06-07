@@ -2,26 +2,28 @@ import { Request, Response } from 'express';
 import db from '../db/index.js';
 import { logAudit } from '../services/auditService.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
+import logger from '../utils/logger.js';
 
 export const getJobs = (req: Request, res: Response): void => {
     try {
         const jobs = db.prepare('SELECT * FROM jobs ORDER BY created_at DESC').all();
         res.json(jobs);
     } catch (error) {
-        console.error('Error fetching jobs:', error);
+        logger.error('Error fetching jobs:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
 
 export const createJob = (req: Request, res: Response): void => {
     try {
-        const { 
-            title, 
-            hourly_rate, 
-            preferred_gender,
-            min_age,
-            max_age,
-            grace_period
+        const {
+            title,
+            hourly_rate,
+            required_hours_per_week,
+            default_annual_leave_days,
+            default_sick_leave_days,
+            allow_overtime,
+            employment_type
         } = req.body;
 
         if (!title || hourly_rate === undefined) {
@@ -31,25 +33,27 @@ export const createJob = (req: Request, res: Response): void => {
 
         const insert = db.prepare(`
             INSERT INTO jobs (
-                title, 
-                hourly_rate, 
-                required_hours, -- Keep for backward compatibility if needed, but we'll set it to 0 or same as weekly
-                preferred_gender,
-                min_age,
-                max_age,
-                grace_period
+                title,
+                hourly_rate,
+                required_hours,
+                required_hours_per_week,
+                default_annual_leave_days,
+                default_sick_leave_days,
+                allow_overtime,
+                employment_type
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
-        
+
         const info = insert.run(
-            title, 
-            hourly_rate, 
-            0, // Setting daily required_hours to 0
-            preferred_gender || 'any',
-            min_age || null,
-            max_age || null,
-            grace_period || 15
+            title,
+            hourly_rate,
+            0,
+            required_hours_per_week || 40,
+            default_annual_leave_days ?? 21,
+            default_sick_leave_days ?? 7,
+            allow_overtime !== undefined ? (allow_overtime ? 1 : 0) : 1,
+            employment_type || 'full-time'
         );
         
         const newJob = db.prepare('SELECT * FROM jobs WHERE id = ?').get(info.lastInsertRowid);
@@ -58,7 +62,7 @@ export const createJob = (req: Request, res: Response): void => {
 
         res.status(201).json(newJob);
     } catch (error) {
-        console.error('Error creating job:', error);
+        logger.error('Error creating job:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -66,13 +70,14 @@ export const createJob = (req: Request, res: Response): void => {
 export const updateJob = (req: Request, res: Response): void => {
     try {
         const { id } = req.params;
-        const { 
-            title, 
-            hourly_rate, 
-            preferred_gender,
-            min_age,
-            max_age,
-            grace_period
+        const {
+            title,
+            hourly_rate,
+            required_hours_per_week,
+            default_annual_leave_days,
+            default_sick_leave_days,
+            allow_overtime,
+            employment_type
         } = req.body;
 
         if (!title || hourly_rate === undefined) {
@@ -85,25 +90,27 @@ export const updateJob = (req: Request, res: Response): void => {
             if (!oldJob) return false;
 
             const update = db.prepare(`
-                UPDATE jobs SET 
-                    title = ?, 
-                    hourly_rate = ?, 
-                    required_hours = ?, 
-                    preferred_gender = ?,
-                    min_age = ?,
-                    max_age = ?,
-                    grace_period = ?
+                UPDATE jobs SET
+                    title = ?,
+                    hourly_rate = ?,
+                    required_hours = ?,
+                    required_hours_per_week = ?,
+                    default_annual_leave_days = ?,
+                    default_sick_leave_days = ?,
+                    allow_overtime = ?,
+                    employment_type = ?
                 WHERE id = ?
             `);
-            
+
             const result = update.run(
-                title, 
-                hourly_rate, 
-                0, 
-                preferred_gender || 'any',
-                min_age || null,
-                max_age || null,
-                grace_period || 15,
+                title,
+                hourly_rate,
+                0,
+                required_hours_per_week || 40,
+                default_annual_leave_days ?? 21,
+                default_sick_leave_days ?? 7,
+                allow_overtime !== undefined ? (allow_overtime ? 1 : 0) : 1,
+                employment_type || 'full-time',
                 id
             );
 
@@ -128,7 +135,7 @@ export const updateJob = (req: Request, res: Response): void => {
         
         res.json(updatedJob);
     } catch (error) {
-        console.error('Error updating job:', error);
+        logger.error('Error updating job:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -162,7 +169,7 @@ export const deleteJob = (req: Request, res: Response): void => {
 
         res.json({ message: 'Job deleted successfully' });
     } catch (error) {
-        console.error('Error deleting job:', error);
+        logger.error('Error deleting job:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

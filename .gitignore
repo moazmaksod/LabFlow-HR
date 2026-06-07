@@ -10,6 +10,8 @@ npm-debug.*
 build/
 dist/
 coverage/
+test-results/
+playwright-report/
 
 # --- Mobile Specific (Expo & React Native) ---
 # Added from your mobile/.gitignore to prevent .expo/ tracking
@@ -38,3 +40,4 @@ mobile/.env*
 # --- User Uploads & Media ---
 public/uploads/*
 !public/uploads/.gitkeep
+*.cjs
