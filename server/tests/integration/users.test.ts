@@ -237,4 +237,37 @@ describe('User Role Update API', () => {
     expect(profile).toBeDefined();
     expect(profile.job_id).toBe(Number(jobId));
   });
+
+  it('should reject role update with invalid job_id', async () => {
+    const res = await request(app)
+      .put(`/api/users/${pendingUserId}/role`)
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ role: 'employee', job_id: 99999 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid job ID');
+  });
 });
+
+describe('User Profile Update by Manager API', () => {
+  it('should reject profile update by manager with invalid job_id', async () => {
+    const res = await request(app)
+      .put(`/api/users/${employeeId}/profile`)
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ job_id: 99999 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid job ID');
+  });
+
+  it('should allow manager to update employee profile with valid job_id', async () => {
+    const res = await request(app)
+      .put(`/api/users/${employeeId}/profile`)
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ job_id: jobId });
+
+    expect(res.status).toBe(200);
+    expect(res.body.job_id).toBe(Number(jobId));
+  });
+});
+

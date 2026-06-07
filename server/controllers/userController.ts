@@ -75,6 +75,14 @@ export const updateUserRole = (req: Request, res: Response): void => {
             return;
         }
 
+        if (job_id !== undefined && job_id !== null && job_id !== '') {
+            const jobExists = db.prepare('SELECT 1 FROM jobs WHERE id = ?').get(job_id);
+            if (!jobExists) {
+                res.status(400).json({ error: 'Invalid job ID' });
+                return;
+            }
+        }
+
         // Start a transaction
         const updateTransaction = db.transaction(() => {
             const oldUser = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
@@ -486,6 +494,17 @@ export const updateUserProfile = (req: Request, res: Response): void => {
     try {
         const { id } = req.params;
         const body = req.body;
+
+        if (body.job_id !== undefined && body.job_id !== null && body.job_id !== '') {
+            const jobExists = db.prepare('SELECT 1 FROM jobs WHERE id = ?').get(body.job_id);
+            if (!jobExists) {
+                res.status(400).json({ error: 'Invalid job ID' });
+                return;
+            }
+        }
+        if (body.job_id === '') {
+            body.job_id = null;
+        }
 
         const updateTransaction = db.transaction(() => {
             const oldUser = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
