@@ -42,6 +42,11 @@ export function generateShiftInstances(userId: number, weeklyScheduleRaw: any): 
                 INSERT INTO shift_instances (user_id, start_time, end_time, logical_date, status)
                 VALUES (?, ?, ?, ?, 'Scheduled')
             `);
+            const checkStmt = db.prepare(`
+                SELECT 1 FROM shift_instances
+                WHERE user_id = ? AND start_time = ? AND end_time = ?
+                LIMIT 1
+            `);
 
             let insertedCount = 0;
 
@@ -67,8 +72,11 @@ export function generateShiftInstances(userId: number, weeklyScheduleRaw: any): 
 
                         // CRITICAL LOGICAL FIX: Check if the shift ENDS in the future, not just starts.
                         if (shiftEndUTC > now) {
-                            insertStmt.run(userId, shiftStartUTC.toISOString(), shiftEndUTC.toISOString(), logicalDateStr);
-                            insertedCount++;
+                            const exists = checkStmt.get(userId, shiftStartUTC.toISOString(), shiftEndUTC.toISOString());
+                            if (!exists) {
+                                insertStmt.run(userId, shiftStartUTC.toISOString(), shiftEndUTC.toISOString(), logicalDateStr);
+                                insertedCount++;
+                            }
                         }
                     });
                 }

@@ -1,5 +1,6 @@
 import db, { initDb } from '../../db/index.js';
 import { generateShiftInstances } from '../../services/shiftInstanceService.js';
+import * as timeManager from '../../utils/timeManager.js';
 
 let testUserId: number | bigint;
 
@@ -22,6 +23,7 @@ beforeEach(() => {
 });
 
 describe('Shift Generation Service', () => {
+
 
     it('should generate standard shifts for 30 days', () => {
         const schedule = JSON.stringify({
@@ -85,4 +87,34 @@ describe('Shift Generation Service', () => {
         expect(firstShift.logical_date).toBe(expectedLogicalDateStr);
     });
 
+    it('should not duplicate active shifts if weekly schedule is re-saved during a shift', () => {
+        // Monday June 8, 2026 is a Monday.
+        // We mock current time to 12:00:00 UTC during a shift (09:00 to 17:00).
+        const getAppNowSpy = jest.spyOn(timeManager, 'getAppNow').mockReturnValue('2026-06-08T12:00:00.000Z');
+
+        const schedule = JSON.stringify({
+            monday: [{ start: "09:00", end: "17:00" }]
+        });
+
+        // 1. Initial generation of shifts
+        generateShiftInstances(Number(testUserId), schedule);
+
+        let instances = db.prepare('SELECT * FROM shift_instances WHERE user_id = ? ORDER BY start_time ASC').all(testUserId) as any[];
+        // Filter Monday June 8 shift
+        const mondayShifts = instances.filter(inst => inst.logical_date === '2026-06-08');
+        expect(mondayShifts.length).toBe(1);
+
+        // 2. Generate again with same schedule during the active shift
+        generateShiftInstances(Number(testUserId), schedule);
+
+        instances = db.prepare('SELECT * FROM shift_instances WHERE user_id = ? ORDER BY start_time ASC').all(testUserId) as any[];
+        const mondayShiftsAfter = instances.filter(inst => inst.logical_date === '2026-06-08');
+        
+        getAppNowSpy.mockRestore();
+
+        // There should still only be 1 shift for this day, not 2 (duplicate)
+        expect(mondayShiftsAfter.length).toBe(1);
+    });
+
 });
+
