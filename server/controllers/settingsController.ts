@@ -64,6 +64,7 @@ export const uploadFavicon = (req: AuthRequest, res: Response): void => {
         }
 
         const faviconUrl = `/uploads/favicons/${req.file.filename}`;
+        let oldFaviconUrl: string | null = null;
 
         const updateTransaction = db.transaction(() => {
             const oldSettings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
@@ -72,16 +73,7 @@ export const uploadFavicon = (req: AuthRequest, res: Response): void => {
                 return null;
             }
 
-            if (oldSettings.company_favicon_url && oldSettings.company_favicon_url.startsWith('/uploads/favicons/')) {
-                const oldPath = path.join(process.cwd(), 'public', oldSettings.company_favicon_url);
-                if (fs.existsSync(oldPath)) {
-                    try {
-                        fs.unlinkSync(oldPath);
-                    } catch (e) {
-                        logger.error('Failed to delete old favicon:', e);
-                    }
-                }
-            }
+            oldFaviconUrl = oldSettings.company_favicon_url;
 
             const update = db.prepare(`
                 UPDATE settings
@@ -100,6 +92,17 @@ export const uploadFavicon = (req: AuthRequest, res: Response): void => {
         if (!updatedSettings) {
              res.status(404).json({ error: 'Settings not found' });
              return;
+        }
+
+        if (oldFaviconUrl && oldFaviconUrl.startsWith('/uploads/favicons/')) {
+            const oldPath = path.join(process.cwd(), 'public', oldFaviconUrl);
+            if (fs.existsSync(oldPath)) {
+                try {
+                    fs.unlinkSync(oldPath);
+                } catch (e) {
+                    logger.error('Failed to delete old favicon:', e);
+                }
+            }
         }
 
         setSettingsCache(updatedSettings);
@@ -205,6 +208,7 @@ export const uploadLogo = (req: AuthRequest, res: Response): void => {
         }
 
         const logoUrl = `/uploads/logos/${req.file.filename}`;
+        let oldLogoUrl: string | null = null;
 
         const updateTransaction = db.transaction(() => {
             const oldSettings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
@@ -214,17 +218,7 @@ export const uploadLogo = (req: AuthRequest, res: Response): void => {
                 return null;
             }
 
-            // If there's an old logo, we could delete it here to save space
-            if (oldSettings.company_logo_url && oldSettings.company_logo_url.startsWith('/uploads/logos/')) {
-                const oldPath = path.join(process.cwd(), 'public', oldSettings.company_logo_url);
-                if (fs.existsSync(oldPath)) {
-                    try {
-                        fs.unlinkSync(oldPath);
-                    } catch (e) {
-                        logger.error('Failed to delete old logo:', e);
-                    }
-                }
-            }
+            oldLogoUrl = oldSettings.company_logo_url;
 
             const update = db.prepare(`
                 UPDATE settings
@@ -243,6 +237,17 @@ export const uploadLogo = (req: AuthRequest, res: Response): void => {
         if (!updatedSettings) {
              res.status(404).json({ error: 'Settings not found' });
              return;
+        }
+
+        if (oldLogoUrl && oldLogoUrl.startsWith('/uploads/logos/')) {
+            const oldPath = path.join(process.cwd(), 'public', oldLogoUrl);
+            if (fs.existsSync(oldPath)) {
+                try {
+                    fs.unlinkSync(oldPath);
+                } catch (e) {
+                    logger.error('Failed to delete old logo:', e);
+                }
+            }
         }
 
         setSettingsCache(updatedSettings);
