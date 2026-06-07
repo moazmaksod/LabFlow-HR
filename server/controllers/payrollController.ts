@@ -84,11 +84,25 @@ const calculateUserPayroll = (user: any, start_date: string, end_date: string) =
         `).all(user.id, start_date, end_date) as any[];
 
         let allOnTime = shifts.length > 0;
-        for (const shift of shifts) {
-            const att = db.prepare("SELECT * FROM attendance WHERE user_id = ? AND shift_id = ?").get(user.id, shift.id.toString()) as any;
-            if (!att || att.checkin_status !== 'on_time' || att.checkout_status !== 'on_time') {
-                allOnTime = false;
-                break;
+        if (allOnTime) {
+            const attendanceList = db.prepare(`
+                SELECT * FROM attendance 
+                WHERE user_id = ? AND date BETWEEN ? AND ?
+            `).all(user.id, start_date, end_date) as any[];
+
+            const attendanceMap = new Map<string, any>();
+            for (const att of attendanceList) {
+                if (att.shift_id) {
+                    attendanceMap.set(att.shift_id.toString(), att);
+                }
+            }
+
+            for (const shift of shifts) {
+                const att = attendanceMap.get(shift.id.toString());
+                if (!att || att.checkin_status !== 'on_time' || att.checkout_status !== 'on_time') {
+                    allOnTime = false;
+                    break;
+                }
             }
         }
 
