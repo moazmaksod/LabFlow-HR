@@ -52,7 +52,11 @@ export default function RegisterScreen({ navigation }: any) {
   const onSubmit = async (data: any) => {
     setLoading(true);
     try {
-      await api.post('/auth/register', data);
+      const payload = {
+        ...data,
+        date_of_birth: formatDate(data.date_of_birth),
+      };
+      await api.post('/auth/register', payload);
       Alert.alert(
         'Registration Successful',
         'Your account has been created. Please wait for a manager to approve your account and assign your role.',
