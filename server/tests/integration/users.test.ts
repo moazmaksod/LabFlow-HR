@@ -269,5 +269,25 @@ describe('User Profile Update by Manager API', () => {
     expect(res.status).toBe(200);
     expect(res.body.job_id).toBe(Number(jobId));
   });
+
+  it('should reject manager profile update with invalid date_of_birth format', async () => {
+    const res = await request(app)
+      .put(`/api/users/${employeeId}/profile`)
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ date_of_birth: '1998-02-30' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid date of birth format. Must be YYYY-MM-DD.');
+  });
+
+  it('should reject employee profile update with invalid date_of_birth format', async () => {
+    const res = await request(app)
+      .put('/api/users/profile')
+      .set('Authorization', `Bearer ${employeeToken}`)
+      .send({ date_of_birth: 'invalid-date' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid date of birth format. Must be YYYY-MM-DD.');
+  });
 });
 

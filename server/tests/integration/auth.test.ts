@@ -138,6 +138,36 @@ describe('Auth API', () => {
       expect(res.body).toHaveProperty('error', 'Missing required fields: name, email, password, date_of_birth, gender');
     });
 
+    it('should not register a user with incorrect date_of_birth format', async () => {
+      const res = await request(app)
+        .post('/api/auth/register')
+        .send({
+          name: 'Bad Date User',
+          email: 'baddate@example.com',
+          password: 'password123',
+          date_of_birth: '1998/01/01',
+          gender: 'male'
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('error', 'Invalid date of birth format. Must be YYYY-MM-DD.');
+    });
+
+    it('should not register a user with non-existent calendar date of birth', async () => {
+      const res = await request(app)
+        .post('/api/auth/register')
+        .send({
+          name: 'Fake Date User',
+          email: 'fakedate@example.com',
+          password: 'password123',
+          date_of_birth: '1998-02-30',
+          gender: 'male'
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('error', 'Invalid date of birth format. Must be YYYY-MM-DD.');
+    });
+
     it('should not register a user with invalid gender', async () => {
       const res = await request(app)
         .post('/api/auth/register')

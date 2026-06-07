@@ -6,6 +6,7 @@ import { logAudit } from '../services/auditService.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
 import logger from '../utils/logger.js';
 import { getSettingsCache, setSettingsCache } from '../utils/cache.js';
+import { isValidDateString } from '../utils/timeManager.js';
 
 // 🛡️ Sentinel: Enforce secure JWT Secret from environment variables.
 // Do not use hardcoded fallbacks that could be exploited if env vars are missing.
@@ -28,6 +29,11 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         // Validate date of birth
         if (typeof date_of_birth !== 'string' || !date_of_birth.trim()) {
             res.status(400).json({ error: 'Missing required fields: name, email, password, date_of_birth, gender' });
+            return;
+        }
+
+        if (!isValidDateString(date_of_birth)) {
+            res.status(400).json({ error: 'Invalid date of birth format. Must be YYYY-MM-DD.' });
             return;
         }
 

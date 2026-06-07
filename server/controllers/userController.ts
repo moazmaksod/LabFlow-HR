@@ -8,6 +8,7 @@ import { logAudit } from '../services/auditService.js';
 import fs from 'fs';
 import path from 'path';
 import { generateShiftInstances } from '../services/shiftInstanceService.js';
+import { isValidDateString } from '../utils/timeManager.js';
 
 
 export const getUsers = (req: Request, res: Response): void => {
@@ -337,6 +338,13 @@ export const updateProfile = (req: AuthRequest, res: Response): void => {
         const userId = req.user!.id;
         const body = req.body;
 
+        if (body.date_of_birth !== undefined && body.date_of_birth !== null && body.date_of_birth !== '') {
+            if (!isValidDateString(body.date_of_birth)) {
+                res.status(400).json({ error: 'Invalid date of birth format. Must be YYYY-MM-DD.' });
+                return;
+            }
+        }
+
         const updateTransaction = db.transaction(() => {
             const oldUser = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
             const oldProfile = db.prepare('SELECT * FROM profiles WHERE user_id = ?').get(userId);
@@ -504,6 +512,13 @@ export const updateUserProfile = (req: Request, res: Response): void => {
         }
         if (body.job_id === '') {
             body.job_id = null;
+        }
+
+        if (body.date_of_birth !== undefined && body.date_of_birth !== null && body.date_of_birth !== '') {
+            if (!isValidDateString(body.date_of_birth)) {
+                res.status(400).json({ error: 'Invalid date of birth format. Must be YYYY-MM-DD.' });
+                return;
+            }
         }
 
         const updateTransaction = db.transaction(() => {
