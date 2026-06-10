@@ -693,12 +693,12 @@ export default function AnalyticsDashboard() {
           <select
             value={periodFilter}
             onChange={(e) => setPeriodFilter(e.target.value as any)}
-            className="bg-transparent border-0 py-0.5 text-xs font-bold text-foreground focus:outline-none cursor-pointer focus:ring-0"
+            className="bg-card border-0 py-0.5 text-xs font-bold text-foreground focus:outline-none cursor-pointer focus:ring-0"
           >
-            <option value="today">Today vs Yesterday</option>
-            <option value="7days">Last 7 Days vs Prior 7 Days</option>
-            <option value="month">This Month vs Prior MTD</option>
-            <option value="year">This Year vs Prior YTD</option>
+            <option value="today" className="bg-card text-foreground">Today vs Yesterday</option>
+            <option value="7days" className="bg-card text-foreground">Last 7 Days vs Prior 7 Days</option>
+            <option value="month" className="bg-card text-foreground">This Month vs Prior MTD</option>
+            <option value="year" className="bg-card text-foreground">This Year vs Prior YTD</option>
           </select>
         </div>
       </div>

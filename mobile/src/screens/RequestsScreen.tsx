@@ -592,8 +592,8 @@ export default function RequestsScreen() {
       <View style={[
         styles.outcomeContainer,
         {
-          backgroundColor: isApproved ? '#f0fdf4' : '#fef2f2',
-          borderColor: isApproved ? '#bbf7d0' : '#fecaca',
+          backgroundColor: isApproved ? colors.successBg : colors.dangerBg,
+          borderColor: isApproved ? colors.successBorder : colors.dangerBorder,
           borderWidth: 1
         }
       ]}>
@@ -628,7 +628,7 @@ export default function RequestsScreen() {
               This request was rejected. The duration remains unpaid.
             </Text>
             {item.penalty_minutes !== undefined && item.penalty_minutes > 0 && (
-              <Text style={[styles.outcomeText, { color: '#b91c1c', marginTop: 4, fontWeight: '600' }]}>
+              <Text style={[styles.outcomeText, { color: colors.danger, marginTop: 4, fontWeight: '600' }]}>
                 Disciplinary penalty applied: {formatDuration(item.penalty_minutes)}
               </Text>
             )}
@@ -917,7 +917,7 @@ export default function RequestsScreen() {
                 <Text style={styles.summaryValue}>{selectedRequest?.reason}</Text>
 
                 {selectedRequest && (
-                  <View style={{ marginTop: 8, borderTopWidth: 1, borderTopColor: '#e4e4e7', paddingTop: 12 }}>
+                  <View style={{ marginTop: 8, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12 }}>
                     {renderRequestDetails(selectedRequest)}
                   </View>
                 )}
@@ -1125,7 +1125,7 @@ export default function RequestsScreen() {
           onPress={openNewRequestModal}
           activeOpacity={0.8}
         >
-          <Plus size={24} color="#fff" />
+          <Plus size={24} color={colors.primaryForeground} />
         </TouchableOpacity>
       )}
     </View>
