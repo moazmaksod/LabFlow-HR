@@ -1,6 +1,6 @@
 import db from '../db/index.js';
 import logger from '../utils/logger.js';
-import { getAppNow, getDifferenceInMinutes, generateUnscheduledShiftId } from "../utils/timeManager.js";
+import { getAppNow, getDifferenceInMinutes, generateUnscheduledShiftId, parseAndFormat } from "../utils/timeManager.js";
 import { getSettingsCache, setSettingsCache } from '../utils/cache.js';
 import { recalculateUserDailyAttendance } from './dailyAttendanceService.js';
 
@@ -70,6 +70,9 @@ export const evaluateUserAttendance = (userId: number): void => {
             logger.debug('[evaluateUserAttendance] Transaction Entry: uid=', uid);
             const now = getAppNow();
             logger.debug('[evaluateUserAttendance] now=', now);
+
+            const user = db.prepare('SELECT display_timezone FROM users WHERE id = ?').get(uid) as any;
+            const displayTimezone = user?.display_timezone || 'UTC';
 
             const settings = db.prepare('SELECT * FROM settings WHERE id = 1').get() as any;
             const gracePeriod = settings?.late_grace_period !== undefined ? settings.late_grace_period : 0;
@@ -260,7 +263,15 @@ export const evaluateUserAttendance = (userId: number): void => {
                         // Insert overtime request for the completed unscheduled shift duration
                         const otMins = getDifferenceInMinutes(activeUnscheduled.check_in, effectiveCheckOutISO);
                         if (otMins > 0) {
-                            insertOvertimeRequest(uid, activeUnscheduled.id, 'Unscheduled Check-in (Auto-Close)', otMins);
+                            const checkInTimeStr = parseAndFormat(activeUnscheduled.check_in, displayTimezone) + ` (${displayTimezone})`;
+                            let reasonStr = '';
+                            if (lastHeartbeat) {
+                                const heartbeatTimeStr = parseAndFormat(lastHeartbeat.timestamp, displayTimezone) + ` (${displayTimezone})`;
+                                reasonStr = `Unscheduled Check-in (Auto-Close: inactive; last heartbeat at ${heartbeatTimeStr})`;
+                            } else {
+                                reasonStr = `Unscheduled Check-in (Auto-Close: inactive; check-in at ${checkInTimeStr}, no heartbeat detected)`;
+                            }
+                            insertOvertimeRequest(uid, activeUnscheduled.id, reasonStr, otMins);
                         }
                     }
 
@@ -282,7 +293,10 @@ export const evaluateUserAttendance = (userId: number): void => {
 
                         if (otMinutes >= minUnscheduledSessionMins) {
                             if (otMinutes > 0) {
-                                insertOvertimeRequest(uid, activeUnscheduled.id, 'Early Clock-in (Auto-Slice)', otMinutes);
+                                const shiftStartTimeStr = parseAndFormat(activeShift.start_time, displayTimezone) + ` (${displayTimezone})`;
+                                const checkInTimeStr = parseAndFormat(activeUnscheduled.check_in, displayTimezone) + ` (${displayTimezone})`;
+                                const reasonStr = `Early Clock-in (Auto-Slice: checked in at ${checkInTimeStr} before scheduled shift starting at ${shiftStartTimeStr})`;
+                                insertOvertimeRequest(uid, activeUnscheduled.id, reasonStr, otMinutes);
                             }
 
                             // Update unscheduled to end at shift start time

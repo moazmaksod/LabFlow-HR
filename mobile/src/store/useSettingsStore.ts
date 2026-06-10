@@ -23,8 +23,10 @@ export const useSettingsStore = create<SettingsState>()(
         try {
           const response = await api.get('/settings');
           set({ settings: response.data });
-        } catch (error) {
-          console.error('Failed to fetch settings:', error);
+        } catch (error: any) {
+          if (!error.isNetworkError) {
+            console.error('Failed to fetch settings:', error);
+          }
         }
       },
       fetchPublicSettings: async () => {
@@ -33,8 +35,10 @@ export const useSettingsStore = create<SettingsState>()(
           set((state) => ({
             settings: { ...(state.settings || {}), ...response.data }
           }));
-        } catch (error) {
-          console.error('Failed to fetch public settings:', error);
+        } catch (error: any) {
+          if (!error.isNetworkError) {
+            console.error('Failed to fetch public settings:', error);
+          }
         }
       },
       setUserTimezone: (tz) => set({ userTimezone: tz }),

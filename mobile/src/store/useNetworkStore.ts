@@ -44,8 +44,10 @@ export const useNetworkStore = create<NetworkState>()(
             lastLocalSyncTime: localTime,
             serverTimezone: response.data.timezone || 'UTC'
           });
-        } catch (error) {
-          console.error('Failed to sync server time:', error);
+        } catch (error: any) {
+          if (!error.isNetworkError) {
+            console.error('Failed to sync server time:', error);
+          }
         }
       },
       setConnected: (connected) => set({ isConnected: connected }),
@@ -178,12 +180,16 @@ export const useNetworkStore = create<NetworkState>()(
             attendanceStore.setStatus('none');
             attendanceStore.setConsumedBreakMinutes(0);
           }
-        } catch (fetchError) {
-          console.error('Failed to fetch authoritative state after sync:', fetchError);
+        } catch (fetchError: any) {
+          if (!fetchError.isNetworkError) {
+            console.error('Failed to fetch authoritative state after sync:', fetchError);
+          }
         }
       }
-    } catch (error) {
-      console.error('Auto-sync failed:', error);
+    } catch (error: any) {
+      if (!error.isNetworkError) {
+        console.error('Auto-sync failed:', error);
+      }
     } finally {
       set({ isSyncing: false });
     }

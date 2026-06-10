@@ -19,9 +19,11 @@ export default function PendingApprovalScreen() {
           if (res.data && res.data.role !== 'pending' && user && token) {
             login({ ...user, role: res.data.role }, token);
           }
-        } catch (error) {
+        } catch (error: any) {
           // If 401, the interceptor will handle the logout
-          console.error('Error checking status:', error);
+          if (!error.isNetworkError) {
+            console.error('Error checking status:', error);
+          }
         }
       };
       checkStatus();
