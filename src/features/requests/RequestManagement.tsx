@@ -599,29 +599,31 @@ export default function RequestManagement() {
                     </div>
 
                     {confirmActionType === 'approve' ? (
-                      selectedRequest.type === 'attendance_correction' ? (
+                      (selectedRequest.type === 'attendance_correction' || selectedRequest.type === 'manual_clock' || !selectedRequest.type) ? (
                         <div className="bg-emerald-500/5 border border-emerald-500/20 p-3 rounded-lg space-y-2 mt-2">
                           <div className="text-xs font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">
-                            Attendance Correction Summary
+                            {selectedRequest.type === 'attendance_correction' ? 'Attendance Correction Summary' : 'Manual Clock Approval Summary'}
                           </div>
                           <p className="text-[11px] text-muted-foreground">
-                            This request will be marked as approved. The shift check-in and check-out times will be updated to the proposed times.
+                            {selectedRequest.type === 'attendance_correction'
+                              ? 'This request will be marked as approved. The shift check-in and check-out times will be updated to the proposed times.'
+                              : 'This request will be marked as approved. A new/updated attendance record will be created with the requested check-in and check-out times.'}
                           </p>
                           <div className="space-y-1 text-xs">
                             <div className="flex justify-between items-center">
-                              <span className="text-muted-foreground">New Clock In:</span>
+                              <span className="text-muted-foreground">{selectedRequest.type === 'attendance_correction' ? 'New Clock In:' : 'Requested Clock In:'}</span>
                               <span className="font-mono font-semibold text-foreground">
                                 {formatTime(selectedRequest.requested_check_in || selectedRequest.original_check_in || null)}
                               </span>
                             </div>
                             <div className="flex justify-between items-center">
-                              <span className="text-muted-foreground">New Clock Out:</span>
+                              <span className="text-muted-foreground">{selectedRequest.type === 'attendance_correction' ? 'New Clock Out:' : 'Requested Clock Out:'}</span>
                               <span className="font-mono font-semibold text-foreground">
                                 {formatTime(selectedRequest.requested_check_out || selectedRequest.original_check_out || null)}
                               </span>
                             </div>
                             <div className="flex justify-between items-center border-t border-emerald-500/10 pt-1.5 mt-1">
-                              <span className="font-bold text-emerald-800 dark:text-emerald-300">New Duration:</span>
+                              <span className="font-bold text-emerald-800 dark:text-emerald-300">Duration:</span>
                               <span className="font-mono font-black text-emerald-600 dark:text-emerald-400 text-base">
                                 {formatDuration(getDurationMins(
                                   selectedRequest.requested_check_in || selectedRequest.original_check_in,
@@ -648,34 +650,36 @@ export default function RequestManagement() {
                         </div>
                       )
                     ) : (
-                      selectedRequest.type === 'attendance_correction' ? (
+                      (selectedRequest.type === 'attendance_correction' || selectedRequest.type === 'manual_clock' || !selectedRequest.type) ? (
                         <div className="bg-rose-500/5 border border-rose-500/20 p-3 rounded-lg space-y-2 mt-2">
                           <div className="text-xs font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest">
-                            Attendance Correction Rejection
+                            {selectedRequest.type === 'attendance_correction' ? 'Attendance Correction Rejection' : 'Manual Clock Rejection'}
                           </div>
                           <p className="text-[11px] text-muted-foreground">
-                            This request will be rejected. Nothing will change and the existing check-in/out times and duration will remain as is.
+                            {selectedRequest.type === 'attendance_correction'
+                              ? 'This request will be rejected. Nothing will change and the existing check-in/out times and duration will remain as is.'
+                              : 'This request will be rejected. No new attendance record will be created for the requested times.'}
                           </p>
-                          <div className="space-y-1 text-xs">
-                            <div className="flex justify-between items-center">
-                              <span className="text-muted-foreground">Existing Clock In:</span>
-                              <span className="font-mono font-semibold text-foreground">
-                                {formatTime(selectedRequest.original_check_in || null)}
-                              </span>
+                          {(selectedRequest.original_check_in || selectedRequest.original_check_out) && (
+                            <div className="space-y-1 text-xs border-t border-rose-500/10 pt-1.5 mt-1">
+                              {selectedRequest.original_check_in && (
+                                <div className="flex justify-between items-center">
+                                  <span className="text-muted-foreground">Existing Clock In:</span>
+                                  <span className="font-mono font-semibold text-foreground">
+                                    {formatTime(selectedRequest.original_check_in)}
+                                  </span>
+                                </div>
+                              )}
+                              {selectedRequest.original_check_out && (
+                                <div className="flex justify-between items-center">
+                                  <span className="text-muted-foreground">Existing Clock Out:</span>
+                                  <span className="font-mono font-semibold text-foreground">
+                                    {formatTime(selectedRequest.original_check_out)}
+                                  </span>
+                                </div>
+                              )}
                             </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-muted-foreground">Existing Clock Out:</span>
-                              <span className="font-mono font-semibold text-foreground">
-                                {formatTime(selectedRequest.original_check_out || null)}
-                              </span>
-                            </div>
-                            <div className="flex justify-between items-center border-t border-rose-500/10 pt-1.5 mt-1">
-                              <span className="font-bold text-rose-800 dark:text-rose-300">Existing Shift Duration:</span>
-                              <span className="font-mono font-black text-rose-600 dark:text-rose-400 text-base">
-                                {formatDuration(getDurationMins(selectedRequest.original_check_in, selectedRequest.original_check_out))}
-                              </span>
-                            </div>
-                          </div>
+                          )}
                         </div>
                       ) : (
                         <div className="space-y-3 mt-2">
@@ -834,6 +838,27 @@ export default function RequestManagement() {
                         </div>
 
                         {/* Specific Request Detail Types */}
+                        {(selectedRequest.type === 'manual_clock' || !selectedRequest.type) && (
+                          <div className="space-y-3 pt-2 border-t border-border">
+                            <h4 className="font-semibold text-sm text-primary">Manual Clock Details</h4>
+                            <div className="bg-muted/30 p-3 rounded-lg border border-border space-y-1 text-sm">
+                              <div className="flex justify-between">
+                                <span className="text-xs text-muted-foreground">Requested Clock In:</span>
+                                <span className="font-mono">{formatTime(selectedRequest.requested_check_in)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-xs text-muted-foreground">Requested Clock Out:</span>
+                                <span className="font-mono">{formatTime(selectedRequest.requested_check_out)}</span>
+                              </div>
+                              <div className="flex justify-between border-t border-border/50 pt-1 mt-1 font-medium">
+                                <span className="text-xs text-muted-foreground">Requested Duration:</span>
+                                <span className="font-mono">
+                                  {formatDuration(getDurationMins(selectedRequest.requested_check_in, selectedRequest.requested_check_out))}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                         {selectedRequest.type === 'permission_to_leave' && (
                           <div className="space-y-3 pt-2 border-t border-border">
                             <h4 className="font-semibold text-sm text-primary">Permission Details</h4>

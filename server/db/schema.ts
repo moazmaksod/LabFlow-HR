@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS requests (
     manager_note TEXT,
     paid_minutes INTEGER DEFAULT 0,
     status TEXT NOT NULL CHECK(status IN ('pending', 'approved', 'rejected', 'canceled')) DEFAULT 'pending',
+    shift_id TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,

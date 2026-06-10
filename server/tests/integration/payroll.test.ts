@@ -121,6 +121,65 @@ describe('Payroll API', () => {
     expect(payrollRecord).toHaveProperty('total_pay', 229.5);
   });
 
+  it('should not award attendance bonus if one of duplicate attendance records for a shift is late', async () => {
+    // 1. Set attendance bonus percent in settings
+    db.prepare('UPDATE settings SET attendance_bonus_amount = 10.0 WHERE id = 1').run();
+
+    // 2. Create a shift instance
+    const testDate = '2023-10-02';
+    const shiftStart = '2023-10-02T08:00:00.000Z';
+    const shiftEnd = '2023-10-02T16:00:00.000Z';
+    const shiftInsert = db.prepare(`
+      INSERT INTO shift_instances (user_id, start_time, end_time, logical_date, status)
+      VALUES (?, ?, ?, ?, 'Scheduled')
+    `).run(employeeId, shiftStart, shiftEnd, testDate);
+    const shiftId = shiftInsert.lastInsertRowid;
+
+    // 3. Clear the beforeEach default attendance so we only have our test case
+    db.prepare('DELETE FROM attendance').run();
+    db.prepare('DELETE FROM daily_attendance').run();
+
+    // 4. Create two attendance records for the same shift: one late_in and one on_time
+    // Record 1: late_in
+    db.prepare(`
+      INSERT INTO attendance (user_id, check_in, check_out, date, checkin_status, checkout_status, working_status, shift_id)
+      VALUES (?, ?, ?, ?, 'late_in', 'on_time', 'working', ?)
+    `).run(employeeId, '2023-10-02T08:30:00.000Z', '2023-10-02T16:00:00.000Z', testDate, shiftId.toString());
+
+    // Record 2: on_time
+    db.prepare(`
+      INSERT INTO attendance (user_id, check_in, check_out, date, checkin_status, checkout_status, working_status, shift_id)
+      VALUES (?, ?, ?, ?, 'on_time', 'on_time', 'working', ?)
+    `).run(employeeId, '2023-10-02T08:00:00.000Z', '2023-10-02T16:00:00.000Z', testDate, shiftId.toString());
+
+    // Insert processed daily attendance log for this date
+    db.prepare(`
+      INSERT INTO daily_attendance (user_id, date, scheduled_working_minutes, scheduled_non_working_minutes, unscheduled_working_minutes, deduction_minutes, status)
+      VALUES (?, ?, 480, 0, 0, 0, 'processed')
+    `).run(employeeId, testDate);
+
+    // 5. Generate payroll
+    const res = await request(app)
+      .get('/api/payroll')
+      .query({ startDate: testDate, endDate: testDate })
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body[0].attendance_bonus).toBe(0); // Should not get the bonus!
+
+    // 6. Delete the late attendance record so only on_time remains
+    db.prepare("DELETE FROM attendance WHERE checkin_status = 'late_in'").run();
+
+    // 7. Re-generate payroll
+    const res2 = await request(app)
+      .get('/api/payroll')
+      .query({ startDate: testDate, endDate: testDate })
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res2.status).toBe(200);
+    expect(res2.body[0].attendance_bonus).toBeGreaterThan(0); // Should get the bonus now!
+  });
+
   it('should require manager role to access payroll', async () => {
     // Create employee token
     const employeeToken = jwt.sign({ id: employeeId, role: 'employee' }, process.env.JWT_SECRET as string);

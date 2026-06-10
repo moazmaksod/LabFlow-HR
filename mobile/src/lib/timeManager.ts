@@ -25,7 +25,10 @@ useNetworkStore.subscribe((state) => {
 export const getMobileNow = (): string => {
     const currentPerf = global.performance ? global.performance.now() : Date.now();
     const elapsed = currentPerf - initPerfRef;
-    const now = new Date(initTimeRef + elapsed);
+    let now = new Date(initTimeRef + elapsed);
+    if (isNaN(now.getTime()) || now.getFullYear() < 2020) {
+        now = new Date();
+    }
     return now.toISOString();
 };
 

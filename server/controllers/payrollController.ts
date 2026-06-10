@@ -90,16 +90,27 @@ const calculateUserPayroll = (user: any, start_date: string, end_date: string) =
                 WHERE user_id = ? AND date BETWEEN ? AND ?
             `).all(user.id, start_date, end_date) as any[];
 
-            const attendanceMap = new Map<string, any>();
+            const attendanceMap = new Map<string, any[]>();
             for (const att of attendanceList) {
                 if (att.shift_id) {
-                    attendanceMap.set(att.shift_id.toString(), att);
+                    const shiftIdStr = att.shift_id.toString();
+                    if (!attendanceMap.has(shiftIdStr)) {
+                        attendanceMap.set(shiftIdStr, []);
+                    }
+                    attendanceMap.get(shiftIdStr)!.push(att);
                 }
             }
 
             for (const shift of shifts) {
-                const att = attendanceMap.get(shift.id.toString());
-                if (!att || att.checkin_status !== 'on_time' || att.checkout_status !== 'on_time') {
+                const atts = attendanceMap.get(shift.id.toString()) || [];
+                if (atts.length === 0) {
+                    allOnTime = false;
+                    break;
+                }
+                const shiftOnTime = atts.every(
+                    att => att.checkin_status === 'on_time' && att.checkout_status === 'on_time'
+                );
+                if (!shiftOnTime) {
                     allOnTime = false;
                     break;
                 }

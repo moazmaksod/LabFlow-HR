@@ -340,6 +340,9 @@ export function initDb() {
     if (requestColumns.some(c => c.name === 'is_paid_permission')) {
       db.exec("ALTER TABLE requests DROP COLUMN is_paid_permission;");
     }
+    if (!requestColumns.some(c => c.name === 'shift_id')) {
+      db.exec("ALTER TABLE requests ADD COLUMN shift_id TEXT;");
+    }
 
     const finalAttendanceColumns = db.prepare("PRAGMA table_info(attendance)").all() as any[];
     if (finalAttendanceColumns.some(c => c.name === 'approved_overtime_minutes')) {

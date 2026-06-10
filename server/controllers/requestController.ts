@@ -20,6 +20,120 @@ export const createRequest = (req: AuthRequest, res: Response): void => {
 
         const requestType = type || 'manual_clock';
 
+        // Manual Clock Slicing Logic
+        if (requestType === 'manual_clock') {
+            if (!requested_check_in || !requested_check_out) {
+                res.status(400).json({ error: 'Check-in and Check-out times are required for manual clock requests.' });
+                return;
+            }
+
+            const reqStart = new Date(requested_check_in);
+            const reqEnd = new Date(requested_check_out);
+
+            if (reqStart >= reqEnd) {
+                res.status(400).json({ error: 'Check-out time must be after check-in time.' });
+                return;
+            }
+
+            // Fetch overlapping shift instances
+            const overlappingShifts = db.prepare(`
+                SELECT * FROM shift_instances
+                WHERE user_id = ? AND status != 'Cancelled'
+                  AND NOT (end_time <= ? OR start_time >= ?)
+                ORDER BY start_time ASC
+            `).all(userId, requested_check_in, requested_check_out) as any[];
+
+            const segments: { start: string; end: string; shiftId: string | null }[] = [];
+            let currentTime = reqStart.getTime();
+
+            for (const shift of overlappingShifts) {
+                const shiftStart = new Date(shift.start_time).getTime();
+                const shiftEnd = new Date(shift.end_time).getTime();
+
+                // 1. Unscheduled segment before the shift start
+                if (shiftStart > currentTime) {
+                    const segmentEnd = Math.min(shiftStart, reqEnd.getTime());
+                    segments.push({
+                        start: new Date(currentTime).toISOString(),
+                        end: new Date(segmentEnd).toISOString(),
+                        shiftId: null
+                    });
+                    currentTime = segmentEnd;
+                }
+
+                if (currentTime >= reqEnd.getTime()) break;
+
+                // 2. Scheduled segment inside the shift
+                const segmentEnd = Math.min(shiftEnd, reqEnd.getTime());
+                if (segmentEnd > currentTime) {
+                    segments.push({
+                        start: new Date(currentTime).toISOString(),
+                        end: new Date(segmentEnd).toISOString(),
+                        shiftId: shift.id.toString()
+                    });
+                    currentTime = segmentEnd;
+                }
+
+                if (currentTime >= reqEnd.getTime()) break;
+            }
+
+            // 3. Final unscheduled segment after the last shift
+            if (currentTime < reqEnd.getTime()) {
+                segments.push({
+                    start: new Date(currentTime).toISOString(),
+                    end: new Date(reqEnd.getTime()).toISOString(),
+                    shiftId: null
+                });
+            }
+
+            // Overlap Validation Checks
+            for (const seg of segments) {
+                // Check against existing attendance
+                const overlapAtt = db.prepare(`
+                    SELECT id FROM attendance
+                    WHERE user_id = ?
+                      AND NOT (check_out <= ? OR check_in >= ?)
+                `).get(userId, seg.start, seg.end);
+
+                if (overlapAtt) {
+                    res.status(400).json({ error: 'The requested period overlaps with an existing attendance record.' });
+                    return;
+                }
+
+                // Check against pending manual clock requests
+                const overlapReq = db.prepare(`
+                    SELECT id FROM requests
+                    WHERE user_id = ? AND status = 'pending' AND type = 'manual_clock'
+                      AND NOT (requested_check_out <= ? OR requested_check_in >= ?)
+                `).get(userId, seg.start, seg.end);
+
+                if (overlapReq) {
+                    res.status(400).json({ error: 'A pending manual clock request already overlaps with this period.' });
+                    return;
+                }
+            }
+
+            // Batch insert requests in a transaction
+            const createdRequests = db.transaction(() => {
+                const inserted = [];
+                const insertStmt = db.prepare(`
+                    INSERT INTO requests (user_id, attendance_id, requested_check_in, requested_check_out, type, reason, value, status, manager_note, shift_id)
+                    VALUES (?, NULL, ?, ?, 'manual_clock', ?, 0, 'pending', NULL, ?)
+                `);
+
+                for (const seg of segments) {
+                    const info = insertStmt.run(userId, seg.start, seg.end, reason, seg.shiftId);
+                    const reqRecord = db.prepare('SELECT * FROM requests WHERE id = ?').get(info.lastInsertRowid);
+                    logAudit('requests', info.lastInsertRowid as number, 'CREATE', userId, null, reqRecord);
+                    inserted.push(reqRecord);
+                }
+                return inserted;
+            })();
+
+            res.status(201).json(createdRequests.length === 1 ? createdRequests[0] : createdRequests);
+            return;
+        }
+
         if (attendance_id) {
             const existingPending = db.prepare(`
                 SELECT id FROM requests
@@ -198,6 +312,34 @@ export const createAttendanceCorrection = (req: AuthRequest, res: Response): voi
         }
 
         let shiftInstance = null;
+        const isUnscheduled = !attendanceRecord.shift_id || attendanceRecord.shift_id.startsWith('US_');
+
+        if (isUnscheduled) {
+            // 1. Check overlap with any other existing attendance records for the user
+            const overlapAtt = db.prepare(`
+                SELECT id FROM attendance
+                WHERE user_id = ? AND id != ?
+                  AND NOT (check_out <= ? OR check_in >= ?)
+            `).get(userId, attendance_id, checkIn, checkOut);
+
+            if (overlapAtt) {
+                res.status(400).json({ error: 'Correction overlaps with an existing attendance record.' });
+                return;
+            }
+
+            // 2. Check overlap with any scheduled shift of the user
+            const overlapShift = db.prepare(`
+                SELECT id FROM shift_instances
+                WHERE user_id = ? AND status != 'Cancelled'
+                  AND NOT (end_time <= ? OR start_time >= ?)
+            `).get(userId, checkIn, checkOut);
+
+            if (overlapShift) {
+                res.status(400).json({ error: 'Correction overlaps with an existing scheduled shift.' });
+                return;
+            }
+        }
+
         if (attendanceRecord.shift_id && !attendanceRecord.shift_id.startsWith('US_')) {
             shiftInstance = db.prepare('SELECT * FROM shift_instances WHERE id = ?').get(attendanceRecord.shift_id) as any;
         }
@@ -630,55 +772,86 @@ export const updateRequestStatus = (req: Request, res: Response): void => {
                         // Recalculate status based on check_in
                         let checkinStatus = 'on_time';
                         let checkoutStatus = requestRecord.requested_check_out ? 'on_time' : null;
-                        let shiftId = null;
- 
-                        if (requestRecord.requested_check_in) {
-                            const userProfile = db.prepare(`
-                                SELECT p.weekly_schedule
-                                FROM profiles p
-                                WHERE p.user_id = ?
-                            `).get(requestRecord.user_id) as any;
- 
-                            const settingsRecord = db.prepare('SELECT late_grace_period FROM settings WHERE id = 1').get() as any;
-                            const gracePeriod = settingsRecord?.late_grace_period !== undefined ? settingsRecord.late_grace_period : 0;
- 
-                            if (userProfile) {
-                                const shiftInstance = db.prepare(`
-                                    SELECT * FROM shift_instances
-                                    WHERE user_id = ? AND ? BETWEEN datetime(start_time, '-' || ? || ' minutes') AND end_time
-                                    ORDER BY start_time ASC LIMIT 1
-                                `).get(requestRecord.user_id, requestRecord.requested_check_in, gracePeriod) as any;
- 
-                                if (shiftInstance) {
-                                    shiftId = shiftInstance.id.toString();
-                                    const scheduledTime = new Date(shiftInstance.start_time);
-                                    const clockInTime = new Date(requestRecord.requested_check_in);
-                                    if (clockInTime > scheduledTime) {
-                                        const diffMinutes = getDifferenceInMinutes(scheduledTime, clockInTime);
-                                        if (diffMinutes > gracePeriod) {
-                                            checkinStatus = 'late_in';
+                        let shiftId = requestRecord.shift_id;
+  
+                        const settingsRecord = db.prepare('SELECT late_grace_period FROM settings WHERE id = 1').get() as any;
+                        const gracePeriod = settingsRecord?.late_grace_period !== undefined ? settingsRecord.late_grace_period : 0;
+  
+                        if (shiftId) {
+                            const shiftInstance = db.prepare('SELECT * FROM shift_instances WHERE id = ?').get(shiftId) as any;
+                            if (shiftInstance) {
+                                const scheduledTime = new Date(shiftInstance.start_time);
+                                const clockInTime = new Date(requestRecord.requested_check_in);
+                                if (clockInTime > scheduledTime) {
+                                    const diffMinutes = getDifferenceInMinutes(scheduledTime, clockInTime);
+                                    if (diffMinutes > gracePeriod) {
+                                        checkinStatus = 'late_in';
+                                    }
+                                }
+  
+                                if (requestRecord.requested_check_out) {
+                                    const scheduledEndTime = new Date(shiftInstance.end_time);
+                                    const clockOutTime = new Date(requestRecord.requested_check_out);
+                                    if (clockOutTime < scheduledEndTime) {
+                                        const outDiffMinutes = getDifferenceInMinutes(clockOutTime, scheduledEndTime);
+                                        if (outDiffMinutes > gracePeriod) {
+                                            checkoutStatus = 'early_out';
                                         }
                                     }
- 
-                                    if (requestRecord.requested_check_out) {
-                                        const scheduledEndTime = new Date(shiftInstance.end_time);
-                                        const clockOutTime = new Date(requestRecord.requested_check_out);
-                                        if (clockOutTime < scheduledEndTime) {
-                                            const outDiffMinutes = getDifferenceInMinutes(clockOutTime, scheduledEndTime);
-                                            if (outDiffMinutes > gracePeriod) {
-                                                checkoutStatus = 'early_out';
+                                }
+                            } else {
+                                checkinStatus = 'unscheduled';
+                                if (requestRecord.requested_check_out) {
+                                    checkoutStatus = 'unscheduled';
+                                }
+                            }
+                        } else {
+                            // Legacy fallback (no shift_id on request)
+                            if (requestRecord.requested_check_in) {
+                                const userProfile = db.prepare(`
+                                    SELECT p.weekly_schedule
+                                    FROM profiles p
+                                    WHERE p.user_id = ?
+                                `).get(requestRecord.user_id) as any;
+  
+                                if (userProfile) {
+                                    const shiftInstance = db.prepare(`
+                                        SELECT * FROM shift_instances
+                                        WHERE user_id = ? AND ? BETWEEN datetime(start_time, '-' || ? || ' minutes') AND end_time
+                                        ORDER BY start_time ASC LIMIT 1
+                                    `).get(requestRecord.user_id, requestRecord.requested_check_in, gracePeriod) as any;
+  
+                                    if (shiftInstance) {
+                                        shiftId = shiftInstance.id.toString();
+                                        const scheduledTime = new Date(shiftInstance.start_time);
+                                        const clockInTime = new Date(requestRecord.requested_check_in);
+                                        if (clockInTime > scheduledTime) {
+                                            const diffMinutes = getDifferenceInMinutes(scheduledTime, clockInTime);
+                                            if (diffMinutes > gracePeriod) {
+                                                checkinStatus = 'late_in';
                                             }
                                         }
-                                    }
-                                } else {
-                                    checkinStatus = 'unscheduled';
-                                    if (requestRecord.requested_check_out) {
-                                        checkoutStatus = 'unscheduled';
+  
+                                        if (requestRecord.requested_check_out) {
+                                            const scheduledEndTime = new Date(shiftInstance.end_time);
+                                            const clockOutTime = new Date(requestRecord.requested_check_out);
+                                            if (clockOutTime < scheduledEndTime) {
+                                                const outDiffMinutes = getDifferenceInMinutes(clockOutTime, scheduledEndTime);
+                                                if (outDiffMinutes > gracePeriod) {
+                                                    checkoutStatus = 'early_out';
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        checkinStatus = 'unscheduled';
+                                        if (requestRecord.requested_check_out) {
+                                            checkoutStatus = 'unscheduled';
+                                        }
                                     }
                                 }
                             }
                         }
- 
+  
                         db.prepare(`
                             INSERT INTO attendance (user_id, check_in, check_out, date, checkin_status, checkout_status, working_status, shift_id)
                             VALUES (?, ?, ?, ?, ?, ?, 'working', ?)

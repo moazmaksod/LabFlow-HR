@@ -1,14 +1,15 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity, Modal, TextInput, Alert, ScrollView } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Clock, Calendar, CheckCircle, XCircle, AlertCircle, MessageSquare, X, ArrowRight, CornerDownRight, Filter, RotateCcw } from 'lucide-react-native';
+import { Clock, Calendar, CheckCircle, XCircle, AlertCircle, MessageSquare, X, ArrowRight, CornerDownRight, Filter, RotateCcw, Plus } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { toDate, formatInTimeZone } from 'date-fns-tz';
 import api from '../lib/axios';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { saveOfflineRequest } from '../lib/db';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { formatDisplayDate, formatDisplayTime, formatDuration, getMobileNow } from '../lib/timeManager';
+import { formatDisplayDate, formatDisplayTime, formatDuration, getMobileNow, is12HourSystem, resolveTimezone } from '../lib/timeManager';
 import { useThemeColors } from '../hooks/useTheme';
 
 interface RequestItem {
@@ -104,6 +105,74 @@ export default function RequestsScreen() {
   const [maxPaidMinutes, setMaxPaidMinutes] = useState(0);
   const [submitting, setSubmitting] = useState(false);
 
+  // New Request Form State
+  const [createModalVisible, setCreateModalVisible] = useState(false);
+  const [newRequestDate, setNewRequestDate] = useState<Date>(new Date());
+  const [newRequestCheckIn, setNewRequestCheckIn] = useState<Date>(new Date());
+  const [newRequestCheckOut, setNewRequestCheckOut] = useState<Date>(new Date());
+  const [newRequestReason, setNewRequestReason] = useState('');
+  const [showNewDatePicker, setShowNewDatePicker] = useState(false);
+  const [showNewCheckInPicker, setShowNewCheckInPicker] = useState(false);
+  const [showNewCheckOutPicker, setShowNewCheckOutPicker] = useState(false);
+  const [submittingNewRequest, setSubmittingNewRequest] = useState(false);
+
+  const openNewRequestModal = () => {
+    let initialZonedDate = new Date();
+    try {
+      const tz = resolveTimezone(userTimezone);
+      const zonedNowStr = formatInTimeZone(new Date(getMobileNow()), tz, 'yyyy-MM-ddTHH:mm:ss');
+      const parts = zonedNowStr.split(/[T:-]/).map(Number);
+      if (parts.length >= 5) {
+        const parsedDate = new Date(
+          parts[0],
+          parts[1] - 1, // month index
+          parts[2],
+          parts[3],
+          parts[4],
+          parts[5] || 0
+        );
+        if (!isNaN(parsedDate.getTime()) && parsedDate.getFullYear() >= 2020) {
+          initialZonedDate = parsedDate;
+        }
+      }
+    } catch (e) {
+      console.error('Error initializing openNewRequestModal date:', e);
+    }
+
+    setNewRequestDate(initialZonedDate);
+    setNewRequestCheckIn(initialZonedDate);
+    const initialZonedCheckOut = new Date(initialZonedDate.getTime() + 60 * 60 * 1000);
+    setNewRequestCheckOut(initialZonedCheckOut);
+
+    setNewRequestReason('');
+    setCreateModalVisible(true);
+  };
+
+  const formatPickerTime = (date: Date) => {
+    if (!date || isNaN(date.getTime()) || date.getFullYear() < 2020) {
+      date = new Date();
+    }
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    
+    if (is12HourSystem()) {
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      const displayHours = hours % 12 || 12;
+      return `${displayHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+    } else {
+      return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+    }
+  };
+
+  const formatPickerDate = (date: Date) => {
+    if (!date || isNaN(date.getTime()) || date.getFullYear() < 2020) {
+      date = new Date();
+    }
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${days[date.getDay()]}, ${months[date.getMonth()]} ${date.getDate()}`;
+  };
+
   const { isConnected } = useNetworkStore();
 
   const isManager = user?.role === 'manager' || user?.role === 'admin';
@@ -186,6 +255,69 @@ export default function RequestsScreen() {
       }
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const submitNewRequest = async () => {
+    if (!newRequestReason.trim()) {
+      Alert.alert('Required Field', 'A reason is required to submit a manual clock request.');
+      return;
+    }
+
+    setSubmittingNewRequest(true);
+    
+    const year = newRequestDate.getFullYear();
+    const month = (newRequestDate.getMonth() + 1).toString().padStart(2, '0');
+    const day = newRequestDate.getDate().toString().padStart(2, '0');
+
+    const checkInHours = newRequestCheckIn.getHours().toString().padStart(2, '0');
+    const checkInMinutes = newRequestCheckIn.getMinutes().toString().padStart(2, '0');
+
+    const checkOutHours = newRequestCheckOut.getHours().toString().padStart(2, '0');
+    const checkOutMinutes = newRequestCheckOut.getMinutes().toString().padStart(2, '0');
+
+    const checkInLocalStr = `${year}-${month}-${day}T${checkInHours}:${checkInMinutes}:00`;
+    const checkOutLocalStr = `${year}-${month}-${day}T${checkOutHours}:${checkOutMinutes}:00`;
+
+    const checkInDate = toDate(checkInLocalStr, { timeZone: userTimezone });
+    let checkOutDate = toDate(checkOutLocalStr, { timeZone: userTimezone });
+
+    if (checkOutDate <= checkInDate) {
+      checkOutDate = new Date(checkOutDate.getTime() + 24 * 60 * 60 * 1000);
+    }
+
+    const payload = {
+      type: 'manual_clock',
+      requested_check_in: checkInDate.toISOString(),
+      requested_check_out: checkOutDate.toISOString(),
+      reason: newRequestReason,
+    };
+
+    try {
+      if (!isConnected) {
+        await saveOfflineRequest('POST', '/requests', payload);
+        Alert.alert('Offline Mode', 'Network error. Your request was saved locally and will be synced later.');
+        setCreateModalVisible(false);
+        setNewRequestReason('');
+        return;
+      }
+
+      await api.post('/requests', payload);
+      Alert.alert('Success', 'Manual clock request(s) submitted successfully.');
+      setCreateModalVisible(false);
+      setNewRequestReason('');
+      fetchRequests();
+    } catch (error: any) {
+      if (!error.response) {
+        await saveOfflineRequest('POST', '/requests', payload);
+        Alert.alert('Offline Mode', 'Network error. Your request was saved locally and will be synced later.');
+        setCreateModalVisible(false);
+        setNewRequestReason('');
+      } else {
+        Alert.alert('Error', error.response?.data?.error || 'Failed to submit manual clock request.');
+      }
+    } finally {
+      setSubmittingNewRequest(false);
     }
   };
 
@@ -856,6 +988,142 @@ export default function RequestsScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* New Request Modal */}
+      <Modal visible={createModalVisible} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>New Manual Clock Request</Text>
+              <TouchableOpacity onPress={() => setCreateModalVisible(false)}>
+                <X size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.formGroup}>
+                <Text style={styles.inputLabel}>Shift Date</Text>
+                <TouchableOpacity
+                  style={styles.pickerButton}
+                  onPress={() => setShowNewDatePicker(true)}
+                >
+                  <Text style={styles.pickerButtonText}>
+                    {formatPickerDate(newRequestDate)}
+                  </Text>
+                  <Calendar size={18} color={colors.subtext} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.dateFilterRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Check-In Time</Text>
+                  <TouchableOpacity
+                    style={styles.pickerButton}
+                    onPress={() => setShowNewCheckInPicker(true)}
+                  >
+                    <Text style={styles.pickerButtonText}>
+                      {formatPickerTime(newRequestCheckIn)}
+                    </Text>
+                    <Clock size={18} color={colors.subtext} />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Check-Out Time</Text>
+                  <TouchableOpacity
+                    style={styles.pickerButton}
+                    onPress={() => setShowNewCheckOutPicker(true)}
+                  >
+                    <Text style={styles.pickerButtonText}>
+                      {formatPickerTime(newRequestCheckOut)}
+                    </Text>
+                    <Clock size={18} color={colors.subtext} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={[styles.inputContainer, { marginTop: 16 }]}>
+                <Text style={styles.inputLabel}>Reason <Text style={{ color: '#ef4444' }}>*</Text></Text>
+                <TextInput
+                  style={styles.textInput}
+                  multiline
+                  numberOfLines={4}
+                  value={newRequestReason}
+                  onChangeText={setNewRequestReason}
+                  placeholder="Explain why you are requesting manual clock-in/out..."
+                  placeholderTextColor="#a1a1aa"
+                />
+              </View>
+
+              <TouchableOpacity
+                style={[styles.submitButton, { backgroundColor: colors.primary }]}
+                onPress={submitNewRequest}
+                disabled={submittingNewRequest}
+              >
+                {submittingNewRequest ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.submitButtonText}>Submit Request</Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Date & Time Pickers for New Request */}
+      {showNewDatePicker && (
+        <DateTimePicker
+          value={newRequestDate}
+          mode="date"
+          display="default"
+          onChange={(event, date) => {
+            setShowNewDatePicker(false);
+            if (date) {
+              setNewRequestDate(date);
+            }
+          }}
+        />
+      )}
+      {showNewCheckInPicker && (
+        <DateTimePicker
+          value={newRequestCheckIn}
+          mode="time"
+          display="default"
+          is24Hour={!is12HourSystem()}
+          onChange={(event, date) => {
+            setShowNewCheckInPicker(false);
+            if (date) {
+              setNewRequestCheckIn(date);
+            }
+          }}
+        />
+      )}
+      {showNewCheckOutPicker && (
+        <DateTimePicker
+          value={newRequestCheckOut}
+          mode="time"
+          display="default"
+          is24Hour={!is12HourSystem()}
+          onChange={(event, date) => {
+            setShowNewCheckOutPicker(false);
+            if (date) {
+              setNewRequestCheckOut(date);
+            }
+          }}
+        />
+      )}
+
+      {/* FAB Button for Employees */}
+      {!isManager && (
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={openNewRequestModal}
+          activeOpacity={0.8}
+        >
+          <Plus size={24} color="#fff" />
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -1453,5 +1721,38 @@ const createStyles = (colors: any) => StyleSheet.create({
     color: colors.primaryForeground,
     fontWeight: '600',
     fontSize: 14,
+  },
+  fab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  formGroup: {
+    marginBottom: 16,
+  },
+  pickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: 14,
+    backgroundColor: colors.card,
+  },
+  pickerButtonText: {
+    fontSize: 16,
+    color: colors.text,
   },
 });
