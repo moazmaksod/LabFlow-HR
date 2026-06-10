@@ -355,8 +355,18 @@ export default function AttendanceLogs() {
   const user = useAuthStore(state => state.user);
   const location = useLocation();
   
-  const [filterStartDate, setFilterStartDate] = useState('');
-  const [filterEndDate, setFilterEndDate] = useState('');
+  const [filterStartDate, setFilterStartDate] = useState(() => {
+    const tz = user?.display_timezone || resolveTimezone(user?.display_timezone);
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz
+    }).format(new Date(getWebNow()));
+  });
+  const [filterEndDate, setFilterEndDate] = useState(() => {
+    const tz = user?.display_timezone || resolveTimezone(user?.display_timezone);
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz
+    }).format(new Date(getWebNow()));
+  });
   const [filterStatus, setFilterStatus] = useState(() => {
     return (location.state as any)?.filterStatus || '';
   });
