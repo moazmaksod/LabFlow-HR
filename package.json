@@ -74,5 +74,14 @@
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "lint-staged && npm run test -- --runInBand",
+      "pre-push": "npm run bench"
+    }
+  },
+  "lint-staged": {
+    "*.ts": "tsc --noEmit"
   }
 }

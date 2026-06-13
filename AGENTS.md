@@ -42,3 +42,33 @@ This file acts as the primary configuration and ruleset for AI coding agents ope
     *   Warmup: Loop baseline and target logic 50-100 times before `performance.now()` timing begins.
     *   Mandatory Output format: Must precisely log `Improvement: [X]%` and `Correctness Check: PASS` for dashboard parsing.
     *   Never modify the designated unoptimized `Slow` baseline functions in these files.
+
+## 6. Agent Environment Integrations & Tooling
+
+To maximize AI agent capabilities and ensure project stability, the following environment integrations, custom skills, and automated hooks should be configured for this workspace.
+
+### A. Recommended MCP Servers
+*   **Playwright MCP Server (`playwright`)**: 
+    *   **Why**: The project heavily utilizes `@playwright/test` for E2E web testing. 
+    *   **Usage**: Enables the agent to programmatically open the web app, inspect DOM elements, take screenshots, and visually verify UI/UX functionality without leaving the terminal context.
+*   **SQLite Database Server (`sqlite`)**: 
+    *   **Why**: The backend is powered by `better-sqlite3` and heavily relies on atomic transactions (`labflow.db`).
+    *   **Usage**: Allows agents to run direct read-only SQL queries to verify test seed data, check schema structures, and validate that `RETURNING *` data mutations worked correctly without having to write temporary scripts.
+
+### B. Required Agent Skills
+*   **Android CLI Orchestrator (`android-cli`)**:
+    *   **Why**: The `/mobile` directory contains a React Native (Expo SDK 55) application. 
+    *   **Usage**: Equips the agent with the ability to launch Android emulators, clear Expo caches, analyze device logs (Logcat) for native crashes, and manage SDK versions when debugging mobile-specific features like background location tracking or SQLite persistence.
+
+### C. Automated Hooks (Git / CI)
+To maintain the strict architectural rules outlined above, implement the following hooks (via Husky & lint-staged):
+*   **Pre-commit (Code Health & Correctness)**:
+    *   **Type-checking**: Enforce `npm run lint` (`tsc --noEmit`) to catch type drifts between the Express API and React clients.
+    *   **Fast Unit Tests**: Trigger `npm run test` (Jest) to ensure pure functions, UTC offset calculators, and module-scoped caches are not broken by regressions. Note: tests must be run with `--runInBand` to prevent SQLite `SQLITE_BUSY` locking errors.
+*   **Pre-push (Performance & Integrity)**:
+    *   **Benchmarking**: Automate `npm run bench` to execute `server/benchmarks/runAll.ts`. The push should fail if the output does not strictly contain `Correctness Check: PASS` or if performance significantly drops.
+
+### D. Essential CLI Commands & Workflow Flags
+*   **Backend Iteration**: Use `npm run dev` (`tsx server.ts`) for rapid development, leveraging native TypeScript execution.
+*   **Mobile Iteration**: Use `npx expo start --clear` to reset Metro bundler caches when Native modules or `expo-sqlite` schemas change.
+*   **Testing Hooks**: When running Supertest integration tests, use `--runInBand` with Jest to prevent SQLite `SQLITE_BUSY` locking errors since tests rely on shared DB mutation and cleanup mechanisms.
