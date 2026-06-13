@@ -5,6 +5,14 @@ node_modules/
 .idea/
 .vscode/
 npm-debug.*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.eslintcache
+*.tsbuildinfo
+.qodo/
+.jules/
 
 # --- Web & Server Build Artifacts ---
 build/
@@ -18,9 +26,21 @@ playwright-report/
 mobile/node_modules/
 mobile/.expo/
 mobile/dist/
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/app/build/
+mobile/android/local.properties
+mobile/ios/build/
+mobile/ios/Pods/
+mobile/ios/.xcode.env.local
 *.jsc
 *.jsbundle
 *.map
+*.apk
+*.aab
+*.ipa
+*.keystore
+*.jks
 
 # --- Environment Variables (Security) ---
 # Excludes sensitive keys while keeping examples for other devs
