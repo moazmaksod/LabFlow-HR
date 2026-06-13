@@ -3,11 +3,12 @@ import db, { initDb } from '../db/index.js';
 initDb();
 
 function setupMockData() {
-    db.prepare('DELETE FROM users').run();
+    db.prepare('DELETE FROM payrolls').run();
+    db.prepare('DELETE FROM attendance').run();
     db.prepare('DELETE FROM profiles').run();
     db.prepare('DELETE FROM settings').run();
     db.prepare('DELETE FROM jobs').run();
-    db.prepare('DELETE FROM attendance').run();
+    db.prepare('DELETE FROM users').run();
 
     db.prepare(`
         INSERT INTO settings (id, company_name, late_grace_period, geofence_toggle)

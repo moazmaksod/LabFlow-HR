@@ -270,13 +270,13 @@ const runBenchmark = async () => {
 
     // Clean up first
     db.prepare("DELETE FROM shift_interruptions WHERE type = 'benchmark'").run();
-    db.prepare("DELETE FROM attendance WHERE status = 'unscheduled'").run();
+    db.prepare("DELETE FROM attendance WHERE checkin_status = 'unscheduled'").run();
     db.prepare("DELETE FROM profiles WHERE hourly_rate = 123.45").run();
     db.prepare("DELETE FROM users WHERE email LIKE 'bench%@test.com'").run();
 
     const insertUser = db.prepare("INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, 'hash', 'employee')");
     const insertProfile = db.prepare("INSERT INTO profiles (user_id, hourly_rate, weekly_schedule) VALUES (?, ?, ?)");
-    const insertAttendance = db.prepare("INSERT INTO attendance (user_id, date, check_in, check_out, status) VALUES (?, ?, ?, ?, 'unscheduled')");
+    const insertAttendance = db.prepare("INSERT INTO attendance (user_id, date, check_in, check_out, checkin_status, checkout_status) VALUES (?, ?, ?, ?, 'unscheduled', 'unscheduled')");
     const insertBreak = db.prepare("INSERT INTO shift_interruptions (attendance_id, type, start_time, end_time) VALUES (?, 'benchmark', ?, ?)");
 
     const schedule = JSON.stringify({
@@ -417,7 +417,7 @@ const runBenchmark = async () => {
 
     // Cleanup
     db.prepare("DELETE FROM shift_interruptions WHERE type = 'benchmark'").run();
-    db.prepare("DELETE FROM attendance WHERE status = 'unscheduled'").run();
+    db.prepare("DELETE FROM attendance WHERE checkin_status = 'unscheduled'").run();
     db.prepare("DELETE FROM profiles WHERE hourly_rate = 123.45").run();
     db.prepare("DELETE FROM users WHERE email LIKE 'bench%@test.com'").run();
     console.log('Cleanup complete.');

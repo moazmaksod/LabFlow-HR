@@ -5,10 +5,11 @@ initDb();
 // Setup mock data for benchmark
 function setupMockData() {
     // Clear existing data
-    db.prepare('DELETE FROM users').run();
-    db.prepare('DELETE FROM profiles').run();
-    db.prepare('DELETE FROM attendance').run();
+    db.prepare('DELETE FROM payrolls').run();
     db.prepare('DELETE FROM shift_interruptions').run();
+    db.prepare('DELETE FROM attendance').run();
+    db.prepare('DELETE FROM profiles').run();
+    db.prepare('DELETE FROM users').run();
 
     // Create user
     const insertUser = db.prepare(`
@@ -35,8 +36,8 @@ function setupMockData() {
     // Create 365 days of logs (1 year)
     const startDate = new Date('2023-01-01');
     const insertAttendance = db.prepare(`
-        INSERT INTO attendance (user_id, date, status, check_in, check_out)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO attendance (user_id, date, checkin_status, checkout_status, check_in, check_out)
+        VALUES (?, ?, ?, ?, ?, ?)
     `);
 
     for (let i = 0; i < 365; i++) {
@@ -47,6 +48,7 @@ function setupMockData() {
         insertAttendance.run(
             userId,
             dateStr,
+            'on_time',
             'on_time',
             `${dateStr}T09:00:00.000Z`,
             `${dateStr}T17:00:00.000Z`
